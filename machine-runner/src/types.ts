@@ -1,3 +1,5 @@
+import { Actyx } from '@actyx/sdk'
+
 export type Reactions = Record<string, { moreEvents: string[]; target: string }>
 export type Schema = {
   title: string
@@ -28,6 +30,17 @@ export class State<E extends { type: string }> {
   /** obtain a mapping from offered commands to their argument types (as JSON schema) */
   commands(): Commands {
     return {}
+  }
+
+  /**
+   * Override to handle otherwise unhandled events received in the context of this state.
+   *
+   * Note that this function is called during each replay, so it is unwise to perform side-effects.
+   * The proper way to execute compensating actions is to expose them in the state so that
+   * external code can invoke them.
+   */
+  handleOrphan(event: E) {
+    // default: do nothing
   }
 }
 
