@@ -1,5 +1,6 @@
 import { Actyx, EventKey, EventsOrTimetravel, MsgType, OnCompleteOrErr, Where } from '@actyx/sdk'
 import { State } from './types.js'
+import { debug } from 'debug'
 
 export const runMachine = <E extends { type: string }>(
   sdk: Actyx,
@@ -20,6 +21,14 @@ export const runMachine = <E extends { type: string }>(
   )
 }
 
+const mkLog = debug('runner')
+const log = {
+  debug: mkLog.extend('+'),
+  info: mkLog.extend('++'),
+  warn: mkLog.extend('+++'),
+  error: mkLog.extend('++++'),
+}
+
 export function internalStartRunner<E extends { type: string }>(
   subscribe: (cb: (i: EventsOrTimetravel<E>) => void, err: OnCompleteOrErr) => () => void,
   initial: State<E>,
@@ -31,14 +40,14 @@ export function internalStartRunner<E extends { type: string }>(
     subscribe(
       (d) => {
         if (d.type === MsgType.timetravel) {
-          console.log('time travel')
+          log.debug('time travel')
           state = deepCopy(initial)
           queue.length = 0
           cancel = start()
         } else if (d.type === MsgType.events) {
           for (const event of d.events) {
             const e = event.payload
-            console.log('delivering event', e.type, 'to', state.constructor.name)
+            log.debug('delivering event', e.type, 'to', state.constructor.name)
             if (queue.length > 0) {
               const first = queue[0].type
               const react = state.reactions()[first].moreEvents
@@ -68,13 +77,13 @@ export function internalStartRunner<E extends { type: string }>(
           }
           if (d.caughtUp) {
             // the SDK translates an OffsetMap response into MsgType.events with caughtUp=true
-            console.log('caught up')
+            log.debug('caught up')
             cb(state, queue.length === 0)
           }
         }
       },
       (err) => {
-        console.error('restarting in 1sec due to error', err)
+        log.error('restarting in 1sec due to error', err)
         state = deepCopy(initial)
         queue.length = 0
         setTimeout(() => (cancel = start()), 1000)
