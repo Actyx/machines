@@ -44,6 +44,7 @@ export class State<E extends { type: string }> {
   }
 }
 
+/** Utility class to capture a sequence of event types as a tuple instead of a homogeneous array type */
 export class Events<T> {
   constructor(public events: T) {}
 }

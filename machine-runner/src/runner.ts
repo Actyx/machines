@@ -93,7 +93,7 @@ export function internalStartRunner<E extends { type: string }>(
   return () => cancel()
 }
 
-function deepCopy<T>(source: T): T {
+export function deepCopy<T>(source: T): T {
   return Array.isArray(source)
     ? source.map(deepCopy)
     : source instanceof Date

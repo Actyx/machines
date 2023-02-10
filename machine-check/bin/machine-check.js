@@ -48,25 +48,3 @@ import { init } from 'machine-runner'
 init(${JSON.stringify(extracted)})
 export default function setup() { return 'done' }`,
 )
-
-for (const [proto, emit] of Object.entries(extracted)) {
-  console.log('performing checks for protocol', proto)
-  const { entrypoints, states } = emit
-  const subs1 = getSubscriptions(emit)
-  const globalProto = JSON.parse(readFileSync(`${proto}.json`))
-  const subs2 = globalProto.subscriptions || {}
-  const subscription = { ...subs2, ...subs1 }
-  for (const { state, role } of entrypoints) {
-    console.log('  checking role', role)
-    const machine = toARSM(states, state)
-    const input = JSON.stringify({ gfsm: globalProto.type, lfsm: machine, subscription, role })
-    const { stdout } = await execa('stack', ['run', '--', '--stdin', '--wf'], {
-      cwd: '../../typechecking',
-      input,
-      reject: false,
-    })
-    console.log('    result:', stdout)
-  }
-}
-
-console.log('ALL DONE')

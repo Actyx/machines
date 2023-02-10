@@ -13,15 +13,15 @@ type M = {
 type D = <T extends M>(constructor: T) => void
 
 export const proto =
-  (fileName: string): D =>
+  (protocol: string): D =>
   (constructor) => {
     try {
-      const { events, commands } = dict[fileName].states[constructor.name]
+      const { events, commands } = dict[protocol].states[constructor.name]
       constructor.prototype.reactions = () => events
       constructor.prototype.commands = () => commands
     } catch (e) {
       console.error(
-        `failing to decorate ${fileName}:${constructor.name}: make sure to import the generated protocol file and use its default export!`,
+        `failing to decorate ${protocol}:${constructor.name}: make sure to import the generated protocol file (and use its default export) before importing the state definition!`,
       )
       throw e
     }

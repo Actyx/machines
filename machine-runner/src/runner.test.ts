@@ -1,6 +1,6 @@
 import { EventsOrTimetravel, MsgType, OnCompleteOrErr } from '@actyx/sdk'
 import { describe, expect, it } from '@jest/globals'
-import { internalStartRunner } from './runner.js'
+import { deepCopy, internalStartRunner } from './runner.js'
 import { Reactions, State } from './types.js'
 
 type One = { type: 'One'; x: number }
@@ -191,5 +191,36 @@ describe('machine runner', () => {
     r.timeTravel()
     r.cancel()
     r.assertSubscribed(false)
+  })
+})
+
+describe('deepCopy', () => {
+  it('should copy the basics', () => {
+    expect(deepCopy(null)).toBe(null)
+    expect(deepCopy(false)).toBe(false)
+    expect(deepCopy(42)).toBe(42)
+    expect(deepCopy('hello')).toBe('hello')
+    expect(deepCopy([null, true, 5, 'world'])).toEqual([null, true, 5, 'world'])
+    expect({ a: '5' }).not.toEqual({ a: 5 }) // just double-checking jest here
+    expect(deepCopy({ 0: true, a: '5' })).toEqual({ '0': true, a: '5' }) // JS only has string keys
+  })
+  it('should copy prototypes', () => {
+    const i = new Initial()
+    const c = deepCopy(i)
+    expect(i).toEqual(c)
+    expect(i.constructor).toBe(c.constructor)
+    expect(Object.getPrototypeOf(i)).toBe(Object.getPrototypeOf(c))
+  })
+  it('should copy functions', () => {
+    let v = 42
+    const f = () => v
+    const c = deepCopy(f)
+    expect(c()).toBe(42)
+    v = 5
+    expect(c()).toBe(5)
+    const x = deepCopy({ f })
+    expect(x.f()).toBe(5)
+    v = 6
+    expect(x.f()).toBe(6)
   })
 })
