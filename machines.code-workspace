@@ -1,11 +1,17 @@
 {
   "folders": [
-	{
-		"path": "machine-runner"
-	},
-	{
-		"path": "machine-check"
-	}
-],
+    {
+      "path": "machine-runner"
+    },
+    {
+      "path": "machine-check"
+    },
+    {
+      "path": "machine-visual"
+    },
+    {
+      "path": "dev-example"
+    }
+  ],
   "settings": {}
 }

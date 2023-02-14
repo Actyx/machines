@@ -6,7 +6,7 @@ import {
   JsonSchemaGenerator,
   programFromConfig,
 } from './typescript-json-schema.js'
-import { ToEmit } from 'machine-runner'
+import { ToEmit } from '@actyx/machine-runner'
 
 type Ctx = {
   host: ts.FormatDiagnosticsHost

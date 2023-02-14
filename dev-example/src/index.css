@@ -1,0 +1,9 @@
+.card {
+    border: 1px gray solid;
+    margin: 8px;
+    padding: 8px;
+    width: 30%;
+    overflow-wrap: break-word;
+    font-family: sans-serif;
+    overflow-x: scroll;
+}

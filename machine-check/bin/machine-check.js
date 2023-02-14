@@ -34,7 +34,7 @@ try {
     writeFileSync(
       dst,
       `${HEADER}
-export default function setup() { return 'done' }`,
+export { protoUseGeneratedReExportInstead as proto } from '@actyx/machine-runner'`,
     )
   }
 }
@@ -44,7 +44,7 @@ const extracted = proc()
 writeFileSync(
   dst,
   `${HEADER}
-import { init } from 'machine-runner'
+import { init } from '@actyx/machine-runner'
 init(${JSON.stringify(extracted)})
-export default function setup() { return 'done' }`,
+export { protoUseGeneratedReExportInstead as proto } from '@actyx/machine-runner'`,
 )

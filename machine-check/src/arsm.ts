@@ -1,4 +1,4 @@
-import { States, ToEmit } from 'machine-runner'
+import { States, ToEmit } from '@actyx/machine-runner'
 
 export type Label =
   | { action: { cmd: string; logtype: string[] }; tag: 'Execute' }
