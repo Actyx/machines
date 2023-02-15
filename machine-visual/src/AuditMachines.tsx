@@ -1,7 +1,7 @@
 import { auditMachine, State } from '@actyx/machine-runner'
 import { Actyx, ActyxEvent, Where } from '@actyx/sdk'
 import { useEffect, useState } from 'react'
-import { Stage, Layer, Circle, Line, Label, Tag, Text } from 'react-konva'
+import { Stage, Layer, Circle, Line, Label, Tag, Text, Rect } from 'react-konva'
 import Konva from 'konva'
 
 type Ev = { type: string }
@@ -140,10 +140,23 @@ function placement(merged: TimePoint[]): Placement {
   return { minutes, perPoint }
 }
 
+function mkState(x: number, y: number, s: string, f: string, cb: () => void, rect?: boolean) {
+  return (
+    <>
+      {rect ? (
+        <Rect x={x - 5} y={y - 5} width={10} height={10} stroke={s} fill={f} strokeWidth={1} />
+      ) : (
+        <Circle x={x} y={y} stroke={s} fill={f} radius={4} strokeWidth={1} />
+      )}
+      <Rect x={x - 9} y={y - 9} width={18} height={18} onClick={cb} />
+    </>
+  )
+}
+
 export function AuditMachines({ actyx, machines }: Props) {
   const [states] = useState<States>(() => init(machines))
   const [places, setPlaces] = useState<Placement>({ minutes: [], perPoint: [] })
-  const [se, setSE] = useState<{ state: State<Ev>; event: ActyxEvent<Ev>; name: string }>()
+  const [se, setSE] = useState<{ state: State<Ev>; event?: ActyxEvent<Ev>; name: string }>()
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | null = null
@@ -184,7 +197,7 @@ export function AuditMachines({ actyx, machines }: Props) {
   }, [actyx, machines, states])
 
   function x(w: number) {
-    return w * 20 + 120
+    return w * 20 + 150
   }
 
   const height = 240 + 40 * machines.length
@@ -227,8 +240,9 @@ export function AuditMachines({ actyx, machines }: Props) {
               />
             </>
           ))}
-          {machines.map(({ name }, idx) => {
+          {machines.map(({ name, initial }, idx) => {
             const y = 40 * idx + 130
+            let prevState = initial
             return (
               <>
                 <Label x={110} y={y}>
@@ -246,33 +260,31 @@ export function AuditMachines({ actyx, machines }: Props) {
                   stroke="orange"
                   strokeWidth={2}
                 />
+                {mkState(x(-1), y, 'orange', 'orange', () => setSE({ name, state: initial }), true)}
                 {states.merged.map((tp, i) => {
                   const mPos = tp.machines.findIndex((m) => m.idx === idx)
                   if (mPos < 0) return
                   const m = tp.machines[mPos]
                   const place = places.perPoint[i]
                   if (m.type === 'queued') {
-                    return (
-                      <Circle
-                        x={x(place.center)}
-                        y={y}
-                        radius={3}
-                        strokeWidth={1}
-                        stroke="orange"
-                        fill="white"
-                      />
+                    const state = prevState
+                    return mkState(x(place.center), y, 'orange', 'white', () =>
+                      setSE({ name, state, event: tp.event }),
                     )
                   } else if (m.type === 'state') {
-                    return (
-                      <Circle
-                        x={x(place.center)}
-                        y={y}
-                        radius={3}
-                        strokeWidth={1}
-                        stroke="orange"
-                        fill="orange"
-                        onClick={() => setSE({ name, state: m.state, event: tp.event })}
-                      />
+                    prevState = m.state
+                    return mkState(x(place.center), y, 'orange', 'orange', () =>
+                      setSE({ name, state: m.state, event: tp.event }),
+                    )
+                  } else if (m.type === 'error') {
+                    const state = prevState
+                    return mkState(x(place.center), y, 'red', 'red', () =>
+                      setSE({ name, state, event: tp.event }),
+                    )
+                  } else {
+                    const state = prevState
+                    return mkState(x(place.center), y, 'red', 'white', () =>
+                      setSE({ name, state, event: tp.event }),
                     )
                   }
                   return
