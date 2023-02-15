@@ -53,7 +53,7 @@ export const auditMachine = <E extends { type: string }>(
 
 export type Auditor<S, E> = {
   reset(): void
-  state(trigger: string, state: S, events: ActyxEvent<E>[]): void
+  state(state: S, events: ActyxEvent<E>[]): void
   dropped(state: S, event: ActyxEvent<E>): void
 }
 
@@ -102,7 +102,7 @@ export function internalStartRunner<E extends { type: string }>(
                 state,
                 queue.map((x) => x.payload),
               )
-              audit?.state(event.meta.eventId, deepCopy(state), [...queue])
+              audit?.state(deepCopy(state), [...queue])
               queue.length = 0
             } else {
               const react = state.reactions()[e.type]?.moreEvents
@@ -116,7 +116,7 @@ export function internalStartRunner<E extends { type: string }>(
               } else {
                 const fun = Object.getPrototypeOf(state)[`on${e.type}`] as (...a: E[]) => State<E>
                 state = fun.apply(state, [e])
-                audit?.state(event.meta.eventId, deepCopy(state), [event])
+                audit?.state(deepCopy(state), [event])
               }
             }
           }

@@ -1,89 +1,74 @@
 import { auditMachine, State } from '@actyx/machine-runner'
 import { Actyx, ActyxEvent, Where } from '@actyx/sdk'
-import { useEffect, useReducer, useState } from 'react'
+import { useEffect, useState } from 'react'
+import { Stage, Layer, Circle, Line, Label, Tag, Text } from 'react-konva'
+import Konva from 'konva'
 
 type Ev = { type: string }
-type Machine = { where: Where<Ev>; initial: State<Ev> }
+type Machine = { name: string; where: Where<Ev>; initial: State<Ev> }
 type Props = {
   actyx: Actyx
   machines: Machine[]
   className?: string
 }
 
-type MachineState = {
-  state: State<Ev>
-  events: ActyxEvent<Ev>[]
-}
+type MachineState =
+  | { idx: number; type: 'state'; state: State<Ev> }
+  | { idx: number; type: 'unhandled' }
+  | { idx: number; type: 'queued' }
+  | { idx: number; type: 'error'; error: unknown }
+
 type TimePoint = {
   eventId: string
-  timestamp: number
+  event: ActyxEvent<Ev>
   machines: MachineState[]
 }
-type MachinePoint = {
-  eventId: string
-  timestamp: number
-  state: State<Ev>
-  events: ActyxEvent<Ev>[]
-}
+
+type MachinePoint =
+  | { type: 'state'; state: State<Ev>; events: ActyxEvent<Ev>[] }
+  | { type: 'unhandled'; event: ActyxEvent<Ev> }
+
 type States = {
   merged: TimePoint[]
   split: MachinePoint[][]
 }
 
-const PRIMORDIAL = '0 primordial'
-
 function init(mach: Machine[]): States {
-  const machines = mach.map(({ initial }) => ({ state: initial, events: [] }))
-  const merged = [{ eventId: PRIMORDIAL, timestamp: 0, machines }]
   const split = mach.map(() => [])
-  return { merged, split }
+  return { merged: [], split }
+}
+
+function addEvent(merged: TimePoint[], event: ActyxEvent<Ev>, state: MachineState) {
+  const eventId = event.meta.eventId
+  const pos = binarySearch(merged, eventId)
+  if (pos < 0) {
+    merged.splice(~pos, 0, {
+      eventId,
+      event,
+      machines: [state],
+    })
+  } else {
+    merged[pos].machines.push(state)
+  }
 }
 
 function merge({ merged, split }: States) {
-  merged.length = 1
-
-  function* iter() {
-    const spos = split.map(() => 0)
-    let active = spos.length
-    let prevMachines = merged[0].machines
-    while (active > 0) {
-      active = spos.length
-      const [eventId, timestamp, machines] = spos.reduce(
-        (acc: [string, number, MachineState[]], pos, idx) => {
-          if (pos >= split[idx].length) {
-            active -= 1
-            acc[2].push({ ...prevMachines[idx], events: [] })
-            return acc
-          }
-          const curr = split[idx][pos]
-          const min = acc[0]
-          const states = acc[2]
-          if (curr.eventId > min) states.push({ ...prevMachines[idx], events: [] })
-          else if (curr.eventId === min) {
-            spos[idx] += 1
-            states.push({ state: curr.state, events: curr.events })
-          } else {
-            // found new oldest event
-            acc[0] = curr.eventId
-            acc[1] = curr.timestamp
-            for (let i = 0; i < states.length; i += 1) {
-              // “uncomsume” previously added state updates
-              if (states[i].events.length > 0) spos[i] -= 1
-              states[i] = { state: prevMachines[i].state, events: [] }
-            }
-            states.push({ state: curr.state, events: curr.events })
-            spos[idx] += 1
-          }
-          return acc
-        },
-        ['999', 0, []],
-      )
-      if (eventId !== '999') yield { eventId, timestamp, machines }
-      prevMachines = machines
+  merged.length = 0
+  for (const [idx, machine] of split.entries()) {
+    for (const point of machine) {
+      if (point.type === 'state') {
+        for (const [i, event] of point.events.entries()) {
+          const state: MachineState =
+            i === point.events.length - 1
+              ? { idx, type: 'state', state: point.state }
+              : { idx, type: 'queued' }
+          addEvent(merged, event, state)
+        }
+      } else {
+        addEvent(merged, point.event, { idx, type: 'unhandled' })
+      }
     }
   }
-
-  merged.push(...iter())
 }
 
 function binarySearch<T extends { eventId: string }>(arr: T[], el: string) {
@@ -103,10 +88,62 @@ function binarySearch<T extends { eventId: string }>(arr: T[], el: string) {
   return ~m
 }
 
+type Placement = {
+  minutes: Minute[]
+  perPoint: PerPoint[]
+}
+type Minute = {
+  date: number
+  center: number
+  left: number
+  right: number
+}
+type PerPoint = {
+  seconds: number
+  center: number
+}
+
+function placement(merged: TimePoint[]): Placement {
+  // every point is 1 wide, with one “empty spot” where >1min passes
+  let currPos = 0.5
+  let latest = merged[0]?.event.meta.timestampMicros / 1000 ?? 0
+  let beginMinute: number | null = null
+
+  const mkMinute = (begin: number) => ({
+    date: latest,
+    center: (currPos + begin) / 2 - 0.5,
+    left: begin - 0.5,
+    right: currPos - 0.5,
+  })
+
+  const minutes: Minute[] = []
+  const perPoint: PerPoint[] = []
+
+  for (const tp of merged) {
+    const time = tp.event.meta.timestampMicros / 1000
+    const minute = Math.floor(time / 60_000)
+    const lastMinute = Math.floor(latest / 60_000)
+    if (beginMinute !== null && minute !== lastMinute) {
+      minutes.push(mkMinute(beginMinute))
+      beginMinute = null
+    }
+    if (time - latest > 60_000) currPos += 1
+    if (beginMinute === null) beginMinute = currPos
+    const seconds = Math.floor((time / 1000) % 60)
+    perPoint.push({ seconds, center: currPos })
+    latest = time
+    currPos += 1
+  }
+  if (beginMinute !== null) {
+    minutes.push(mkMinute(beginMinute))
+  }
+  return { minutes, perPoint }
+}
+
 export function AuditMachines({ actyx, machines }: Props) {
   const [states] = useState<States>(() => init(machines))
-  const [, update] = useReducer((x) => x + 1, 0)
-  const [slot, setSlot] = useState(0)
+  const [places, setPlaces] = useState<Placement>({ minutes: [], perPoint: [] })
+  const [se, setSE] = useState<{ state: State<Ev>; event: ActyxEvent<Ev>; name: string }>()
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | null = null
@@ -115,8 +152,7 @@ export function AuditMachines({ actyx, machines }: Props) {
         timer = setTimeout(() => {
           timer = null
           merge(states)
-          if (slot >= states.merged.length) setSlot(states.merged.length - 1)
-          update()
+          setPlaces(placement(states.merged))
         }, 250)
       }
     }
@@ -130,13 +166,13 @@ export function AuditMachines({ actyx, machines }: Props) {
             states.split[idx].length = 0
             recompute()
           }
-          state(eventId: string, state: State<Ev>, events: ActyxEvent<Ev>[]) {
-            const timestamp = events[events.length - 1].meta.timestampMicros / 1000
-            states.split[idx].push({ eventId, timestamp, state, events })
+          state(state: State<Ev>, events: ActyxEvent<Ev>[]) {
+            states.split[idx].push({ type: 'state', state, events })
             recompute()
           }
           dropped(state: State<Ev>, event: ActyxEvent<Ev>) {
-            // TODO
+            states.split[idx].push({ type: 'unhandled', event })
+            recompute()
           }
         })(),
       ),
@@ -147,24 +183,134 @@ export function AuditMachines({ actyx, machines }: Props) {
     }
   }, [actyx, machines, states])
 
+  function x(w: number) {
+    return w * 20 + 120
+  }
+
+  const height = 240 + 40 * machines.length
+  const typeLabels = 40 * machines.length + 120
+
   return (
-    <div style={{ display: 'flex' }}>
-      <div style={{ display: 'flex', flexDirection: 'column' }}>
-        {states.merged[slot].machines.map((m) => (
-          <div style={{ border: '1px gray solid', width: '300px', overflowX: 'scroll' }}>
+    <div>
+      <Stage width={window.innerWidth} height={height}>
+        <Layer>
+          {places.minutes.map((m) => (
+            <>
+              <Text
+                x={x(m.center) - 30}
+                y={60}
+                text={`${new Date(m.date).toISOString().substring(5, 16).replace('T', '\n')}`}
+                width={60}
+                align="center"
+                verticalAlign="middle"
+              />
+              <Line y={90} points={[x(m.left) + 2, 0, x(m.right) - 2, 0]} stroke="gray" />
+            </>
+          ))}
+          {places.perPoint.map((p, i) => (
+            <>
+              <Text
+                x={x(p.center) - 10}
+                y={100}
+                text={`${p.seconds}`}
+                align="center"
+                width={20}
+                verticalAlign="middle"
+              />
+              <Text
+                x={x(p.center) + 10}
+                y={typeLabels}
+                text={states.merged[i].event.payload.type}
+                rotation={90}
+                verticalAlign="middle"
+                height={20}
+              />
+            </>
+          ))}
+          {machines.map(({ name }, idx) => {
+            const y = 40 * idx + 130
+            return (
+              <>
+                <Label x={110} y={y}>
+                  <Tag
+                    fill="orange"
+                    pointerDirection="right"
+                    pointerHeight={10}
+                    pointerWidth={10}
+                  />
+                  <Text text={name} fontFamily="sans-serif" fontSize={18} padding={6} />
+                </Label>
+                <Line
+                  y={y}
+                  points={[120, 0, window.innerWidth, 0]}
+                  stroke="orange"
+                  strokeWidth={2}
+                />
+                {states.merged.map((tp, i) => {
+                  const mPos = tp.machines.findIndex((m) => m.idx === idx)
+                  if (mPos < 0) return
+                  const m = tp.machines[mPos]
+                  const place = places.perPoint[i]
+                  if (m.type === 'queued') {
+                    return (
+                      <Circle
+                        x={x(place.center)}
+                        y={y}
+                        radius={3}
+                        strokeWidth={1}
+                        stroke="orange"
+                        fill="white"
+                      />
+                    )
+                  } else if (m.type === 'state') {
+                    return (
+                      <Circle
+                        x={x(place.center)}
+                        y={y}
+                        radius={3}
+                        strokeWidth={1}
+                        stroke="orange"
+                        fill="orange"
+                        onClick={() => setSE({ name, state: m.state, event: tp.event })}
+                      />
+                    )
+                  }
+                  return
+                })}
+              </>
+            )
+          })}
+        </Layer>
+      </Stage>
+      {se && (
+        <div style={{ display: 'flex' }}>
+          <div
+            style={{
+              width: '50%',
+              border: '1px gray solid',
+              padding: 8,
+              margin: 8,
+              overflowX: 'scroll',
+            }}
+          >
+            <h1>state of “{se.name}”</h1>
             <pre>
-              {m.state.constructor.name} {JSON.stringify(m.state, undefined, 2)}
+              {se.state.constructor.name} {JSON.stringify(se.state, undefined, 2)}
             </pre>
           </div>
-        ))}
-      </div>
-      <ul>
-        {states.merged.map((state, idx) => (
-          <li style={idx === slot ? { color: 'green' } : {}} onClick={() => setSlot(idx)}>
-            {state.eventId}
-          </li>
-        ))}
-      </ul>
+          <div
+            style={{
+              width: '50%',
+              border: '1px gray solid',
+              padding: 8,
+              margin: 8,
+              overflowX: 'scroll',
+            }}
+          >
+            <pre>{JSON.stringify(se.event, undefined, 2)}</pre>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

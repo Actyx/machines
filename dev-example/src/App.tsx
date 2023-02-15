@@ -32,8 +32,8 @@ export function App() {
         key={id}
         actyx={actyx}
         machines={[
-          { where, initial: new InitialP() },
-          { where, initial: new InitialT('one') },
+          { name: 'passenger', where, initial: new InitialP() },
+          { name: 'taxi1', where, initial: new InitialT('one') },
         ]}
       />
       <div style={{ display: 'flex' }}>
