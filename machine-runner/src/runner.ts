@@ -97,7 +97,7 @@ export function internalStartRunner<E extends { type: string }>(
               }
               queue.push(event)
               if (queue.length <= react.length) continue
-              state = runState(state, first, queue, audit)
+              state = runState(state, first, [...queue], audit)
               queue.length = 0
             } else {
               const react = state.reactions()[evType]?.moreEvents
@@ -115,7 +115,7 @@ export function internalStartRunner<E extends { type: string }>(
           if (d.caughtUp) {
             // the SDK translates an OffsetMap response into MsgType.events with caughtUp=true
             log.debug('caught up')
-            cb(state, queue.length === 0)
+            swallow(cb, state, queue.length === 0)
           }
         }
       },
@@ -143,14 +143,10 @@ function runState<E extends { type: string }>(
       state,
       queue.map((x) => x.payload),
     )
-    try {
-      swallow(audit?.state, deepCopy(state), [...queue])
-    } catch (e) {
-      // swallow
-    }
+    swallow(audit?.state, deepCopy(s), queue)
     return s
   } catch (err) {
-    swallow(audit?.error, deepCopy(state), [...queue], err)
+    swallow(audit?.error, deepCopy(state), queue, err)
     return state
   }
 }
@@ -164,7 +160,7 @@ function handleOrphan<E extends { type: string }>(
     state.handleOrphan(orphan)
     swallow(audit?.dropped, deepCopy(state), orphan)
   } catch (err) {
-    swallow(audit?.error, state, [orphan], err)
+    swallow(audit?.error, deepCopy(state), [orphan], err)
   }
 }
 
