@@ -177,6 +177,7 @@ export class AuctionT extends State<Events> {
     return this.events({ type: 'Bid', time, price }, { type: 'BidderID', id: this.id })
   }
   onBid(bid: Bid, id: BidderID) {
+    if (bid.price === 14) throw new Error('Der Clown')
     return this
   }
   onSelected(ev1: Selected, ev2: PassengerID) {

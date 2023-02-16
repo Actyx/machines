@@ -55,6 +55,7 @@ export type Auditor<S, E> = {
   reset(): void
   state(state: S, events: ActyxEvent<E>[]): void
   dropped(state: S, event: ActyxEvent<E>): void
+  error(state: S, event: ActyxEvent<E>[], error: unknown): void
 }
 
 const mkLog = debug('runner')
@@ -80,43 +81,34 @@ export function internalStartRunner<E extends { type: string }>(
           log.debug('time travel')
           state = deepCopy(initial)
           queue.length = 0
-          audit?.reset()
+          swallow(audit?.reset)
           cancel = start()
         } else if (d.type === MsgType.events) {
           for (const event of d.events) {
-            const e = event.payload
-            log.debug('delivering event', e.type, 'to', state.constructor.name)
+            const evType = event.payload.type
+            log.debug('delivering event', evType, 'to', state.constructor.name)
             if (queue.length > 0) {
               const first = queue[0].payload.type
               const react = state.reactions()[first].moreEvents
               const next = react[queue.length - 1]
-              if (e.type !== next) {
-                state.handleOrphan(e)
-                audit?.dropped(deepCopy(state), event)
+              if (evType !== next) {
+                handleOrphan(state, event, audit)
                 continue
               }
               queue.push(event)
               if (queue.length <= react.length) continue
-              const fun = Object.getPrototypeOf(state)[`on${first}`] as (...a: E[]) => State<E>
-              state = fun.apply(
-                state,
-                queue.map((x) => x.payload),
-              )
-              audit?.state(deepCopy(state), [...queue])
+              state = runState(state, first, queue, audit)
               queue.length = 0
             } else {
-              const react = state.reactions()[e.type]?.moreEvents
+              const react = state.reactions()[evType]?.moreEvents
               if (!react) {
-                state.handleOrphan(e)
-                audit?.dropped(deepCopy(state), event)
+                handleOrphan(state, event, audit)
                 continue
               }
               if (react.length > 0) {
                 queue.push(event)
               } else {
-                const fun = Object.getPrototypeOf(state)[`on${e.type}`] as (...a: E[]) => State<E>
-                state = fun.apply(state, [e])
-                audit?.state(deepCopy(state), [event])
+                state = runState(state, evType, [event], audit)
               }
             }
           }
@@ -131,12 +123,58 @@ export function internalStartRunner<E extends { type: string }>(
         log.error('restarting in 1sec due to error', err)
         state = deepCopy(initial)
         queue.length = 0
-        audit?.reset()
+        swallow(audit?.reset)
         setTimeout(() => (cancel = start()), 1000)
       },
     )
   let cancel = start()
   return () => cancel()
+}
+
+function runState<E extends { type: string }>(
+  state: State<E>,
+  method: string,
+  queue: ActyxEvent<E>[],
+  audit: Auditor<State<E>, E> | undefined,
+): State<E> {
+  const fun = Object.getPrototypeOf(state)[`on${method}`] as (...a: E[]) => State<E>
+  try {
+    const s = fun.apply(
+      state,
+      queue.map((x) => x.payload),
+    )
+    try {
+      swallow(audit?.state, deepCopy(state), [...queue])
+    } catch (e) {
+      // swallow
+    }
+    return s
+  } catch (err) {
+    swallow(audit?.error, deepCopy(state), [...queue], err)
+    return state
+  }
+}
+
+function handleOrphan<E extends { type: string }>(
+  state: State<E>,
+  orphan: ActyxEvent<E>,
+  audit: Auditor<State<E>, E> | undefined,
+) {
+  try {
+    state.handleOrphan(orphan)
+    swallow(audit?.dropped, deepCopy(state), orphan)
+  } catch (err) {
+    swallow(audit?.error, state, [orphan], err)
+  }
+}
+
+function swallow<T extends unknown[]>(f: ((...args: T) => void) | undefined, ...args: T) {
+  if (f === undefined) return
+  try {
+    f(...args)
+  } catch (e) {
+    // ignore
+  }
 }
 
 export function deepCopy<T>(source: T): T {

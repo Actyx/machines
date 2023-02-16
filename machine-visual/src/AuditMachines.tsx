@@ -14,7 +14,7 @@ type Props = {
 
 type MachineState =
   | { idx: number; type: 'state'; state: State<Ev> }
-  | { idx: number; type: 'unhandled' }
+  | { idx: number; type: 'unhandled'; state: State<Ev> }
   | { idx: number; type: 'queued' }
   | { idx: number; type: 'error'; error: unknown }
 
@@ -26,7 +26,8 @@ type TimePoint = {
 
 type MachinePoint =
   | { type: 'state'; state: State<Ev>; events: ActyxEvent<Ev>[] }
-  | { type: 'unhandled'; event: ActyxEvent<Ev> }
+  | { type: 'unhandled'; state: State<Ev>; event: ActyxEvent<Ev> }
+  | { type: 'error'; state: State<Ev>; events: ActyxEvent<Ev>[]; err: unknown }
 
 type States = {
   merged: TimePoint[]
@@ -64,8 +65,16 @@ function merge({ merged, split }: States) {
               : { idx, type: 'queued' }
           addEvent(merged, event, state)
         }
+      } else if (point.type === 'error') {
+        for (const [i, event] of point.events.entries()) {
+          const state: MachineState =
+            i === point.events.length - 1
+              ? { idx, type: 'error', error: point.err }
+              : { idx, type: 'queued' }
+          addEvent(merged, event, state)
+        }
       } else {
-        addEvent(merged, point.event, { idx, type: 'unhandled' })
+        addEvent(merged, point.event, { idx, type: 'unhandled', state: point.state })
       }
     }
   }
@@ -124,10 +133,15 @@ function placement(merged: TimePoint[]): Placement {
     const minute = Math.floor(time / 60_000)
     const lastMinute = Math.floor(latest / 60_000)
     if (beginMinute !== null && minute !== lastMinute) {
+      if (minutes.length > 0 && minutes[minutes.length - 1].center > currPos - 2.1) {
+        currPos += 1
+        beginMinute += 1
+        perPoint[perPoint.length - 1].center += 1
+      }
       minutes.push(mkMinute(beginMinute))
       beginMinute = null
     }
-    if (time - latest > 60_000) currPos += 1
+    if (Math.abs(time - latest) > 60_000) currPos += 1
     if (beginMinute === null) beginMinute = currPos
     const seconds = Math.floor((time / 1000) % 60)
     perPoint.push({ seconds, center: currPos })
@@ -140,15 +154,30 @@ function placement(merged: TimePoint[]): Placement {
   return { minutes, perPoint }
 }
 
-function mkState(x: number, y: number, s: string, f: string, cb: () => void, rect?: boolean) {
+function mkState(
+  x: number,
+  y: number,
+  s: string,
+  f: string,
+  cb: (() => void) | undefined,
+  rect?: boolean,
+) {
   return (
     <>
       {rect ? (
         <Rect x={x - 5} y={y - 5} width={10} height={10} stroke={s} fill={f} strokeWidth={1} />
       ) : (
-        <Circle x={x} y={y} stroke={s} fill={f} radius={4} strokeWidth={1} />
+        <Circle x={x} y={y} stroke={s} fill={f} radius={4} strokeWidth={s === 'red' ? 2 : 1} />
       )}
-      <Rect x={x - 9} y={y - 9} width={18} height={18} onClick={cb} />
+      <Rect
+        x={x - 9}
+        y={y - 9}
+        width={18}
+        height={18}
+        onClick={cb}
+        opacity={0.3}
+        fill={cb ? undefined : 'black'}
+      />
     </>
   )
 }
@@ -156,7 +185,12 @@ function mkState(x: number, y: number, s: string, f: string, cb: () => void, rec
 export function AuditMachines({ actyx, machines }: Props) {
   const [states] = useState<States>(() => init(machines))
   const [places, setPlaces] = useState<Placement>({ minutes: [], perPoint: [] })
-  const [se, setSE] = useState<{ state: State<Ev>; event?: ActyxEvent<Ev>; name: string }>()
+  const [se, setSE] = useState<{
+    state: State<Ev>
+    name: string
+    machNr: number
+    tpIdx: number
+  }>()
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | null = null
@@ -169,23 +203,26 @@ export function AuditMachines({ actyx, machines }: Props) {
         }, 250)
       }
     }
-    const subs = machines.map(({ initial, where }, idx) =>
+    const subs = machines.map(({ initial, where }, machNr) =>
       auditMachine(
         actyx,
         where,
         initial,
         new (class {
           reset() {
-            states.split[idx].length = 0
+            states.split[machNr].length = 0
             recompute()
           }
           state(state: State<Ev>, events: ActyxEvent<Ev>[]) {
-            states.split[idx].push({ type: 'state', state, events })
+            states.split[machNr].push({ type: 'state', state, events })
             recompute()
           }
           dropped(state: State<Ev>, event: ActyxEvent<Ev>) {
-            states.split[idx].push({ type: 'unhandled', event })
+            states.split[machNr].push({ type: 'unhandled', event, state })
             recompute()
+          }
+          error(state: State<Ev>, events: ActyxEvent<Ev>[], err: unknown) {
+            states.split[machNr].push({ type: 'error', events, err, state })
           }
         })(),
       ),
@@ -196,53 +233,122 @@ export function AuditMachines({ actyx, machines }: Props) {
     }
   }, [actyx, machines, states])
 
-  function x(w: number) {
-    return w * 20 + 150
-  }
-
+  const mkX = (w: number) => w * 20 + 150
   const height = 240 + 40 * machines.length
+  const width = (places.perPoint[places.perPoint.length - 1]?.center ?? 0) * 20 + 180
   const typeLabels = 40 * machines.length + 120
+
+  const effect = (machNr: number, tpIdx: number) => {
+    const mach = states.merged[tpIdx].machines.find((m) => m.idx === machNr)
+    const event = states.merged[tpIdx].event
+    massage(event)
+    if (mach === undefined) return
+    const tpe = mach.type
+    const mkErr = (err: unknown) => {
+      const s1 = `${err}`
+      const s2 = (err as Error).stack ?? ''
+      return s2.startsWith(s1) ? s2 : `${s1}\n${s2}`
+    }
+    return tpe === 'state' ? (
+      <>
+        <h1>event triggered state update</h1>
+        <pre>{pretty(event)}</pre>
+      </>
+    ) : tpe === 'queued' ? (
+      <>
+        <h1>event was enqueued</h1>
+        <pre>{pretty(event)}</pre>
+      </>
+    ) : tpe === 'unhandled' ? (
+      <>
+        <h1>event was unhandled</h1>
+        <pre>{pretty(event)}</pre>
+      </>
+    ) : (
+      <>
+        <h1>event caused exception</h1>
+        <pre
+          style={{
+            overflow: 'scroll',
+            maxHeight: '5rem',
+            border: '1px solid gray',
+            padding: '4px',
+          }}
+        >
+          {mkErr(mach.error)}
+        </pre>
+        <pre>{pretty(event)}</pre>
+      </>
+    )
+  }
+  const event =
+    se === undefined ? undefined : se.tpIdx < 0 ? (
+      <h1>initial state</h1>
+    ) : (
+      effect(se.machNr, se.tpIdx)
+    )
+
+  function pretty(obj: unknown) {
+    return JSON.stringify(obj, undefined, 2)
+  }
+  function massage(event: ActyxEvent<Ev>) {
+    const ts = event.meta.timestampAsDate().toISOString()
+    const meta = event.meta as Record<string, unknown>
+    meta.timestamp = ts
+    delete meta.eventId
+    delete meta.offset
+  }
 
   return (
     <div>
-      <Stage width={window.innerWidth} height={height}>
+      <Stage width={width} height={height} style={{ overflow: 'scroll' }}>
         <Layer>
-          {places.minutes.map((m) => (
+          {places.minutes.map((minute, mIdx) => (
             <>
               <Text
-                x={x(m.center) - 30}
+                x={mkX(minute.center) - 30}
                 y={60}
-                text={`${new Date(m.date).toISOString().substring(5, 16).replace('T', '\n')}`}
+                text={`${new Date(minute.date).toISOString().substring(5, 16).replace('T', '\n')}`}
                 width={60}
                 align="center"
                 verticalAlign="middle"
+                fill={mIdx > 0 && minute.date < places.minutes[mIdx - 1].date ? 'red' : 'black'}
               />
-              <Line y={90} points={[x(m.left) + 2, 0, x(m.right) - 2, 0]} stroke="gray" />
+              <Line
+                y={90}
+                points={[mkX(minute.left) + 2, 0, mkX(minute.right) - 2, 0]}
+                stroke="gray"
+              />
             </>
           ))}
-          {places.perPoint.map((p, i) => (
+          {places.perPoint.map((pp, ppIdx) => (
             <>
               <Text
-                x={x(p.center) - 10}
+                x={mkX(pp.center) - 10}
                 y={100}
-                text={`${p.seconds}`}
+                text={`${pp.seconds}`}
                 align="center"
                 width={20}
                 verticalAlign="middle"
+                fill="gray"
               />
               <Text
-                x={x(p.center) + 10}
+                x={mkX(pp.center) + 10}
                 y={typeLabels}
-                text={states.merged[i].event.payload.type}
+                text={states.merged[ppIdx].event.payload.type}
                 rotation={90}
                 verticalAlign="middle"
                 height={20}
               />
             </>
           ))}
-          {machines.map(({ name, initial }, idx) => {
-            const y = 40 * idx + 130
+          {machines.map(({ name, initial }, machNr) => {
+            const y = 40 * machNr + 130
             let prevState = initial
+            const initCB =
+              machNr === se?.machNr && -1 === se?.tpIdx
+                ? undefined
+                : () => setSE({ name, state: initial, machNr, tpIdx: -1 })
             return (
               <>
                 <Label x={110} y={y}>
@@ -260,32 +366,25 @@ export function AuditMachines({ actyx, machines }: Props) {
                   stroke="orange"
                   strokeWidth={2}
                 />
-                {mkState(x(-1), y, 'orange', 'orange', () => setSE({ name, state: initial }), true)}
-                {states.merged.map((tp, i) => {
-                  const mPos = tp.machines.findIndex((m) => m.idx === idx)
+                {mkState(mkX(-1), y, 'orange', 'orange', initCB, true)}
+                {states.merged.map((tp, tpIdx) => {
+                  const mPos = tp.machines.findIndex((m) => m.idx === machNr)
                   if (mPos < 0) return
                   const m = tp.machines[mPos]
-                  const place = places.perPoint[i]
+                  const x = mkX(places.perPoint[tpIdx].center)
+                  const mkCB = (state: State<Ev>) =>
+                    machNr === se?.machNr && tpIdx === se?.tpIdx
+                      ? undefined
+                      : () => setSE({ name, state, machNr, tpIdx })
                   if (m.type === 'queued') {
-                    const state = prevState
-                    return mkState(x(place.center), y, 'orange', 'white', () =>
-                      setSE({ name, state, event: tp.event }),
-                    )
+                    return mkState(x, y, 'orange', 'white', mkCB(prevState))
                   } else if (m.type === 'state') {
                     prevState = m.state
-                    return mkState(x(place.center), y, 'orange', 'orange', () =>
-                      setSE({ name, state: m.state, event: tp.event }),
-                    )
+                    return mkState(x, y, 'orange', 'orange', mkCB(m.state))
                   } else if (m.type === 'error') {
-                    const state = prevState
-                    return mkState(x(place.center), y, 'red', 'red', () =>
-                      setSE({ name, state, event: tp.event }),
-                    )
+                    return mkState(x, y, 'red', 'red', mkCB(prevState))
                   } else {
-                    const state = prevState
-                    return mkState(x(place.center), y, 'red', 'white', () =>
-                      setSE({ name, state, event: tp.event }),
-                    )
+                    return mkState(x, y, 'red', 'white', mkCB(prevState))
                   }
                   return
                 })}
@@ -307,7 +406,7 @@ export function AuditMachines({ actyx, machines }: Props) {
           >
             <h1>state of “{se.name}”</h1>
             <pre>
-              {se.state.constructor.name} {JSON.stringify(se.state, undefined, 2)}
+              {se.state.constructor.name} {pretty(se.state)}
             </pre>
           </div>
           <div
@@ -319,7 +418,7 @@ export function AuditMachines({ actyx, machines }: Props) {
               overflowX: 'scroll',
             }}
           >
-            <pre>{JSON.stringify(se.event, undefined, 2)}</pre>
+            {event}
           </div>
         </div>
       )}

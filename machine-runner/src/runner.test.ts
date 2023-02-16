@@ -1,4 +1,4 @@
-import { EventsOrTimetravel, MsgType, OnCompleteOrErr } from '@actyx/sdk'
+import { ActyxEvent, EventsOrTimetravel, MsgType, OnCompleteOrErr } from '@actyx/sdk'
 import { describe, expect, it } from '@jest/globals'
 import { deepCopy, internalStartRunner } from './runner.js'
 import { Reactions, State } from './types.js'
@@ -14,8 +14,8 @@ class Initial extends State<Events> {
     this.transitioned = true
     return new Second(one.x, two.y)
   }
-  handleOrphan(event: Events): void {
-    this.unhandled.push(event)
+  handleOrphan(event: ActyxEvent<Events>): void {
+    this.unhandled.push(event.payload)
   }
   reactions(): Reactions {
     return { One: { moreEvents: ['Two'], target: 'Second' } }
@@ -27,8 +27,8 @@ class Second extends State<Events> {
   constructor(public x: number, public y: number) {
     super()
   }
-  handleOrphan(event: Events): void {
-    this.unhandled.push(event)
+  handleOrphan(event: ActyxEvent<Events>): void {
+    this.unhandled.push(event.payload)
   }
 }
 

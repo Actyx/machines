@@ -1,4 +1,4 @@
-import { Actyx } from '@actyx/sdk'
+import { ActyxEvent } from '@actyx/sdk'
 
 export type Reactions = Record<string, { moreEvents: string[]; target: string }>
 export type Schema = {
@@ -39,7 +39,7 @@ export class State<E extends { type: string }> {
    * The proper way to execute compensating actions is to expose them in the state so that
    * external code can invoke them.
    */
-  handleOrphan(event: E) {
+  handleOrphan(event: ActyxEvent<E>) {
     // default: do nothing
   }
 }
