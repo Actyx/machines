@@ -10,6 +10,9 @@ type Events = One | Two
 class Initial extends State<Events> {
   public transitioned = false
   public unhandled: Events[] = []
+  execX() {
+    return this.events({ type: 'One', x: 42 })
+  }
   onOne(one: One, two: Two) {
     this.transitioned = true
     return new Second(one.x, two.y)
@@ -41,6 +44,7 @@ class Runner<E extends { type: string }> {
   private cb: null | ((i: EventsOrTimetravel<E>) => void) = null
   private err: null | OnCompleteOrErr = null
   private states: [State<E>, boolean][] = []
+  private persisted: E[] = []
   private subCancel
   private cancelCB
 
@@ -62,7 +66,12 @@ class Runner<E extends { type: string }> {
       this.states.push([state, commands])
     }
 
-    this.subCancel = internalStartRunner(subscribe, initial, stateCB)
+    this.subCancel = internalStartRunner(
+      subscribe,
+      (e) => this.persisted.push(...e.events),
+      initial,
+      stateCB,
+    )
   }
 
   feed(ev: E[], caughtUp: boolean) {
@@ -124,6 +133,11 @@ class Runner<E extends { type: string }> {
     expect(this.states).toHaveLength(0)
   }
 
+  getState() {
+    expect(this.states).toHaveLength(1)
+    return this.states[0][0]
+  }
+
   assertSubscribed(b: boolean) {
     if (b) {
       expect(this.cb).not.toBeNull()
@@ -132,6 +146,11 @@ class Runner<E extends { type: string }> {
       expect(this.cb).toBeNull()
       expect(this.err).toBeNull()
     }
+  }
+
+  assertPersisted(...e: E[]) {
+    expect(this.persisted).toEqual(e)
+    this.persisted.length = 0
   }
 }
 
@@ -191,6 +210,25 @@ describe('machine runner', () => {
     r.timeTravel()
     r.cancel()
     r.assertSubscribed(false)
+  })
+})
+
+describe('exec wrapper', () => {
+  it('should persist', () => {
+    const r = new Runner(new Initial())
+    r.feed([], true)
+    const s = r.getState()
+    if (!(s instanceof Initial)) throw new Error('not Initial')
+    expect(s.execX().events).toEqual([{ type: 'One', x: 42 }])
+    r.assertPersisted({ type: 'One', x: 42 })
+  })
+  it('should panic', () => {
+    const r = new Runner(new Initial())
+    r.feed([], true)
+    const s = r.getState()
+    if (!(s instanceof Initial)) throw new Error('not Initial')
+    s.execX()
+    expect(() => s.execX()).toThrow()
   })
 })
 

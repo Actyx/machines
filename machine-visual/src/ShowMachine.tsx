@@ -44,9 +44,7 @@ export function ShowMachine<E extends { type: string }>({
 
   const command = (cmd: string, arg: unknown[]) => {
     const fun = Object.getPrototypeOf(state)[`exec${cmd}`] as (...arg: unknown[]) => Events<E[]>
-    const events = fun.apply(state, arg).events
-    console.log('emitting', events)
-    actyx.publish(where.apply(...events)).catch((e) => console.error('error publishing events:', e))
+    fun.apply(state, arg)
   }
 
   return (

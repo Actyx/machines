@@ -5,14 +5,15 @@ import {
   EventsOrTimetravel,
   MsgType,
   OnCompleteOrErr,
+  Tags,
   Where,
 } from '@actyx/sdk'
-import { State } from './types.js'
+import { Events, State } from './types.js'
 import { debug } from 'debug'
 
 export const runMachine = <E extends { type: string }>(
   sdk: Actyx,
-  query: Where<E>,
+  query: Tags<E>,
   initial: State<E>,
   cb: (state: State<E>, commandsEnabled: boolean) => void,
 ): (() => void) => {
@@ -24,6 +25,10 @@ export const runMachine = <E extends { type: string }>(
       sessionId: 'dummy',
       attemptStartFrom: { from: {}, latestEventKey: EventKey.zero },
     }),
+    (e) =>
+      sdk
+        .publish(query.apply(...e.events))
+        .catch((err) => console.error('error publishing', err, ...e.events)),
     initial,
     cb,
   )
@@ -43,10 +48,11 @@ export const auditMachine = <E extends { type: string }>(
       sessionId: 'dummy',
       attemptStartFrom: { from: {}, latestEventKey: EventKey.zero },
     }),
-    initial,
     () => {
-      // no traditional state handling here
+      // no need to publish since nobody will invoke commands
     },
+    initial,
+    null,
     audit,
   )
 }
@@ -66,10 +72,18 @@ const log = {
   error: mkLog.extend('++++'),
 }
 
+/**
+ * This property is set on a state when an exec… method is called,
+ * it prevents calling another exec… method afterwards (will throw).
+ */
+const invalidated = Symbol()
+
 export function internalStartRunner<E extends { type: string }>(
   subscribe: (cb: (i: EventsOrTimetravel<E>) => void, err: OnCompleteOrErr) => () => void,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  persist: (events: Events<any[]>) => void,
   initial: State<E>,
-  cb: (state: State<E>, commandsEnabled: boolean) => void,
+  cb: ((state: State<E>, commandsEnabled: boolean) => void) | null,
   audit?: Auditor<State<E>, E>,
 ) {
   let state = deepCopy(initial)
@@ -112,10 +126,10 @@ export function internalStartRunner<E extends { type: string }>(
               }
             }
           }
-          if (d.caughtUp) {
+          if (d.caughtUp && cb !== null) {
             // the SDK translates an OffsetMap response into MsgType.events with caughtUp=true
             log.debug('caught up')
-            swallow(cb, state, queue.length === 0)
+            swallow(cb, wrapExec(state, persist), queue.length === 0)
           }
         }
       },
@@ -129,6 +143,45 @@ export function internalStartRunner<E extends { type: string }>(
     )
   let cancel = start()
   return () => cancel()
+}
+
+function wrapExec<T extends { type: string }, U extends T[]>(
+  state: State<T>,
+  persist: (events: Events<U>) => void,
+): State<T> {
+  const obj = deepCopy(state)
+  function traverse(o: object) {
+    if (o === State.prototype) return
+    for (const m of Object.getOwnPropertyNames(o)) {
+      if (Object.getOwnPropertyDescriptor(obj, m)) continue
+      const desc = Object.getOwnPropertyDescriptor(o, m)
+      if (!desc) continue
+      if (!m.startsWith('exec') || typeof desc.value !== 'function') continue
+      const name = desc.value.name
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      desc.value = function (this: any, ...args: unknown[]) {
+        if (this[invalidated]) throw new Error('cannot call exec method a second time')
+        this[invalidated] = true
+        const events = Object.getPrototypeOf(this)[m].apply(this, args) as Events<U>
+        persist(events)
+        return events
+      }
+      Object.defineProperty(desc.value, 'name', { value: name })
+      Object.defineProperty(obj, m, desc)
+    }
+    traverse(Object.getPrototypeOf(o))
+  }
+  traverse(obj)
+  return obj
+}
+
+function struct(o: object) {
+  if (o === Object.prototype) return
+  process.stdout.write(`--- ${o.constructor.name}\n`)
+  for (const [n, m] of Object.entries(Object.getOwnPropertyDescriptors(o))) {
+    process.stdout.write(` ${n} ${JSON.stringify(m)}\n`)
+  }
+  struct(Object.getPrototypeOf(o))
 }
 
 function runState<E extends { type: string }>(
