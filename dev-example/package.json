@@ -6,7 +6,7 @@
   "source": "./src/index.html",
   "exports": null,
   "scripts": {
-    "prepare": "(cd ../machine-visual; npm i; npm run build)",
+    "prepare": "cd ../machine-visual && npm install && npm run build",
     "check": "machine-check src/proto.ts",
     "start": "npm run check && parcel --no-cache",
     "build": "npm run check && tsc"
