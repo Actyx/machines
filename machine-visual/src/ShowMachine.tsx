@@ -28,7 +28,10 @@ export function ShowMachine<E extends { type: string }>({
   className,
 }: Props<E>) {
   const [state, setState] = useState<State<E>>()
-  const [, update] = useReducer((x) => x + 1, 0)
+  // CHANGED: from using number to using Symbol
+  // to avoid rare but not improbable cases when number exceed
+  // MAX_SAFE_INTEGER
+  const [, update] = useReducer(() => Symbol(), Symbol())
   const [commands, setCommands] = useState<Commands>({})
 
   useEffect(
@@ -43,7 +46,9 @@ export function ShowMachine<E extends { type: string }>({
   )
 
   const command = (cmd: string, arg: unknown[]) => {
-    const fun = Object.getPrototypeOf(state)[`exec${cmd}`] as (...arg: unknown[]) => Events<E[]>
+    // QUICKFIX for runner's method patching that is done on the object
+    // previously, `command` calls for the prototype's function rather than the object's function
+    const fun = (state as any)[`exec${cmd}`] as (...arg: unknown[]) => Events<E[]>
     fun.apply(state, arg)
   }
 
