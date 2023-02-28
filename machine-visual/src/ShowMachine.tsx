@@ -28,10 +28,6 @@ export function ShowMachine<E extends { type: string }>({
   className,
 }: Props<E>) {
   const [state, setState] = useState<State<E>>()
-  // CHANGED: from using number to using Symbol
-  // to avoid rare but not improbable cases when number exceed
-  // MAX_SAFE_INTEGER
-  const [, update] = useReducer(() => Symbol(), Symbol())
   const [commands, setCommands] = useState<Commands>({})
 
   useEffect(
@@ -40,7 +36,6 @@ export function ShowMachine<E extends { type: string }>({
         setState(state)
         console.log('commands', state.commands())
         setCommands(cmds ? state.commands() : {})
-        update()
       }),
     [],
   )

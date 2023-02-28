@@ -110,6 +110,9 @@ type Minute = {
 
 type PerPoint = {
   seconds: number
+  /**
+   * Signify the "logical" x position of an event
+   */
   center: number
 }
 
@@ -323,9 +326,7 @@ export function AuditMachines({ actyx, machines }: Props) {
             </Fragment>
           ))}
           {places.perPoint.map((pp, ppIdx) => (
-            // key={`${pp.seconds}:::${ppIdx}`}
-            // reason: I don't understand enough to be able to assume that any property (e.g seconds) is unique - alan
-            <Fragment key={`${pp.seconds}:::${ppIdx}`}>
+            <Fragment key={`${pp.center}:::${pp.seconds}`}>
               <Text
                 x={mkX(pp.center) - 10}
                 y={100}

@@ -45,6 +45,6 @@ writeFileSync(
   dst,
   `${HEADER}
 import { init } from '@actyx/machine-runner'
-init(${JSON.stringify(extracted)})
+init(${JSON.stringify(extracted, null, 2)})
 export { protoUseGeneratedReExportInstead as proto } from '@actyx/machine-runner'`,
 )
