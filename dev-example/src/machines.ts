@@ -1,6 +1,7 @@
 import { Tag } from '@actyx/sdk'
 import { State } from '@actyx/machine-runner'
 import { proto } from './proto.js'
+import * as runnerAPI from '@actyx/machine-runner'
 
 /**
  * Actyx pub-sub is based on topics selected by tagging (which supports

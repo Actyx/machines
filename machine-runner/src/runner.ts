@@ -155,22 +155,22 @@ function wrapExec<T extends { type: string }, U extends T[]>(
   const obj = deepCopy(state)
   function traverse(o: object) {
     if (o === State.prototype) return
-    for (const m of Object.getOwnPropertyNames(o)) {
-      if (Object.getOwnPropertyDescriptor(obj, m)) continue
-      const desc = Object.getOwnPropertyDescriptor(o, m)
+    for (const methodName of Object.getOwnPropertyNames(o)) {
+      if (Object.getOwnPropertyDescriptor(obj, methodName)) continue
+      const desc = Object.getOwnPropertyDescriptor(o, methodName)
       if (!desc) continue
-      if (!m.startsWith('exec') || typeof desc.value !== 'function') continue
+      if (!methodName.startsWith('exec') || typeof desc.value !== 'function') continue
       const name = desc.value.name
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       desc.value = function (this: any, ...args: unknown[]) {
         if (this[invalidated]) throw new Error('cannot call exec method a second time')
         this[invalidated] = true
-        const events = Object.getPrototypeOf(this)[m].apply(this, args) as Events<U>
+        const events = Object.getPrototypeOf(this)[methodName].apply(this, args) as Events<U>
         persist(events)
         return events
       }
       Object.defineProperty(desc.value, 'name', { value: name })
-      Object.defineProperty(obj, m, desc)
+      Object.defineProperty(obj, methodName, desc)
     }
     traverse(Object.getPrototypeOf(o))
   }

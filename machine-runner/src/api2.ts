@@ -1,65 +1,11 @@
-import {
-  StateMechanismMap,
-  StateMechanism,
-  Event,
-  PayloadConstructor,
-  StateFactory,
-  CommandDefiner,
-} from './api2.internals.js'
-import type { DeepReadonly } from './api2.utils.js'
+import { ProtocolDesigner } from './api2/protocol-designer.js'
+import { Event } from './api2/state-machine.js'
+export * from './api2utils/agent.js'
 
-export type Protocol<Mechanism extends StateMechanismMap<{}>> = {
-  states: DeepReadonly<Mechanism>
-}
-
-export type ProtocolDesigner<AllowedEvents extends Event.Factory.NonZeroTuple> = {
-  designState: <
-    StateName extends string,
-    StateArgs extends any[],
-    StatePayload extends any,
-    Commands extends { [key: string]: CommandDefiner<any, any> },
-  >(
-    stateName: StateName,
-    constructor: PayloadConstructor<StateArgs, StatePayload>,
-    props: {
-      commands: Commands
-      designReaction: (
-        addReaction: StateMechanism<
-          AllowedEvents,
-          StateName,
-          StateArgs,
-          StatePayload,
-          {}
-        >['reactTo'],
-      ) => unknown
-    },
-  ) => StateFactory<AllowedEvents, StateName, StateArgs, StatePayload, Commands>
-}
-
-export namespace ProtocolDesigner {
-  export const init = <RegisteredEventFactories extends Event.Factory.NonZeroTuple>(
-    _: RegisteredEventFactories,
-  ) => makeProtocolDesigner<RegisteredEventFactories>()
-
-  const makeProtocolDesigner = <
-    AllowedEvents extends Event.Factory.NonZeroTuple,
-  >(): ProtocolDesigner<AllowedEvents> => {
-    const designState: ProtocolDesigner<AllowedEvents>['designState'] = (
-      stateName,
-      constructor,
-      props,
-    ) => {
-      const stateMech = StateMechanism.make(stateName, constructor, {})
-      props.designReaction(stateMech.reactTo)
-      return stateMech.patchCommands(props.commands).build()
-    }
-    return {
-      designState,
-    }
-  }
-}
+// Example Implementation
 
 const Toggle = Event.design('Toggle').withPayload<{ c: 1 }>()
+const False = Event.design('False').withPayload<{ c: 1 }>()
 
 const protocol = ProtocolDesigner.init([Toggle])
 
@@ -82,6 +28,11 @@ const Open = protocol.designState(
         // Add system calls to machine runner here
         context.someSystemCall()
         // Not complete yet
+        return [
+          Toggle.new({
+            c: 1,
+          }),
+        ]
       },
     },
   },
@@ -95,12 +46,21 @@ const Close = protocol.designState('Close', () => null, {
     })
   },
   commands: {
-    toggle: (context) => {
-      // Add system calls to machine runner here
+    toggle: (_context) => [
+      Toggle.new({
+        c: 1,
+      }),
+    ],
+
+    anotherCommand: (context, x: number) => {
+      // TODO: consider API for system call?
       context.someSystemCall()
-      // Not complete yet
+      return [
+        Toggle.new({
+          c: 1,
+        }),
+      ]
     },
-    anotherCommand: (context, x: number) => {},
   },
 })
 

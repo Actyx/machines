@@ -1,33 +1,32 @@
-import * as utils from './api2.utils.js'
+import * as utils from '../api2utils/type-utils.js'
 
-export type Event<Key extends string, Payload extends any> = {
+// TODO: rethink name "Event" is an overused name and maybe a global name in TS/JS
+export type Event<Key extends string, Payload extends {}> = {
   type: Key
-  payload: Payload
-}
+} & Payload
 
 export namespace Event {
-  export const KEY_GETTER_SYMBOL: unique symbol = Symbol()
-
-  export type NonZeroTuple = utils.NonZeroTuple<Event<any, any>>
-
   export const design = <Key extends string>(key: Key): EventFactoryIntermediate<Key> => ({
     withPayload: () => ({
-      [KEY_GETTER_SYMBOL]: key,
+      type: key,
       new: (payload) => ({
+        ...payload,
         type: key,
-        payload,
       }),
     }),
   })
 
   type EventFactoryIntermediate<Key extends string> = {
-    withPayload: <Payload extends any = void>() => Factory<Key, Payload>
+    withPayload: <Payload extends {}>() => Factory<Key, Payload>
   }
 
-  export type Factory<Key extends string, Payload extends any> = {
-    [KEY_GETTER_SYMBOL]: Key
+  export type Any = Event<string, {}>
+  export type NonZeroTuple = utils.NonZeroTuple<Any>
+  export type Factory<Key extends string, Payload extends {}> = {
+    type: Key
     new: (payload: Payload) => Event<Key, Payload>
   }
+  export type PayloadOf<T extends Event.Any> = T extends Event<any, infer Payload> ? Payload : never
 
   export namespace Factory {
     export type NonZeroTuple = utils.NonZeroTuple<Factory<any, any>>
@@ -48,7 +47,7 @@ export namespace Event {
       Factory<infer Key, infer Payload>,
       ...infer Rest,
     ]
-      ? [ToPayload<Event<Key, Payload>>, ...LooseMapToPayload<Rest>]
+      ? [PayloadOf<Event<Key, Payload>>, ...LooseMapToPayload<Rest>]
       : []
 
     export type MapToPayload<T extends [Factory<any, any>, ...Factory<any, any>[]]> =
@@ -72,8 +71,4 @@ export namespace Event {
     export type ReduceToEvent<T extends [Factory<any, any>, ...Factory<any, any>[]]> =
       LooseReduceToEvent<T>
   }
-
-  export type ToPayload<T extends Event<any, any>> = T extends Event<any, infer Payload>
-    ? Payload
-    : never
 }

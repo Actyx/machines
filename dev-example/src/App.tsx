@@ -1,5 +1,6 @@
 import { Actyx } from '@actyx/sdk'
 import { useEffect, useState } from 'react'
+import * as runnerAPI from '@actyx/machine-runner'
 import { AuditMachines, ShowMachine } from '@actyx/machine-visual'
 import { InitialP, InitialT, TaxiTag } from './machines.js'
 
@@ -12,6 +13,9 @@ export function App() {
       version: '1.0.0',
     }).then(setActyx)
   }, [])
+
+  runnerAPI.api2.stateMachine()
+
 
   const [id, setId] = useState('1')
 
