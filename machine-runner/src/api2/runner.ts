@@ -4,6 +4,7 @@ import { Agent } from '../api2utils/agent.js'
 import { Obs } from '../api2utils/obs.js'
 
 export type MachineRunner = ReturnType<typeof createMachineRunner>
+
 export const createMachineRunner = <E extends Event.Any>(
   sdk: Actyx,
   query: Tags<E>,
@@ -14,9 +15,19 @@ export const createMachineRunner = <E extends Event.Any>(
       ...c,
       audit: {
         reset: Obs.make<void>(),
-        state: Obs.make<unknown>(),
-        dropped: Obs.make<ActyxEvent<Event.Any>[]>(),
-        error: Obs.make<string>(),
+        state: Obs.make<{
+          state: unknown
+          events: ActyxEvent<Event.Any>[]
+        }>(),
+        dropped: Obs.make<{
+          state: unknown
+          events: ActyxEvent<Event.Any>[]
+        }>(),
+        error: Obs.make<{
+          state: unknown
+          events: ActyxEvent<Event.Any>[]
+          error: unknown
+        }>(),
       },
       log: Obs.make<string>(),
     }))
@@ -48,11 +59,17 @@ export const createMachineRunner = <E extends Event.Any>(
             } else if (d.type === MsgType.events) {
               for (const event of d.events) {
                 // TODO: Runtime typeguard for event
-                const handledBy = stateContainer.pushEvent(event)
-                if (handledBy.handling === StateLensCommon.ReactionHandling.Execute) {
-                  agent.channels.audit.state.emit(stateContainer.get())
-                  if (handledBy.orphans.length > 0) {
-                    agent.channels.audit.dropped.emit(handledBy.orphans)
+                const handlingreport = stateContainer.pushEvent(event)
+                if (handlingreport.handling === StateLensCommon.ReactionHandling.Execute) {
+                  agent.channels.audit.state.emit({
+                    state: stateContainer.get(),
+                    events: handlingreport.queueSnapshotBeforeExecution,
+                  })
+                  if (handlingreport.orphans.length > 0) {
+                    agent.channels.audit.dropped.emit({
+                      state: stateContainer.get(),
+                      events: handlingreport.orphans,
+                    })
                   }
                 }
               }

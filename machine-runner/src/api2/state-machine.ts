@@ -386,6 +386,8 @@ export namespace StateLensCommon {
     event: ActyxEvent<Event.Any>,
   ) => {
     internals.queue.push(event)
+    const queueSnapshotBeforeExecution = [...internals.queue]
+
     const handlingResult = determineEventQueueHandling(
       factory.getMechanism().reactions,
       internals.queue,
@@ -411,7 +413,7 @@ export namespace StateLensCommon {
       >['state']
       internals.queue = [...internals.queue] // array content inside new array shell
     } else if (handlingResult.handling === ReactionHandling.Queue) {
-      internals.queue.push(event)
+      // do nothing, item has been pushed
     } else if (handlingResult.handling === ReactionHandling.Discard) {
       internals.queue = []
     } else if (handlingResult.handling === ReactionHandling.InvalidQueueEmpty) {
@@ -419,7 +421,10 @@ export namespace StateLensCommon {
       // TODO: implement anyway
     }
 
-    return handlingResult
+    return {
+      ...handlingResult,
+      queueSnapshotBeforeExecution,
+    }
   }
 }
 
@@ -427,6 +432,10 @@ export namespace StateLensCommon {
 // ==================================
 // StateLensOpaque
 // ==================================
+
+export type PushEventResult = StateLensCommon.EventQueueHandling & {
+  queueSnapshotBeforeExecution: ActyxEvent<Event.Any>[]
+}
 
 export type StateLensOpaque = {
   as: <
@@ -439,7 +448,7 @@ export type StateLensOpaque = {
     factory: StateFactory<EventFactoriesTuple, StateName, StateArgs, StatePayload, Commands>,
   ) => StateLensTransparent<StateName, StatePayload, ToCommandSignatureMap<Commands>> | null
   reset: () => void
-  pushEvent: (events: ActyxEvent<Event.Any>) => StateLensCommon.EventQueueHandling
+  pushEvent: (events: ActyxEvent<Event.Any>) => PushEventResult
   get: () => State<string, unknown>
 }
 
