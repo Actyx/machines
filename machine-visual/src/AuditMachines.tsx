@@ -1,8 +1,7 @@
 import { auditMachine, State } from '@actyx/machine-runner'
 import { Actyx, ActyxEvent, Where } from '@actyx/sdk'
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { Stage, Layer, Circle, Line, Label, Tag, Text, Rect } from 'react-konva'
-import Konva from 'konva'
 
 type Ev = { type: string }
 type Machine = { name: string; where: Where<Ev>; initial: State<Ev> }
@@ -101,14 +100,19 @@ type Placement = {
   minutes: Minute[]
   perPoint: PerPoint[]
 }
+
 type Minute = {
   date: number
   center: number
   left: number
   right: number
 }
+
 type PerPoint = {
   seconds: number
+  /**
+   * Signify the "logical" x position of an event
+   */
   center: number
 }
 
@@ -304,7 +308,7 @@ export function AuditMachines({ actyx, machines }: Props) {
       <Stage width={width} height={height} style={{ overflow: 'scroll' }}>
         <Layer>
           {places.minutes.map((minute, mIdx) => (
-            <>
+            <Fragment key={minute.date}>
               <Text
                 x={mkX(minute.center) - 30}
                 y={60}
@@ -319,10 +323,10 @@ export function AuditMachines({ actyx, machines }: Props) {
                 points={[mkX(minute.left) + 2, 0, mkX(minute.right) - 2, 0]}
                 stroke="gray"
               />
-            </>
+            </Fragment>
           ))}
           {places.perPoint.map((pp, ppIdx) => (
-            <>
+            <Fragment key={`${pp.center}:::${pp.seconds}`}>
               <Text
                 x={mkX(pp.center) - 10}
                 y={100}
@@ -340,7 +344,7 @@ export function AuditMachines({ actyx, machines }: Props) {
                 verticalAlign="middle"
                 height={20}
               />
-            </>
+            </Fragment>
           ))}
           {machines.map(({ name, initial }, machNr) => {
             const y = 40 * machNr + 130
@@ -349,8 +353,10 @@ export function AuditMachines({ actyx, machines }: Props) {
               machNr === se?.machNr && -1 === se?.tpIdx
                 ? undefined
                 : () => setSE({ name, state: initial, machNr, tpIdx: -1 })
+            // key={`${pp.seconds}:::${ppIdx}`}
+            // reason: I don't understand enough to be able to assume that any property (e.g name, where) is unique - alan
             return (
-              <>
+              <Fragment key={`${name}:::${machNr}`}>
                 <Label x={110} y={y}>
                   <Tag
                     fill="orange"
@@ -388,7 +394,7 @@ export function AuditMachines({ actyx, machines }: Props) {
                   }
                   return
                 })}
-              </>
+              </Fragment>
             )
           })}
         </Layer>

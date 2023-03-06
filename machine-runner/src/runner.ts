@@ -138,6 +138,9 @@ export function internalStartRunner<E extends { type: string }>(
         state = deepCopy(initial)
         queue.length = 0
         swallow(audit?.reset)
+
+        // Retry mechanism
+        // Might benefit from randomized and incremental backoff?
         setTimeout(() => (cancel = start()), 1000)
       },
     )
