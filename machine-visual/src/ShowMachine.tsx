@@ -3,14 +3,13 @@ import validator from '@rjsf/validator-ajv8'
 import { withTheme } from '@rjsf/core'
 import { useEffect, useReducer, useState } from 'react'
 import { Commands, Events, runMachine, State } from '@actyx/machine-runner'
+import { MachineRunner } from '@actyx/machine-runner/lib/api2.js'
 
 const Form = withTheme({})
 
 type Props<E extends { type: string }> = {
   id: string
-  where: Tags<E>
-  initial: State<E>
-  actyx: Actyx
+  machine: MachineRunner
   className?: string
 }
 
@@ -20,25 +19,9 @@ type Props<E extends { type: string }> = {
  * inferred JSON schema of the respective command arguments - the inference is performed
  * by the `machine-check` tool).
  */
-export function ShowMachine<E extends { type: string }>({
-  id,
-  where,
-  initial,
-  actyx,
-  className,
-}: Props<E>) {
+export function ShowMachine<E extends { type: string }>({ id, machine, className }: Props<E>) {
   const [state, setState] = useState<State<E>>()
   const [commands, setCommands] = useState<Commands>({})
-
-  useEffect(
-    () =>
-      runMachine(actyx, where, initial, (state, cmds) => {
-        setState(state)
-        console.log('commands', state.commands())
-        setCommands(cmds ? state.commands() : {})
-      }),
-    [],
-  )
 
   const command = (cmd: string, arg: unknown[]) => {
     // QUICKFIX for runner's method patching that is done on the object

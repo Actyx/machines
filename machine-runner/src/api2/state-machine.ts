@@ -30,8 +30,9 @@ export type StateMechanism<
   StatePayload extends any,
   Commands extends {
     [key: string]: CommandDefiner<
+      StatePayload,
       any,
-      utils.NonZeroTuple<Event.Factory.ReduceToEvent<EventFactoriesTuple>>
+      Event.Factory.ReduceToEvent<EventFactoriesTuple>[]
     >
   },
 > = {
@@ -39,24 +40,24 @@ export type StateMechanism<
 
   commands: Commands
 
-  reactions: Reaction<Event.Factory.NonZeroTuple, State<any, any>, StateLensOpaque | null>[]
+  reactions: StateMechanismReaction<Event.Factory.Any[], Event.Any[], StatePayload>[]
 
   reactTo: <
-    EventTriggerChain extends utils.NonZeroTuple<Event.Factory.Reduce<EventFactoriesTuple>>,
+    EventFactoriesChain extends utils.NonZeroTuple<Event.Factory.Reduce<EventFactoriesTuple>>,
   >(
-    eventChainTrigger: EventTriggerChain,
-    handler: ReactionHandler<
-      EventTriggerChain,
-      State<StateName, StatePayload>,
-      StateLensOpaque | null
+    eventChainTrigger: EventFactoriesChain,
+    handler: StateMechanismReactionHandler<
+      Event.Factory.MapToEvent<EventFactoriesChain>,
+      StatePayload
     >,
   ) => void
 
   patchCommands: <
     NewCommands extends {
       [key: string]: CommandDefiner<
+        StatePayload,
         any,
-        utils.NonZeroTuple<Event.Factory.ReduceToEvent<EventFactoriesTuple>>
+        Event.Factory.ReduceToEvent<EventFactoriesTuple>[]
       >
     },
   >(
@@ -71,11 +72,25 @@ export type StateMechanism<
   build: () => StateFactory<EventFactoriesTuple, StateName, StateArgs, StatePayload, Commands>
 }
 
-type StateMechanismReactions = Reaction<
-  Event.Factory.NonZeroTuple,
-  State<any, any>,
+type StateMechanismReactionContext<Self> = {
+  self: Self
+}
+
+type StateMechanismReaction<
+  EventFactoriesChain extends Event.Factory.Any[],
+  EventChain extends Event.Any[],
+  Self extends any,
+> = Reaction<
+  EventFactoriesChain,
+  EventChain,
+  StateMechanismReactionContext<Self>,
   StateLensOpaque | null
->[]
+>
+
+type StateMechanismReactionHandler<
+  EventChain extends Event.Any[],
+  Self extends any,
+> = ReactionHandler<EventChain, StateMechanismReactionContext<Self>, StateLensOpaque | null>
 
 export namespace StateMechanism {
   export const make = <
@@ -84,15 +99,14 @@ export namespace StateMechanism {
     StateArgs extends any[],
     StatePayload extends any,
     Commands extends {
-      [key: string]: CommandDefiner<any, any>
+      [key: string]: CommandDefiner<StatePayload, any, any>
     },
   >(
     stateName: StateName,
     constructor: PayloadConstructor<StateArgs, StatePayload>,
     props?: {
-      signature?: Symbol
       commands?: Commands
-      reactions?: StateMechanismReactions
+      reactions?: StateMechanismReaction<Event.Factory.Any[], Event.Any[], StatePayload>[]
     },
   ): StateMechanism<EventFactoriesTuple, StateName, StateArgs, StatePayload, Commands> => {
     type Self = StateMechanism<EventFactoriesTuple, StateName, StateArgs, StatePayload, Commands>
@@ -105,7 +119,21 @@ export namespace StateMechanism {
     const commands: Self['commands'] = props?.commands || ({} as Commands)
     const reactions: Self['reactions'] = props?.reactions || []
     const reactTo: Self['reactTo'] = (eventChainTrigger, handler) => {
-      reactions.push(Reaction.design(eventChainTrigger, handler))
+      const reaction = {
+        eventChainTrigger,
+        handler,
+      }
+      reactions.push(
+        // TODO: unit test
+        // NOTE: For some reason, Event.Any[] is not comparable to
+        // Event.Factory.MapToEvent<EventFactoriesTuple>
+        // Probably will have to rethink how to define Reaction
+        reaction as unknown as StateMechanismReaction<
+          Event.Factory.Any[],
+          Event.Any[],
+          StatePayload
+        >,
+      )
     }
     const addCommand: Self['patchCommands'] = (newCommands) =>
       make(stateName, constructor, {
@@ -232,8 +260,8 @@ export namespace StateLensCommon {
   }
 
   // TODO: unit test
-  const matchReaction = <T extends Event.Factory.NonZeroTuple>(
-    reaction: Reaction<T, State<any, any>, StateLensOpaque | null>,
+  const matchReaction = (
+    reaction: StateMechanismReaction<Event.Factory.Any[], Event.Any[], {}>,
     queue: ActyxEvent<Event.Any>[],
   ): {
     result: ReactionMatchResult.All | null
@@ -299,7 +327,7 @@ export namespace StateLensCommon {
   export type EventQueueHandling =
     | {
         handling: ReactionHandling.Execute
-        reaction: Reaction<Event.Factory.NonZeroTuple, State<any, any>, StateLensOpaque | null>
+        reaction: StateMechanismReaction<Event.Factory.Any[], Event.Any[], unknown>
         orphans: ActyxEvent<Event.Any>[]
         matching: Event.Any[]
       }
@@ -311,7 +339,7 @@ export namespace StateLensCommon {
       }
 
   const determineEventQueueHandling = (
-    reactions: Reaction<Event.Factory.NonZeroTuple, State<string, any>, StateLensOpaque | null>[],
+    reactions: StateMechanismReaction<Event.Factory.Any[], Event.Any[], unknown>[],
     queue: ActyxEvent<Event.Any>[],
   ): EventQueueHandling => {
     if (queue.length === 0) {
@@ -320,11 +348,7 @@ export namespace StateLensCommon {
       }
     }
 
-    const partialMatches: Reaction<
-      Event.Factory.NonZeroTuple,
-      State<any, any>,
-      StateLensOpaque | null
-    >[] = []
+    const partialMatches: StateMechanismReaction<Event.Factory.Any[], Event.Any[], unknown>[] = []
 
     for (const reaction of reactions) {
       const { result, orphans, matching } = matchReaction(reaction, queue)
@@ -374,9 +398,10 @@ export namespace StateLensCommon {
       // internals.queue are mutated here
       // .splice mutates
       const newStateLens = reaction.handler(
-        internals.state,
-        // TODO: unit test (important! because of `as any`)
-        matchingEventSequence as any,
+        {
+          self: internals.state,
+        },
+        matchingEventSequence,
       )
 
       // TODO: change to satisfies
@@ -462,10 +487,14 @@ export namespace StateLensTransparent {
   ): StateLensTransparent<StateName, StatePayload, ToCommandSignatureMap<Commands>> | null => {
     if (factory.getSymbol() === internals.factorySymbol) {
       // TODO: optimize
-      const commands = convertCommandMapToCommandSignatureMap(factory.getMechanism().commands, {
-        // TODO: think about the required context for a command
-        someSystemCall: () => 1,
-      })
+      const commands = convertCommandMapToCommandSignatureMap(
+        factory.getMechanism().commands,
+        () => ({
+          // TODO: think about the required context for a command
+          someSystemCall: () => 1,
+          self: internals.state,
+        }),
+      )
       return {
         get: () => internals.initial,
         commands,

@@ -1,23 +1,25 @@
 import { Event } from './event.js'
 
 export type Reaction<
-  EventFactoriesTuple extends Event.Factory.NonZeroTuple,
-  Self extends any,
+  EventFactoriesTuple extends Event.Factory.Any[],
+  EventTuple extends Event.Any[],
+  Context extends any,
   RetVal extends any,
 > = {
   eventChainTrigger: EventFactoriesTuple
-  handler: ReactionHandler<EventFactoriesTuple, Self, RetVal>
+  handler: ReactionHandler<EventTuple, Context, RetVal>
 }
 
 export namespace Reaction {
   export const design = <
-    EventFactoriesTuple extends Event.Factory.NonZeroTuple,
-    Self extends any,
+    EventFactoriesTuple extends Event.Factory.Any[],
+    EventTuple extends Event.Any[],
+    Context extends any,
     RetVal extends any,
   >(
     eventChainTrigger: EventFactoriesTuple,
-    handler: ReactionHandler<EventFactoriesTuple, Self, RetVal>,
-  ): Reaction<EventFactoriesTuple, Self, RetVal> => {
+    handler: ReactionHandler<EventTuple, Context, RetVal>,
+  ): Reaction<EventFactoriesTuple, EventTuple, Context, RetVal> => {
     return {
       eventChainTrigger,
       handler,
@@ -26,11 +28,13 @@ export namespace Reaction {
 }
 
 export type ReactionHandler<
-  EventFactoriesTuple extends Event.Factory.NonZeroTuple,
-  Self extends any,
+  EventTuple extends Event.Any[],
+  Context extends any,
   RetVal extends any,
-> = (self: Self, events: Event.Factory.MapToEvent<EventFactoriesTuple>) => RetVal
+> = (context: Context, events: EventTuple) => RetVal
 
-export type ReactionMapPrototype<Dictionary extends { [key: string]: Reaction<any, any, any> }> = {
+export type ReactionMapPrototype<
+  Dictionary extends { [key: string]: Reaction<any, any, any, any> },
+> = {
   [key in keyof Dictionary]: Dictionary[key]
 }

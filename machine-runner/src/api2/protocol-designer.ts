@@ -13,13 +13,17 @@ export type Protocol<Mechanism extends StateMechanismMap<{}>> = {
 }
 
 // TODO: alternative protocol designer with builder pattern
-export type ProtocolDesigner<AllowedEvents extends Event.Factory.NonZeroTuple> = {
+export type ProtocolDesigner<EventFactoriesTuple extends Event.Factory.NonZeroTuple> = {
   designState: <
     StateName extends string,
     StateArgs extends any[],
     StatePayload extends any,
     Commands extends {
-      [key: string]: CommandDefiner<any, NonZeroTuple<Event.Factory.ReduceToEvent<AllowedEvents>>>
+      [key: string]: CommandDefiner<
+        StatePayload,
+        any,
+        Event.Factory.ReduceToEvent<EventFactoriesTuple>[]
+      >
     },
   >(
     stateName: StateName,
@@ -28,7 +32,7 @@ export type ProtocolDesigner<AllowedEvents extends Event.Factory.NonZeroTuple> =
       commands: Commands
       designReaction: (
         addReaction: StateMechanism<
-          AllowedEvents,
+          EventFactoriesTuple,
           StateName,
           StateArgs,
           StatePayload,
@@ -36,7 +40,7 @@ export type ProtocolDesigner<AllowedEvents extends Event.Factory.NonZeroTuple> =
         >['reactTo'],
       ) => unknown
     },
-  ) => StateFactory<AllowedEvents, StateName, StateArgs, StatePayload, Commands>
+  ) => StateFactory<EventFactoriesTuple, StateName, StateArgs, StatePayload, Commands>
 }
 
 export namespace ProtocolDesigner {
@@ -54,14 +58,14 @@ export namespace ProtocolDesigner {
         t
   }
 
-  export const init = <RegisteredEventFactories extends Event.Factory.NonZeroTuple>(
-    _: RegisteredEventFactories,
-  ) => makeProtocolDesigner<RegisteredEventFactories>()
+  export const init = <EventFactoriesTuple extends Event.Factory.NonZeroTuple>(
+    _: EventFactoriesTuple,
+  ) => makeProtocolDesigner<EventFactoriesTuple>()
 
   const makeProtocolDesigner = <
-    AllowedEvents extends Event.Factory.NonZeroTuple,
-  >(): ProtocolDesigner<AllowedEvents> => {
-    const designState: ProtocolDesigner<AllowedEvents>['designState'] = (
+    EventFactoriesTuple extends Event.Factory.NonZeroTuple,
+  >(): ProtocolDesigner<EventFactoriesTuple> => {
+    const designState: ProtocolDesigner<EventFactoriesTuple>['designState'] = (
       stateName,
       constructor,
       props,

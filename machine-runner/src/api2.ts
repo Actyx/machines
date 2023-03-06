@@ -1,13 +1,15 @@
 import { ProtocolDesigner } from './api2/protocol-designer.js'
 import { Event } from './api2/state-machine.js'
+export * from './api2/runner.js'
 export * from './api2utils/agent.js'
 
 // Example Implementation
 
 const Toggle = Event.design('Toggle').withPayload<{ c: 1 }>()
+const Toggle2 = Event.design('Toggle2').withPayload<{ c: 2 }>()
 const False = Event.design('False').withPayload<{ c: 1 }>()
 
-const protocol = ProtocolDesigner.init([Toggle, False])
+const protocol = ProtocolDesigner.init([Toggle, Toggle2])
 
 const Open = protocol.designState(
   'Open',
@@ -18,14 +20,14 @@ const Open = protocol.designState(
   },
   {
     designReaction: (reactTo) => {
-      reactTo([Toggle, False], (self, [toggle, f]) => {
+      reactTo([Toggle, Toggle2], (self, [toggle, f]) => {
         console.log(toggle, f)
         return Close.make()
       })
     },
     commands: {
       toggle: (context) => {
-        // Add system calls to machine runner here
+        // For show only
         context.someSystemCall()
         // Not complete yet
         return [

@@ -3,6 +3,7 @@ import { StateLensOpaque, Event, StateLensCommon } from './state-machine.js'
 import { Agent } from '../api2utils/agent.js'
 import { Obs } from '../api2utils/obs.js'
 
+export type MachineRunner = ReturnType<typeof createMachineRunner>
 export const createMachineRunner = <E extends Event.Any>(
   sdk: Actyx,
   query: Tags<E>,
