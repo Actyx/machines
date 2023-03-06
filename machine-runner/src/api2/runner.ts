@@ -1,5 +1,5 @@
 import { Actyx, ActyxEvent, EventKey, MsgType, Tags } from '@actyx/sdk'
-import { StateLensOpaque, Event, StateLensCommon } from './state-machine.js'
+import { StateLensOpaque, Event, StateLensCommon, State } from './state-machine.js'
 import { Agent } from '../api2utils/agent.js'
 import { Obs } from '../api2utils/obs.js'
 
@@ -16,15 +16,15 @@ export const createMachineRunner = <E extends Event.Any>(
       audit: {
         reset: Obs.make<void>(),
         state: Obs.make<{
-          state: unknown
+          state: State.Any
           events: ActyxEvent<Event.Any>[]
         }>(),
         dropped: Obs.make<{
-          state: unknown
+          state: State.Any
           events: ActyxEvent<Event.Any>[]
         }>(),
         error: Obs.make<{
-          state: unknown
+          state: State.Any
           events: ActyxEvent<Event.Any>[]
           error: unknown
         }>(),

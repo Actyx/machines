@@ -50,8 +50,9 @@ export const AppImpl = ({ actyx }: { actyx: Actyx }) => {
         key={id}
         actyx={actyx}
         machines={[
-          { name: 'passenger', where, initial: new InitialP() },
-          { name: 'taxi1', where, initial: new InitialT('one') },
+          { name: 'passenger', machine: passengerMachine },
+          { name: 'taxi1', machine: taxi1Machine },
+          { name: 'taxi2', machine: taxi2Machine },
         ]}
       />
       <div style={{ display: 'flex' }}>

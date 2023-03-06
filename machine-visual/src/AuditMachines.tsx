@@ -1,19 +1,19 @@
-import { auditMachine, State } from '@actyx/machine-runner'
+import { MachineRunner } from '@actyx/machine-runner/lib/api2.js'
+import { State } from '@actyx/machine-runner/lib/api2/state-machine.js'
 import { Actyx, ActyxEvent, Where } from '@actyx/sdk'
 import { Fragment, useEffect, useState } from 'react'
 import { Stage, Layer, Circle, Line, Label, Tag, Text, Rect } from 'react-konva'
 
 type Ev = { type: string }
-type Machine = { name: string; where: Where<Ev>; initial: State<Ev> }
 type Props = {
   actyx: Actyx
-  machines: Machine[]
+  machines: { name: string; machine: MachineRunner }[]
   className?: string
 }
 
 type MachineState =
-  | { idx: number; type: 'state'; state: State<Ev> }
-  | { idx: number; type: 'unhandled'; state: State<Ev> }
+  | { idx: number; type: 'state'; state: State.Any }
+  | { idx: number; type: 'unhandled'; state: State.Any }
   | { idx: number; type: 'queued' }
   | { idx: number; type: 'error'; error: unknown }
 
@@ -24,16 +24,16 @@ type TimePoint = {
 }
 
 type MachinePoint =
-  | { type: 'state'; state: State<Ev>; events: ActyxEvent<Ev>[] }
-  | { type: 'unhandled'; state: State<Ev>; event: ActyxEvent<Ev> }
-  | { type: 'error'; state: State<Ev>; events: ActyxEvent<Ev>[]; err: unknown }
+  | { type: 'state'; state: State.Any; events: ActyxEvent<Ev>[] }
+  | { type: 'unhandled'; state: State.Any; event: ActyxEvent<Ev> }
+  | { type: 'error'; state: State.Any; events: ActyxEvent<Ev>[]; err: unknown }
 
 type States = {
   merged: TimePoint[]
   split: MachinePoint[][]
 }
 
-function init(mach: Machine[]): States {
+function init(mach: { name: string; machine: MachineRunner }[]): States {
   const split = mach.map(() => [])
   return { merged: [], split }
 }
@@ -190,7 +190,7 @@ export function AuditMachines({ actyx, machines }: Props) {
   const [states] = useState<States>(() => init(machines))
   const [places, setPlaces] = useState<Placement>({ minutes: [], perPoint: [] })
   const [se, setSE] = useState<{
-    state: State<Ev>
+    state: State.Any
     name: string
     machNr: number
     tpIdx: number
@@ -207,35 +207,36 @@ export function AuditMachines({ actyx, machines }: Props) {
         }, 250)
       }
     }
-    const subs = machines.map(({ initial, where }, machNr) =>
-      auditMachine(
-        actyx,
-        where,
-        initial,
-        new (class {
-          reset() {
-            states.split[machNr].length = 0
+
+    const subscriptions = machines
+      .map(({ machine }, machineNumber) => {
+        return [
+          machine.channels.audit.reset.sub(() => {
+            states.split[machineNumber].length = 0
             recompute()
-          }
-          state(state: State<Ev>, events: ActyxEvent<Ev>[]) {
-            states.split[machNr].push({ type: 'state', state, events })
+          }),
+          machine.channels.audit.state.sub(({ events, state }) => {
+            states.split[machineNumber].push({ type: 'state', state, events })
             recompute()
-          }
-          dropped(state: State<Ev>, event: ActyxEvent<Ev>) {
-            states.split[machNr].push({ type: 'unhandled', event, state })
+          }),
+          machine.channels.audit.dropped.sub(({ events, state }) => {
+            events.forEach((event) => {
+              states.split[machineNumber].push({ type: 'unhandled', event, state })
+            })
             recompute()
-          }
-          error(state: State<Ev>, events: ActyxEvent<Ev>[], err: unknown) {
-            states.split[machNr].push({ type: 'error', events, err, state })
-          }
-        })(),
-      ),
-    )
+          }),
+          machine.channels.audit.error.sub(({ error: err, events, state }) => {
+            states.split[machineNumber].push({ type: 'error', events, err, state })
+          }),
+        ]
+      })
+      .reduce((a: (() => unknown)[], b) => a.concat(b), [])
+
     return () => {
       if (timer !== null) clearTimeout(timer)
-      subs.forEach((cancel) => cancel())
+      subscriptions.forEach((cancel) => cancel())
     }
-  }, [actyx, machines, states])
+  }, [...machines])
 
   const mkX = (w: number) => w * 20 + 150
   const height = 240 + 40 * machines.length
@@ -346,8 +347,9 @@ export function AuditMachines({ actyx, machines }: Props) {
               />
             </Fragment>
           ))}
-          {machines.map(({ name, initial }, machNr) => {
+          {machines.map(({ name, machine }, machNr) => {
             const y = 40 * machNr + 130
+            const initial = machine.api.get().initial()
             let prevState = initial
             const initCB =
               machNr === se?.machNr && -1 === se?.tpIdx
@@ -378,7 +380,7 @@ export function AuditMachines({ actyx, machines }: Props) {
                   if (mPos < 0) return
                   const m = tp.machines[mPos]
                   const x = mkX(places.perPoint[tpIdx].center)
-                  const mkCB = (state: State<Ev>) =>
+                  const mkCB = (state: State.Any) =>
                     machNr === se?.machNr && tpIdx === se?.tpIdx
                       ? undefined
                       : () => setSE({ name, state, machNr, tpIdx })

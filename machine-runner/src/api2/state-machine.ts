@@ -230,6 +230,7 @@ export type StateLensInputs = {
   initial: State<any, any>
   factorySymbol: Symbol
 }
+
 export type StateLensInternals<
   StateName extends string,
   StatePayload extends any,
@@ -449,7 +450,8 @@ export type StateLensOpaque = {
   ) => StateLensTransparent<StateName, StatePayload, ToCommandSignatureMap<Commands>> | null
   reset: () => void
   pushEvent: (events: ActyxEvent<Event.Any>) => PushEventResult
-  get: () => State<string, unknown>
+  get: () => utils.DeepReadonly<State<string, unknown>>
+  initial: () => utils.DeepReadonly<State<string, unknown>>
 }
 
 export namespace StateLensOpaque {
@@ -463,8 +465,9 @@ export namespace StateLensOpaque {
     const reset: StateLensOpaque['reset'] = () => StateLensCommon.reset(internals)
     const pushEvent: StateLensOpaque['pushEvent'] = (event) =>
       StateLensCommon.pushEvent(internals, factory, event)
-    const getState = () => internals.state
-    const self: StateLensOpaque = { as, reset: reset, pushEvent, get: getState }
+    const get = () => internals.state
+    const initial = () => internals.initial
+    const self: StateLensOpaque = { as, reset: reset, pushEvent, get: get, initial: initial }
     return self
   }
 }
@@ -479,7 +482,8 @@ export type StateLensTransparent<
   StatePayload extends any,
   Commands extends CommandSignatureMap<any>,
 > = {
-  get: () => State<StateName, StatePayload>
+  get: () => utils.DeepReadonly<State<StateName, StatePayload>>
+  initial: () => utils.DeepReadonly<State<StateName, StatePayload>>
   commands: Commands
 }
 
@@ -496,6 +500,8 @@ export namespace StateLensTransparent {
   ): StateLensTransparent<StateName, StatePayload, ToCommandSignatureMap<Commands>> | null => {
     if (factory.getSymbol() === internals.factorySymbol) {
       // TODO: optimize
+      type Self = StateLensTransparent<StateName, StatePayload, ToCommandSignatureMap<Commands>>
+
       const commands = convertCommandMapToCommandSignatureMap(
         factory.getMechanism().commands,
         () => ({
@@ -504,10 +510,12 @@ export namespace StateLensTransparent {
           self: internals.state,
         }),
       )
-      return {
-        get: () => internals.initial,
+      const self: Self = {
+        initial: () => internals.initial,
+        get: () => internals.state,
         commands,
-      }
+      } as Self
+      return self
     }
     return null
   }
