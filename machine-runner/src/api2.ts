@@ -7,7 +7,7 @@ export * from './api2utils/agent.js'
 const Toggle = Event.design('Toggle').withPayload<{ c: 1 }>()
 const False = Event.design('False').withPayload<{ c: 1 }>()
 
-const protocol = ProtocolDesigner.init([Toggle])
+const protocol = ProtocolDesigner.init([Toggle, False])
 
 const Open = protocol.designState(
   'Open',
@@ -18,8 +18,8 @@ const Open = protocol.designState(
   },
   {
     designReaction: (reactTo) => {
-      reactTo([Toggle], (self, [toggle]) => {
-        console.log(toggle)
+      reactTo([Toggle, False], (self, [toggle, f]) => {
+        console.log(toggle, f)
         return Close.make()
       })
     },

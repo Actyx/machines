@@ -40,6 +40,20 @@ export type ProtocolDesigner<AllowedEvents extends Event.Factory.NonZeroTuple> =
 }
 
 export namespace ProtocolDesigner {
+  export type EventsOf<T extends ProtocolDesigner<any>> = T extends ProtocolDesigner<
+    infer AllowedEvents
+  >
+    ? Event.Factory.MapToPayload<AllowedEvents>
+    : never
+
+  export namespace StateUtils {
+    export type Accepts<T extends {}> = (t: T) => T
+    export const accepts =
+      <T extends {}>(): Accepts<T> =>
+      (t: T) =>
+        t
+  }
+
   export const init = <RegisteredEventFactories extends Event.Factory.NonZeroTuple>(
     _: RegisteredEventFactories,
   ) => makeProtocolDesigner<RegisteredEventFactories>()

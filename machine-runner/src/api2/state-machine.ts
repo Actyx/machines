@@ -39,14 +39,16 @@ export type StateMechanism<
 
   commands: Commands
 
-  reactions: Reaction<Event.Factory.NonZeroTuple, State<any, any>, StateLensOpaque>[]
+  reactions: Reaction<Event.Factory.NonZeroTuple, State<any, any>, StateLensOpaque | null>[]
 
-  reactTo: (
-    eventChainTrigger: utils.NonZeroTuple<Event.Factory.Reduce<EventFactoriesTuple>>,
+  reactTo: <
+    EventTriggerChain extends utils.NonZeroTuple<Event.Factory.Reduce<EventFactoriesTuple>>,
+  >(
+    eventChainTrigger: EventTriggerChain,
     handler: ReactionHandler<
-      utils.NonZeroTuple<Event.Factory.Reduce<EventFactoriesTuple>>,
+      EventTriggerChain,
       State<StateName, StatePayload>,
-      StateLensOpaque
+      StateLensOpaque | null
     >,
   ) => void
 
@@ -69,7 +71,11 @@ export type StateMechanism<
   build: () => StateFactory<EventFactoriesTuple, StateName, StateArgs, StatePayload, Commands>
 }
 
-type StateMechanismReactions = Reaction<Event.Factory.NonZeroTuple, any, StateLensOpaque>[]
+type StateMechanismReactions = Reaction<
+  Event.Factory.NonZeroTuple,
+  State<any, any>,
+  StateLensOpaque | null
+>[]
 
 export namespace StateMechanism {
   export const make = <
@@ -227,7 +233,7 @@ export namespace StateLensCommon {
 
   // TODO: unit test
   const matchReaction = <T extends Event.Factory.NonZeroTuple>(
-    reaction: Reaction<T, any, StateLensOpaque>,
+    reaction: Reaction<T, State<any, any>, StateLensOpaque | null>,
     queue: ActyxEvent<Event.Any>[],
   ): {
     result: ReactionMatchResult.All | null
@@ -293,7 +299,7 @@ export namespace StateLensCommon {
   export type EventQueueHandling =
     | {
         handling: ReactionHandling.Execute
-        reaction: Reaction<Event.Factory.NonZeroTuple, State<string, any>, StateLensOpaque>
+        reaction: Reaction<Event.Factory.NonZeroTuple, State<any, any>, StateLensOpaque | null>
         orphans: ActyxEvent<Event.Any>[]
         matching: Event.Any[]
       }
@@ -305,7 +311,7 @@ export namespace StateLensCommon {
       }
 
   const determineEventQueueHandling = (
-    reactions: Reaction<Event.Factory.NonZeroTuple, State<string, any>, StateLensOpaque>[],
+    reactions: Reaction<Event.Factory.NonZeroTuple, State<string, any>, StateLensOpaque | null>[],
     queue: ActyxEvent<Event.Any>[],
   ): EventQueueHandling => {
     if (queue.length === 0) {
@@ -314,7 +320,11 @@ export namespace StateLensCommon {
       }
     }
 
-    const partialMatches: Reaction<Event.Factory.NonZeroTuple, any, StateLensOpaque>[] = []
+    const partialMatches: Reaction<
+      Event.Factory.NonZeroTuple,
+      State<any, any>,
+      StateLensOpaque | null
+    >[] = []
 
     for (const reaction of reactions) {
       const { result, orphans, matching } = matchReaction(reaction, queue)
@@ -369,7 +379,11 @@ export namespace StateLensCommon {
         matchingEventSequence as any,
       )
 
-      internals.state = newStateLens.get() as StateLensInternals<StateName, StatePayload>['state']
+      // TODO: change to satisfies
+      internals.state = (newStateLens?.get() || internals.state) as StateLensInternals<
+        StateName,
+        StatePayload
+      >['state']
       internals.queue = [...internals.queue] // array content inside new array shell
     } else if (handlingResult.handling === ReactionHandling.Queue) {
       internals.queue.push(event)
