@@ -216,17 +216,17 @@ export function AuditMachines({ actyx, machines }: Props) {
             recompute()
           }),
           machine.channels.audit.state.sub(({ events, state }) => {
-            states.split[machineNumber].push({ type: 'state', state, events })
+            states.split[machineNumber].push({ type: 'state', events, state: { ...state } })
             recompute()
           }),
           machine.channels.audit.dropped.sub(({ events, state }) => {
             events.forEach((event) => {
-              states.split[machineNumber].push({ type: 'unhandled', event, state })
+              states.split[machineNumber].push({ type: 'unhandled', event, state: { ...state } })
             })
             recompute()
           }),
           machine.channels.audit.error.sub(({ error: err, events, state }) => {
-            states.split[machineNumber].push({ type: 'error', events, err, state })
+            states.split[machineNumber].push({ type: 'error', events, err, state: { ...state } })
           }),
         ]
       })

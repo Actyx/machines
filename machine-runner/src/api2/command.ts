@@ -13,7 +13,9 @@ export type CommandDefiner<Self extends any, Args extends any[], Retval extends 
 ) => Retval
 
 export type CommandDefinerMap<
-  Dictionary extends { [key in keyof Dictionary]: CommandDefiner<any, any, any> },
+  Dictionary extends { [key in keyof Dictionary]: CommandDefiner<any, Args, RetVal> },
+  Args extends any[],
+  RetVal extends any,
 > = {
   [key in keyof Dictionary]: Dictionary[key]
 }
@@ -26,7 +28,11 @@ export type CommandSignatureMap<Dictionary extends { [key: string]: CommandSigna
   }
 
 // TODO: unit test,
-export type ToCommandSignatureMap<Dictionary extends CommandDefinerMap<any>> = {
+export type ToCommandSignatureMap<
+  Dictionary extends CommandDefinerMap<any, Args, RetVal>,
+  Args extends any[],
+  RetVal extends any,
+> = {
   [key in keyof Dictionary]: Dictionary[key] extends CommandDefiner<any, infer Args, infer Retval>
     ? CommandSignature<Args, Retval>
     : never
@@ -42,28 +48,35 @@ export type ToCommandSignatureMap<Dictionary extends CommandDefinerMap<any>> = {
 export type ActualContextGetter<Self> = () => Readonly<CommandContext<Self>>
 
 export const convertCommandMapToCommandSignatureMap = <
-  T extends CommandDefinerMap<any>,
+  T extends CommandDefinerMap<any, any, RetVal>,
   Self extends any,
+  RetVal extends any,
 >(
   t: T,
   getActualContext: () => CommandContext<Self>,
-): ToCommandSignatureMap<T> => {
+  onReturn: (retval: RetVal) => unknown,
+): ToCommandSignatureMap<T, any, RetVal> => {
   return Object.fromEntries(
     Object.entries(t).map(([key, definer]) => {
-      return [key, convertCommandDefinerToCommandSignature(definer, getActualContext)]
+      return [key, convertCommandDefinerToCommandSignature(definer, getActualContext, onReturn)]
     }),
-  ) as ToCommandSignatureMap<T>
+  ) as ToCommandSignatureMap<T, any, RetVal>
 }
 
 export const convertCommandDefinerToCommandSignature = <
   Self extends any,
   Args extends any[],
-  Retval extends any,
+  RetVal extends any,
 >(
-  definer: CommandDefiner<Self, Args, Retval>,
+  definer: CommandDefiner<Self, Args, RetVal>,
   getActualContext: () => CommandContext<Self>,
-): CommandSignature<Args, Retval> => {
-  return (...args: Args) => definer(getActualContext(), ...args)
+  onReturn: (retval: RetVal) => unknown,
+): CommandSignature<Args, RetVal> => {
+  return (...args: Args) => {
+    const returnedValue = definer(getActualContext(), ...args)
+    onReturn(returnedValue)
+    return returnedValue
+  }
 }
 
 export type CommandMapPrototype<Dictionary extends { [key: string]: any }> = {

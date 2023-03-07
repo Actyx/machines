@@ -8,8 +8,8 @@
   "scripts": {
     "prepare": "cd ../machine-visual && npm install && npm run build",
     "check": "machine-check src/proto.ts",
-    "start": "npm run check && parcel --no-cache",
-    "build": "npm run check && tsc"
+    "start": "parcel --no-cache",
+    "build": "tsc"
   },
   "keywords": [
     "local-first"

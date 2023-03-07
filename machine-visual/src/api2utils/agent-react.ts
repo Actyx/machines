@@ -24,4 +24,24 @@ export namespace AgentReact {
 
     return agent
   }
+
+  export const useBorrowed = <API extends Agent.DefaultAPI, Channels extends Agent.DefaultChannels>(
+    agent: Agent<API, Channels>,
+    deps: any[] = [],
+  ) => {
+    const [_, setKey] = useState<Symbol>(DEFAULT_SYMBOL)
+
+    useEffect(() => {
+      const unsub = agent.channels.change.sub(() => {
+        setKey(Symbol())
+      })
+
+      return () => {
+        unsub()
+        agent.destroy()
+      }
+    }, [deps])
+
+    return agent
+  }
 }

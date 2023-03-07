@@ -14,6 +14,7 @@ export type Protocol<Mechanism extends StateMechanismMap<{}>> = {
 
 // TODO: alternative protocol designer with builder pattern
 export type ProtocolDesigner<EventFactoriesTuple extends Event.Factory.NonZeroTuple> = {
+  // TODO: add NextState Factory type
   designState: <
     StateName extends string,
     StateArgs extends any[],

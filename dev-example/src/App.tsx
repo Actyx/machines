@@ -1,22 +1,25 @@
 import { Actyx } from '@actyx/sdk'
 import { useEffect, useMemo, useState } from 'react'
 import * as runnerAPI from '@actyx/machine-runner/lib/api2.js'
-import { AuditMachines, ShowMachine } from '@actyx/machine-visual'
+import { AuditMachines } from '@actyx/machine-visual'
 import { InitialP, InitialT, TaxiTag } from './machines.js'
+
+import { UIMachine } from './UIMachine.js'
 
 export const AppImpl = ({ actyx }: { actyx: Actyx }) => {
   const [id, setId] = useState('1')
 
   const where = TaxiTag.withId(id)
 
-  const common = {
-    className: 'card',
-    actyx,
-    where,
-  }
   const passengerMachine: runnerAPI.MachineRunner = useMemo(() => {
     return runnerAPI.createMachineRunner(actyx, where, InitialP.make())
-  }, [actyx])
+  }, [actyx, id])
+
+  useEffect(() => {
+    return () => {
+      passengerMachine.destroy()
+    }
+  }, [passengerMachine])
 
   const taxi1Machine: runnerAPI.MachineRunner = useMemo(
     () =>
@@ -27,8 +30,14 @@ export const AppImpl = ({ actyx }: { actyx: Actyx }) => {
           id: 'one',
         }),
       ),
-    [actyx],
+    [actyx, id],
   )
+
+  useEffect(() => {
+    return () => {
+      taxi1Machine.destroy()
+    }
+  }, [taxi1Machine])
 
   const taxi2Machine: runnerAPI.MachineRunner = useMemo(
     () =>
@@ -39,8 +48,14 @@ export const AppImpl = ({ actyx }: { actyx: Actyx }) => {
           id: 'two',
         }),
       ),
-    [actyx],
+    [actyx, id],
   )
+
+  useEffect(() => {
+    return () => {
+      taxi2Machine.destroy()
+    }
+  }, [taxi2Machine])
 
   return (
     <>
@@ -56,9 +71,9 @@ export const AppImpl = ({ actyx }: { actyx: Actyx }) => {
         ]}
       />
       <div style={{ display: 'flex' }}>
-        <ShowMachine key={`p-${id}`} id="passenger" initial={new InitialP()} {...common} />
-        <ShowMachine key={`t1-${id}`} id="taxi1" initial={new InitialT('one')} {...common} />
-        <ShowMachine key={`t2-${id}`} id="taxi2" initial={new InitialT('two')} {...common} />
+        <UIMachine name="passenger" machine={passengerMachine} />
+        <UIMachine name="passenger" machine={taxi1Machine} />
+        <UIMachine name="passenger" machine={taxi2Machine} />
       </div>
     </>
   )
@@ -74,5 +89,10 @@ export function App() {
     }).then(setActyx)
   }, [])
 
-  if (actyx === undefined) return <h1>loading …</h1>
+  return (
+    <>
+      {actyx && <AppImpl actyx={actyx} />}
+      {!actyx && <h1>loading …</h1>}
+    </>
+  )
 }

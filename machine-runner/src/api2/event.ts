@@ -20,7 +20,7 @@ export namespace Event {
     withPayload: <Payload extends object>() => Factory<Key, Payload>
   }
 
-  export type Any = Event<any, any>
+  export type Any = Event<any, { [key: string | number | symbol]: any }>
 
   export type Of<T extends Factory.Any> = T extends Factory<any, infer Payload> ? Payload : never
 

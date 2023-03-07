@@ -1,14 +1,14 @@
 import { Actyx, ActyxEvent, EventKey, MsgType, Tags } from '@actyx/sdk'
-import { StateLensOpaque, Event, StateLensCommon, State } from './state-machine.js'
+import { StateContainerOpaque, Event, StateContainerCommon, State } from './state-machine.js'
 import { Agent } from '../api2utils/agent.js'
 import { Obs } from '../api2utils/obs.js'
 
 export type MachineRunner = ReturnType<typeof createMachineRunner>
 
-export const createMachineRunner = <E extends Event.Any>(
+export const createMachineRunner = (
   sdk: Actyx,
-  query: Tags<E>,
-  stateContainer: StateLensOpaque,
+  query: Tags<any>,
+  stateContainer: StateContainerOpaque,
 ) =>
   Agent.startBuild()
     .setChannels((c) => ({
@@ -38,6 +38,9 @@ export const createMachineRunner = <E extends Event.Any>(
         attemptStartFrom: { from: {}, latestEventKey: EventKey.zero },
       }
 
+      const persist = (e: any[]) =>
+        sdk.publish(query.apply(...e)).catch((err) => console.error('error publishing', err, ...e))
+
       let unsub = null as null | (() => void)
 
       const unsubscribe = () => {
@@ -59,8 +62,18 @@ export const createMachineRunner = <E extends Event.Any>(
             } else if (d.type === MsgType.events) {
               for (const event of d.events) {
                 // TODO: Runtime typeguard for event
+                const prevState = { ...stateContainer.get() }
                 const handlingreport = stateContainer.pushEvent(event)
-                if (handlingreport.handling === StateLensCommon.ReactionHandling.Execute) {
+                const nextState = { ...stateContainer.get() }
+                console.log({
+                  event,
+                  handlingreport,
+                  mechanism: stateContainer.factory().mechanism(),
+                  factory: stateContainer.factory(),
+                  prevState,
+                  nextState,
+                })
+                if (handlingreport.handling === StateContainerCommon.ReactionHandling.Execute) {
                   agent.channels.audit.state.emit({
                     state: stateContainer.get(),
                     events: handlingreport.queueSnapshotBeforeExecution,
@@ -92,7 +105,17 @@ export const createMachineRunner = <E extends Event.Any>(
         )
       }
 
+      // run subscription
+      restartSubscription()
+
+      // Pipe events from stateContainer to sdk
+
+      const unsubEventsPipe = stateContainer.obs().sub((events) => {
+        persist(events)
+      })
+
       // Important part, if agent is killed, unsubscribe is called
+      agent.addDestroyHook(unsubEventsPipe)
       agent.addDestroyHook(unsubscribe)
 
       return {

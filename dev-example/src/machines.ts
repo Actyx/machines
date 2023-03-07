@@ -1,7 +1,4 @@
 import { Tag } from '@actyx/sdk'
-import { State } from '@actyx/machine-runner'
-import { proto } from './proto.js'
-import * as runnerAPI from '@actyx/machine-runner'
 import { ProtocolDesigner } from '@actyx/machine-runner/lib/api2/protocol-designer.js'
 import { Event } from '@actyx/machine-runner/lib/api2/event.js'
 
@@ -12,7 +9,7 @@ import { Event } from '@actyx/machine-runner/lib/api2/event.js'
  * The taxi ride machines use events tagged with `taxi`.
  */
 
-type BidData = {
+export type BidData = {
   price: number
   time: Date
   bidderID: string
@@ -80,8 +77,11 @@ export const TaxiTag = Tag<ProtocolDesigner.EventsOf<typeof protocol>>('taxi')
 // E.g. Writing AuctionP.make(...) before AuctionP makes TS marks AuctionP as a compile error in the IDE
 // Consideration, focus on State creation and commands before writing reactions?
 export const InitialP = protocol.designState('InitialP', () => null, {
+  commands: {
+    request: (_, params: { pickup: string; destination: string }) => [Requested.new(params)],
+  },
   designReaction: (reactTo) => {
-    reactTo([Requested, Bid, BidderID], (self, [requested, bid, bidderId]) => {
+    reactTo([Requested, Bid, BidderID], (context, [requested, bid, bidderId]) => {
       const { pickup, destination } = requested
       return AuctionP.make({
         pickup,
@@ -93,9 +93,6 @@ export const InitialP = protocol.designState('InitialP', () => null, {
         },
       })
     })
-  },
-  commands: {
-    request: (_, params: { pickup: string; destination: string }) => [Requested.new(params)],
   },
 })
 
@@ -117,12 +114,18 @@ export const AuctionP = protocol.designState(
       })
     },
     commands: {
-      select: (context) => {
+      select: (context, bidderID: string) => {
         const bids = context.self.bids
-        const lastBid = bids[bids.length - 1] || undefined
-        if (lastBid) {
-          return [Selected.new({ taxiID: lastBid.bidderID }), PassengerID.new({ id: 'me' })]
+        const matchingBid = bids.find((bid) => {
+          return bid.bidderID === bidderID
+        })
+
+        // Note: might need something like this
+        // Logic inside commands
+        if (matchingBid) {
+          return [Selected.new({ taxiID: matchingBid.bidderID }), PassengerID.new({ id: 'me' })]
         }
+
         return []
       },
     },
@@ -146,7 +149,7 @@ export const InitialT = protocol.designState(
   'InitialT',
   // PROPOSAL: a syntactic sugar to write (params: {id :string}) => params
   // TODO: choose to keep or trash
-  ProtocolDesigner.StateUtils.accepts<{ id: string }>(),
+  (params: { id: string }) => params,
   {
     designReaction: (reactTo) => {
       reactTo([Requested], ({ self }, [{ pickup, destination }]) =>

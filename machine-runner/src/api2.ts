@@ -9,6 +9,12 @@ const Toggle = Event.design('Toggle').withPayload<{ c: 1 }>()
 const Toggle2 = Event.design('Toggle2').withPayload<{ c: 2 }>()
 const False = Event.design('False').withPayload<{ c: 1 }>()
 
+// const proto = Protocol.design('taxiRide', [events...])
+
+// const InitialP = proto.designEmpty('Initial')
+//     .command('Request', [Requested], (state, from: string, to: string) => [{ from, to }, {}, {}])
+//     .react([Requested, Bid, BidderId], AuctionP, (req, bid, id) => AuctionP.make())
+
 const protocol = ProtocolDesigner.init([Toggle, Toggle2])
 
 const Open = protocol.designState(
