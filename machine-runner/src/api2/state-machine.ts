@@ -114,23 +114,6 @@ export type StateMechanism<
 
   commands: Commands
 
-  // reactions: StateMechanismReaction<Event.Factory.Any[], Event.Any[], StatePayload>[]
-
-  // react: <
-  //   EventFactoriesChain extends utils.NonZeroTuple<
-  //     Event.Factory.Reduce<RegisteredEventsFactoriesTuple>
-  //   >,
-  //   NextFactory extends StateFactory.Any,
-  // >(
-  //   eventChainTrigger: EventFactoriesChain,
-  //   nextFactory: NextFactory,
-  //   handler: ReactionHandler<
-  //     Event.Factory.MapToEvent<EventFactoriesChain>,
-  //     StatePayload,
-  //     StateContainer.Of<NextFactory>
-  //   >,
-  // ) => StateMechanism<RegisteredEventsFactoriesTuple, StateName, StateArgs, StatePayload, Commands>
-
   command: <
     CommandName extends string,
     AcceptedEventFactories extends utils.NonZeroTuple<
@@ -435,14 +418,6 @@ export type StateContainerInternals<
 export namespace StateContainerInternals {
   export const ACCESSOR: unique symbol = Symbol('StateContainerInternals/ACCESSOR')
 
-  // export type Minim = StateContainerInternals<
-  //   string,
-  //   Event.Factory.NonZeroTuple,
-  //   string,
-  //   any[],
-  //   any,
-  //   CommandDefinerMap<any, any, Event.Any[]>
-  // >
   export type Any = StateContainerInternals<any, any, any, any, any, any>
 
   export const matchToFactory = <
