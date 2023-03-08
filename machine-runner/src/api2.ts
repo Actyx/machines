@@ -1,13 +1,41 @@
-import { ProtocolDesigner } from './api2/protocol-designer.js'
+import { ProtocolDesigner as Protocol } from './api2/protocol-designer.js'
 import { Event } from './api2/state-machine.js'
 export * from './api2/runner.js'
 export * from './api2utils/agent.js'
 
 // Example Implementation
 
-const Toggle = Event.design('Toggle').withPayload<{ c: 1 }>()
-const Toggle2 = Event.design('Toggle2').withPayload<{ c: 2 }>()
-const False = Event.design('False').withPayload<{ c: 1 }>()
+const Toggle = Event.design('Toggle').withPayload<{ previousTimesToggled: number }>()
+const Toggle2 = Event.design('Toggle2').withPayload<{ previousTimesToggled: number }>()
+
+// type Builder<Proto, Events, Command extends MappedType, S> = {
+//   command:
+//       <Name extends string,
+//        Events extends Events[],
+//        Args extends any[]
+//       >(
+//            name: Name,
+//            events: Events,
+//            f: (self: State, ...args: Args) => TypesOf<Events>
+//        ) => Builder<Proto, Command & { [Name keyof in Name]: ExecutableCommand.Of<Command> }>
+//   react: <
+//       Events extends Proto.Event[],
+//       Next extends State<Proto, any, any>
+//   >(events: Events, next: Next, fn: (...events: TypesOf<Events>) => ReturnType<Next['make']>) => Builder<Proto, Command, S>
+//   finish: () => State<Proto, Command, S>
+// }
+
+// type State<Proto, Command, S> = {
+//   make: (...args: Constructor) => X
+// }
+
+// namespace Protocol {
+//   export const make: <Name extends string, Events extends any[]>(name: Name, events: Events) => Protocol<Name, Events>
+// }
+// type Protocol<Name, Events> = {
+//   designState: <Name extends string, State, Args extends any[]>(name: Name, fn: (...args: Args) => State) => Builder<Self, {}, State>
+//   designEmpty: <Name extends string>(name: Name) => Builder<Self, {}, void>
+// }
 
 // const proto = Protocol.design('taxiRide', [events...])
 
@@ -15,75 +43,58 @@ const False = Event.design('False').withPayload<{ c: 1 }>()
 //     .command('Request', [Requested], (state, from: string, to: string) => [{ from, to }, {}, {}])
 //     .react([Requested, Bid, BidderId], AuctionP, (req, bid, id) => AuctionP.make())
 
-const protocol = ProtocolDesigner.init([Toggle, Toggle2])
+// type Context<State> = {
+//     self: State
 
-const Open = protocol.designState(
-  'Open',
-  (x: number) => {
-    return {
-      x: String(x),
-    }
-  },
-  {
-    designReaction: (reactTo) => {
-      reactTo([Toggle, Toggle2], (self, [toggle, f]) => {
-        console.log(toggle, f)
-        return Close.make()
-      })
-    },
-    commands: {
-      toggle: (context) => {
-        // For show only
-        context.someSystemCall()
-        // Not complete yet
-        return [
-          Toggle.new({
-            c: 1,
-          }),
-        ]
-      },
-    },
-  },
-)
+//     // ... functions to expose from the machine runner
+// }
 
-const Close = protocol.designState('Close', () => null, {
-  designReaction: (reactTo) => {
-    reactTo([Toggle], (self, [toggle]) => {
-      console.log(toggle)
-      return Close.make()
-    })
-  },
-  commands: {
-    toggle: (_context) => [
-      Toggle.new({
-        c: 1,
-      }),
-    ],
+const protocol = Protocol.make('switch', [Toggle])
 
-    anotherCommand: (context, x: number) => {
-      // TODO: consider API for system call?
-      context.someSystemCall()
-      return [
-        Toggle.new({
-          c: 1,
-        }),
-      ]
-    },
-  },
+const Open = protocol
+  .designState('Open', (timesToggled: number = 0) => ({ timesToggled }))
+  .command('close', [Toggle], (context) => [
+    Toggle.make({ previousTimesToggled: context.self.timesToggled }),
+  ])
+  .finish()
+
+const Close = protocol
+  .designState('Closed', (timesToggled: number = 0) => ({ timesToggled }))
+  .command('open', [Toggle], (context) => [
+    Toggle.make({ previousTimesToggled: context.self.timesToggled }),
+  ])
+  .finish()
+
+const Empty = protocol.designEmpty('Empty').finish()
+
+Empty.make()
+
+// Reaction design phase
+// ===========================
+
+Open.react([Toggle], Close, (context, [toggle]) => {
+  return Close.make(context.self.timesToggled + 1)
 })
 
-const opaqueState = Open.make(1)
-// processes
-const stateOnOpen = opaqueState.as(Open)
-if (stateOnOpen) {
-  stateOnOpen.commands.toggle()
-}
+// MUST COMPILE ERROR
+// Open.react([Toggle], Close, (context, [toggle]) => {
+//   return Open.make()
+// })
+
+// MUST COMPILE ERROR
+// Close.react([Toggle2], Open, (context, [toggle]) => {
+//   return null as any
+// })
+
+const transparentState = Open.make(1)
+transparentState.commands.close()
+
+const opaqueState = Close.makeOpaque()
 
 const stateOnClose = opaqueState.as(Close)
 if (stateOnClose) {
-  stateOnClose.commands.toggle()
-  stateOnClose.commands.anotherCommand(1)
-}
+  stateOnClose.commands.open()
 
-type EventOfProtocol<T> = T extends ProtocolDesigner<infer X> ? X : never
-type ProtocolEvents = EventOfProtocol<typeof protocol>
+  // MUST COMPILE ERROR
+  // stateOnClose.commands.anotherCommand(1)
+}

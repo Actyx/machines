@@ -1,3 +1,5 @@
+import { StateFactory } from "./state-machine.js"
+
 export type State<Name extends string, Payload extends any> = {
   type: Name
   payload: Payload

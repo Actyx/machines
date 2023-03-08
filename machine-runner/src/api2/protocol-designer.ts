@@ -1,56 +1,35 @@
-import { DeepReadonly, NonZeroTuple } from '../api2utils/type-utils.js'
 import {
-  CommandDefiner,
   PayloadConstructor,
-  StateFactory,
   StateMechanism,
-  StateMechanismMap,
   Event,
+  ProtocolInternals,
+  ReactionMap,
 } from './state-machine.js'
 
-export type Protocol<Mechanism extends StateMechanismMap<{}>> = {
-  states: DeepReadonly<Mechanism>
-}
-
 // TODO: alternative protocol designer with builder pattern
-export type ProtocolDesigner<EventFactoriesTuple extends Event.Factory.NonZeroTuple> = {
+export type Protocol<
+  ProtocolName extends string,
+  RegisteredEventsFactoriesTuple extends Event.Factory.NonZeroTuple,
+> = {
   // TODO: add NextState Factory type
-  designState: <
-    StateName extends string,
-    StateArgs extends any[],
-    StatePayload extends any,
-    Commands extends {
-      [key: string]: CommandDefiner<
-        StatePayload,
-        any,
-        Event.Factory.ReduceToEvent<EventFactoriesTuple>[]
-      >
-    },
-  >(
+  designState: <StateName extends string, StateArgs extends any[], StatePayload extends any>(
     stateName: StateName,
     constructor: PayloadConstructor<StateArgs, StatePayload>,
-    props: {
-      commands: Commands
-      designReaction: (
-        addReaction: StateMechanism<
-          EventFactoriesTuple,
-          StateName,
-          StateArgs,
-          StatePayload,
-          {}
-        >['reactTo'],
-      ) => unknown
-    },
-  ) => StateFactory<EventFactoriesTuple, StateName, StateArgs, StatePayload, Commands>
+  ) => StateMechanism<
+    ProtocolName,
+    RegisteredEventsFactoriesTuple,
+    StateName,
+    StateArgs,
+    StatePayload,
+    {}
+  >
+
+  designEmpty: <StateName extends string>(
+    stateName: StateName,
+  ) => StateMechanism<ProtocolName, RegisteredEventsFactoriesTuple, StateName, [], void, {}>
 }
 
 export namespace ProtocolDesigner {
-  export type EventsOf<T extends ProtocolDesigner<any>> = T extends ProtocolDesigner<
-    infer AllowedEvents
-  >
-    ? Event.Factory.MapToPayload<AllowedEvents>
-    : never
-
   export namespace StateUtils {
     export type Accepts<T extends {}> = (t: T) => T
     export const accepts =
@@ -59,24 +38,38 @@ export namespace ProtocolDesigner {
         t
   }
 
-  export const init = <EventFactoriesTuple extends Event.Factory.NonZeroTuple>(
-    _: EventFactoriesTuple,
-  ) => makeProtocolDesigner<EventFactoriesTuple>()
+  export const make = <
+    ProtocolName extends string,
+    RegisteredEventsFactoriesTuple extends Event.Factory.NonZeroTuple,
+  >(
+    protocolName: ProtocolName,
+    registeredEventFactories: RegisteredEventsFactoriesTuple,
+  ) => makeProtocolDesigner(protocolName, registeredEventFactories)
 
   const makeProtocolDesigner = <
+    ProtocolName extends string,
     EventFactoriesTuple extends Event.Factory.NonZeroTuple,
-  >(): ProtocolDesigner<EventFactoriesTuple> => {
-    const designState: ProtocolDesigner<EventFactoriesTuple>['designState'] = (
-      stateName,
-      constructor,
-      props,
-    ) => {
-      const stateMech = StateMechanism.make(stateName, constructor, {})
-      props.designReaction(stateMech.reactTo)
-      return stateMech.patchCommands(props.commands).build()
+  >(
+    protocolName: ProtocolName,
+    registeredEvents: EventFactoriesTuple,
+  ): Protocol<ProtocolName, EventFactoriesTuple> => {
+    type Self = Protocol<ProtocolName, EventFactoriesTuple>
+    type Internals = ProtocolInternals<ProtocolName, EventFactoriesTuple>
+    const protocolInternal: Internals = {
+      name: protocolName,
+      registeredEvents,
+      reactionMap: ReactionMap.make(),
     }
+
+    const designState: Self['designState'] = (stateName, constructor) =>
+      StateMechanism.make(protocolInternal, stateName, constructor)
+
+    const designEmpty: Self['designEmpty'] = (stateName) =>
+      StateMechanism.make(protocolInternal, stateName, () => undefined)
+
     return {
       designState,
+      designEmpty,
     }
   }
 }

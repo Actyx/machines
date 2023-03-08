@@ -9,7 +9,7 @@ export namespace Event {
   export const design = <Key extends string>(key: Key): EventFactoryIntermediate<Key> => ({
     withPayload: () => ({
       type: key,
-      new: (payload) => ({
+      make: (payload) => ({
         ...payload,
         type: key,
       }),
@@ -20,26 +20,26 @@ export namespace Event {
     withPayload: <Payload extends object>() => Factory<Key, Payload>
   }
 
-  export type Any = Event<any, { [key: string | number | symbol]: any }>
+  export type Any = Event<string, { [key: string | number | symbol]: any }>
 
   export type Of<T extends Factory.Any> = T extends Factory<any, infer Payload> ? Payload : never
 
   export type NonZeroTuple = utils.NonZeroTuple<Any>
   export type Factory<Key extends string, Payload extends object> = {
     type: Key
-    new: (payload: Payload) => Event<Key, Payload>
+    make: (payload: Payload) => Event<Key, Payload>
   }
 
   export namespace Payload {
     export type Of<T extends Event.Any | Factory.Any> = T extends Event<any, infer Payload>
       ? Payload
-      : T extends Event.Factory<any, infer Payload>
+      : T extends Event.Factory<string, infer Payload>
       ? Payload
       : never
   }
 
   export namespace Factory {
-    export type Any = Factory<any, any>
+    export type Any = Factory<string, any>
 
     export type NonZeroTuple = utils.NonZeroTuple<Factory.Any>
 
