@@ -169,6 +169,7 @@ InitialP.react([Requested, Bid, BidderID], AuctionP, (context, [requested, bid, 
 })
 
 AuctionP.react([Bid, BidderID], AuctionP, (context, [bid, bidderID]) => {
+  console.log(context.self)
   context.self.bids.push({ bidderID: bidderID.id, price: bid.price, time: new Date(bid.time) })
   return null
 })

@@ -1,10 +1,4 @@
-import {
-  PayloadConstructor,
-  StateMechanism,
-  Event,
-  ProtocolInternals,
-  ReactionMap,
-} from './state-machine.js'
+import { StateMechanism, Event, ProtocolInternals, ReactionMap } from './state-machine.js'
 
 // TODO: alternative protocol designer with builder pattern
 export type Protocol<
@@ -14,19 +8,13 @@ export type Protocol<
   // TODO: add NextState Factory type
   designState: <StateName extends string, StateArgs extends any[], StatePayload extends any>(
     stateName: StateName,
+    // TODO: with payload
     constructor: PayloadConstructor<StateArgs, StatePayload>,
-  ) => StateMechanism<
-    ProtocolName,
-    RegisteredEventsFactoriesTuple,
-    StateName,
-    StateArgs,
-    StatePayload,
-    {}
-  >
+  ) => StateMechanism<ProtocolName, RegisteredEventsFactoriesTuple, StateName, StatePayload, {}>
 
   designEmpty: <StateName extends string>(
     stateName: StateName,
-  ) => StateMechanism<ProtocolName, RegisteredEventsFactoriesTuple, StateName, [], void, {}>
+  ) => StateMechanism<ProtocolName, RegisteredEventsFactoriesTuple, StateName, void, {}>
 
   internals: () => Readonly<ProtocolInternals<ProtocolName, RegisteredEventsFactoriesTuple>>
 }
