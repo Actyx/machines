@@ -1,7 +1,8 @@
-import { ProtocolDesigner as Protocol } from './api2/protocol-designer.js'
+import { Protocol } from './api2/protocol.js'
 import { Event } from './api2/state-machine.js'
-export * from './api2/runner.js'
 export * from './api2utils/agent.js'
+export * from './api2/runner.js'
+export * from './api2/protocol.js'
 
 // Example Implementation
 
@@ -53,16 +54,12 @@ const protocol = Protocol.make('switch', [Toggle])
 
 const Open = protocol
   .designState('Open', (timesToggled: number = 0) => ({ timesToggled }))
-  .command('close', [Toggle], (context) => [
-    Toggle.make({ previousTimesToggled: context.self.timesToggled }),
-  ])
+  .command('close', [Toggle], (context) => [{ previousTimesToggled: context.self.timesToggled }])
   .finish()
 
 const Close = protocol
   .designState('Closed', (timesToggled: number = 0) => ({ timesToggled }))
-  .command('open', [Toggle], (context) => [
-    Toggle.make({ previousTimesToggled: context.self.timesToggled }),
-  ])
+  .command('open', [Toggle], (context) => [{ previousTimesToggled: context.self.timesToggled }])
   .finish()
 
 const Empty = protocol.designEmpty('Empty').finish()
@@ -74,6 +71,10 @@ Empty.make()
 
 Open.react([Toggle], Close, (context, [toggle]) => {
   return Close.make(context.self.timesToggled + 1)
+})
+
+Open.react([Toggle], Open, (context, [toggle]) => {
+  return null
 })
 
 // MUST COMPILE ERROR

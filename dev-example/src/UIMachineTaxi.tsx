@@ -20,7 +20,7 @@ export const UIFirstBidT = ({ machine }: { machine: StateContainer.Of<typeof Fir
       <div>
         <input
           type="text"
-          value={String(price)}
+          value={String(price || '')}
           onChange={(e) => {
             const nextValue = e.target.value.trim()
 
@@ -60,7 +60,7 @@ export const UIAuctionT = ({ machine }: { machine: StateContainer.Of<typeof Auct
       <div>
         <input
           type="text"
-          value={String(price)}
+          value={String(price || '')}
           onChange={(e) => {
             const nextValue = e.target.value.trim()
 

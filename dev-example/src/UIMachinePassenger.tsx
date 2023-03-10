@@ -1,4 +1,5 @@
 import { StateContainer } from '@actyx/machine-runner/lib/api2/state-machine.js'
+import { deepCopy } from '@actyx/machine-runner/lib/runner.js'
 import { useState } from 'react'
 import { AuctionP, BidData, InitialP, RideP } from './machines.js'
 import { PrintState } from './UIMachineCommon.js'
@@ -43,8 +44,11 @@ export const UIInitialP = ({ machine }: { machine: StateContainer.Of<typeof Init
 
 export const UIAuctionP = ({ machine }: { machine: StateContainer.Of<typeof AuctionP> }) => {
   const state = machine.get()
+  console.log('UIAuctionP:debug factory', machine.factory().symbol)
+  console.log('UIAuctionP:debug state', deepCopy(state))
+  console.log('UIAuctionP:debug state.payload', deepCopy(state).payload)
+  console.log('UIAuctionP:debug state.payload.bids', deepCopy(state).payload.bids)
   const [selection, setSelection] = useState<BidData | null>(state.payload.bids[0] || null)
-  console.log('UIAuctionP')
 
   return (
     <div>

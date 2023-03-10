@@ -27,9 +27,20 @@ export type Protocol<
   designEmpty: <StateName extends string>(
     stateName: StateName,
   ) => StateMechanism<ProtocolName, RegisteredEventsFactoriesTuple, StateName, [], void, {}>
+
+  internals: () => Readonly<ProtocolInternals<ProtocolName, RegisteredEventsFactoriesTuple>>
 }
 
-export namespace ProtocolDesigner {
+export namespace Protocol {
+  export type Any = Protocol<any, any>
+
+  export type EventsOf<T extends Protocol.Any> = T extends Protocol<
+    any,
+    infer RegisteredEventsFactoriesTuple
+  >
+    ? Event.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>
+    : never
+
   export namespace StateUtils {
     export type Accepts<T extends {}> = (t: T) => T
     export const accepts =
@@ -67,9 +78,12 @@ export namespace ProtocolDesigner {
     const designEmpty: Self['designEmpty'] = (stateName) =>
       StateMechanism.make(protocolInternal, stateName, () => undefined)
 
+    const internals: Self['internals'] = () => protocolInternal
+
     return {
       designState,
       designEmpty,
+      internals,
     }
   }
 }

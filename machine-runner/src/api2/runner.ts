@@ -1,5 +1,13 @@
 import { Actyx, ActyxEvent, EventKey, MsgType, Tags } from '@actyx/sdk'
-import { StateContainerOpaque, Event, StateContainerCommon, State } from './state-machine.js'
+import {
+  StateContainerOpaque,
+  Event,
+  StateContainerCommon,
+  State,
+  PushEventResult,
+  StateMechanism,
+  StateFactory,
+} from './state-machine.js'
 import { Agent } from '../api2utils/agent.js'
 import { Obs } from '../api2utils/obs.js'
 
@@ -29,6 +37,17 @@ export const createMachineRunner = (
           error: unknown
         }>(),
       },
+      debug: {
+        eventHandlingPrevState: Obs.make<unknown>(),
+        eventHandling: Obs.make<{
+          event: ActyxEvent<Event.Any>
+          handlingReport: PushEventResult
+          mechanism: StateMechanism.Any
+          factory: StateFactory.Any
+          nextState: unknown
+        }>(),
+        caughtUp: Obs.make<void>(),
+      },
       log: Obs.make<string>(),
     }))
     .setAPI((agent) => {
@@ -52,45 +71,49 @@ export const createMachineRunner = (
         unsub = sdk.subscribeMonotonic<Event.Any>(
           subscribeMonotonicQuery,
           (d) => {
-            if (d.type === MsgType.timetravel) {
-              agent.channels.log.emit('Time travel')
+            try {
+              if (d.type === MsgType.timetravel) {
+                agent.channels.log.emit('Time travel')
 
-              stateContainer.reset()
-              agent.channels.audit.reset.emit()
+                stateContainer.reset()
+                agent.channels.audit.reset.emit()
 
-              restartSubscription()
-            } else if (d.type === MsgType.events) {
-              for (const event of d.events) {
-                // TODO: Runtime typeguard for event
-                const prevState = { ...stateContainer.get() }
-                const handlingreport = stateContainer.pushEvent(event)
-                const nextState = { ...stateContainer.get() }
-                console.log({
-                  event,
-                  handlingreport,
-                  mechanism: stateContainer.factory().mechanism(),
-                  factory: stateContainer.factory(),
-                  prevState,
-                  nextState,
-                })
-                if (handlingreport.handling === StateContainerCommon.ReactionHandling.Execute) {
-                  agent.channels.audit.state.emit({
-                    state: stateContainer.get(),
-                    events: handlingreport.queueSnapshotBeforeExecution,
+                restartSubscription()
+              } else if (d.type === MsgType.events) {
+                for (const event of d.events) {
+                  // TODO: Runtime typeguard for event
+                  agent.channels.debug.eventHandlingPrevState.emit(stateContainer.get())
+                  const handlingReport = stateContainer.pushEvent(event)
+                  agent.channels.debug.eventHandling.emit({
+                    event,
+                    handlingReport,
+                    mechanism: stateContainer.factory().mechanism(),
+                    factory: stateContainer.factory(),
+                    nextState: stateContainer.get(),
                   })
-                  if (handlingreport.orphans.length > 0) {
-                    agent.channels.audit.dropped.emit({
+                  if (handlingReport.handling === StateContainerCommon.ReactionHandling.Execute) {
+                    agent.channels.audit.state.emit({
                       state: stateContainer.get(),
-                      events: handlingreport.orphans,
+                      events: handlingReport.queueSnapshotBeforeExecution,
                     })
+                    if (handlingReport.orphans.length > 0) {
+                      agent.channels.audit.dropped.emit({
+                        state: stateContainer.get(),
+                        events: handlingReport.orphans,
+                      })
+                    }
                   }
                 }
+
+                if (d.caughtUp) {
+                  // the SDK translates an OffsetMap response into MsgType.events with caughtUp=true
+                  agent.channels.debug.caughtUp.emit()
+                  agent.channels.log.emit('Caught up')
+                  agent.channels.change.emit()
+                }
               }
-              if (d.caughtUp) {
-                // the SDK translates an OffsetMap response into MsgType.events with caughtUp=true
-                agent.channels.log.emit('Caught up')
-                agent.channels.change.emit()
-              }
+            } catch (error) {
+              console.error(error)
             }
           },
           (err) => {
@@ -110,12 +133,15 @@ export const createMachineRunner = (
 
       // Pipe events from stateContainer to sdk
 
-      const unsubEventsPipe = stateContainer.obs().sub((events) => {
+      const commandObs = stateContainer.commandObs()
+      const unsubEventsPipe = commandObs.sub((events) => {
         persist(events)
       })
 
       // Important part, if agent is killed, unsubscribe is called
-      agent.addDestroyHook(unsubEventsPipe)
+      agent.addDestroyHook(() => {
+        unsubEventsPipe()
+      })
       agent.addDestroyHook(unsubscribe)
 
       return {

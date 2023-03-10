@@ -60,7 +60,7 @@ export namespace Event {
       Factory<infer Key, infer Payload>,
       ...infer Rest,
     ]
-      ? [Payload.Of<Event<Key, Payload>>, ...LooseMapToPayload<Rest>]
+      ? [Payload, ...LooseMapToPayload<Rest>]
       : []
 
     export type MapToPayload<T extends Factory.Any[]> = LooseMapToPayload<T>

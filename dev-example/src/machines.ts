@@ -1,5 +1,5 @@
 import { Tag } from '@actyx/sdk'
-import { ProtocolDesigner } from '@actyx/machine-runner/lib/api2/protocol-designer.js'
+import { Protocol } from '@actyx/machine-runner/lib/api2.js'
 import { Event } from '@actyx/machine-runner/lib/api2/event.js'
 
 /**
@@ -24,7 +24,7 @@ export const Requested = Event.design('Requested').withPayload<{
 
 export const Bid = Event.design('Bid').withPayload<{
   price: number
-  time: Date
+  time: string
 }>()
 
 export const BidderID = Event.design('BidderID').withPayload<{
@@ -52,7 +52,7 @@ export const Cancelled = Event.design('Path').withPayload<{ reason: string }>()
 
 export const Receipt = Event.design('Path').withPayload<{ amount: number }>()
 
-export const protocol = ProtocolDesigner.init([
+export const protocol = Protocol.make('taxiRide', [
   Requested,
   Bid,
   BidderID,
@@ -67,8 +67,8 @@ export const protocol = ProtocolDesigner.init([
 ])
 
 // TODO: fix ergonomic
-// ProtocolDesigner.EventsOf<typeof protocol> is not convenient
-export const TaxiTag = Tag<ProtocolDesigner.EventsOf<typeof protocol>>('taxi')
+// Protocol.EventsOf<typeof protocol> is not convenient
+export const TaxiTag = Tag<Protocol.EventsOf<typeof protocol>>('taxi')
 
 // States
 
@@ -76,148 +76,135 @@ export const TaxiTag = Tag<ProtocolDesigner.EventsOf<typeof protocol>>('taxi')
 // Writing reactions before all states are defined is janky because
 // E.g. Writing AuctionP.make(...) before AuctionP makes TS marks AuctionP as a compile error in the IDE
 // Consideration, focus on State creation and commands before writing reactions?
-export const InitialP = protocol.designState('InitialP', () => null, {
-  commands: {
-    request: (_, params: { pickup: string; destination: string }) => [Requested.new(params)],
-  },
-  designReaction: (reactTo) => {
-    reactTo([Requested, Bid, BidderID], (context, [requested, bid, bidderId]) => {
-      const { pickup, destination } = requested
-      return AuctionP.make({
-        pickup,
-        destination,
-        bidData: {
-          bidderID: bidderId.id,
-          price: bid.price,
-          time: bid.time,
-        },
-      })
+export const InitialP = protocol
+  .designEmpty('InitialP')
+  .command('request', [Requested], (_, params: { pickup: string; destination: string }) => [
+    Requested.make(params),
+  ])
+  .finish()
+
+export const AuctionP = protocol
+  .designState(
+    'AuctionP',
+    ({ bidData, ...rest }: { pickup: string; destination: string; bidData: BidData }) => ({
+      ...rest,
+      bids: [bidData] as BidData[],
+    }),
+  )
+  .command('select', [Selected, PassengerID], (context, bidderID: string) => {
+    const bids = context.self.bids
+    const matchingBid = bids.find((bid) => {
+      return bid.bidderID === bidderID
     })
-  },
+
+    if (matchingBid) {
+      return [{ taxiID: matchingBid.bidderID }, { id: 'me' }]
+    }
+    throw new Error('unknown bidderId')
+  })
+  .finish()
+
+export const RideP = protocol
+  .designState('RideP', (taxiID: string) => ({ taxiID }))
+  .command('cancel', [Cancelled], () => [{ reason: "don't wanna" }])
+  .finish()
+
+export const InitialT = protocol
+  .designState(
+    'InitialT',
+    // PROPOSAL: a syntactic sugar to write (params: {id :string}) => params
+    // TODO: choose to keep or trash
+    (params: { id: string }) => params,
+  )
+  .finish()
+
+export const FirstBidT = protocol
+  .designState(
+    'FirstBidT',
+    // PROPOSAL: a syntactic sugar to write (params: {id :string}) => params
+    // TODO: choose to keep or trash
+    Protocol.StateUtils.accepts<{ id: string; pickup: string; destination: string }>(),
+  )
+  .command('bid', [Bid, BidderID], (context, { time, price }: { time: Date; price: number }) => [
+    { time: time.toISOString(), price },
+    { id: context.self.id },
+  ])
+  .finish()
+
+export const AuctionT = protocol
+  .designState(
+    'AuctionT',
+    // PROPOSAL: a syntactic sugar to write (params: {id :string}) => params
+    // TODO: choose to keep or trash
+    Protocol.StateUtils.accepts<{ id: string; pickup: string; destination: string }>(),
+  )
+  .command('bid', [Bid, BidderID], (context, { time, price }: { time: Date; price: number }) => [
+    { time: time.toISOString(), price },
+    { id: context.self.id },
+  ])
+  .finish()
+
+export const RideT = protocol
+  .designState(
+    'RideT',
+    // PROPOSAL: a syntactic sugar to write (params: {id :string}) => params
+    // TODO: choose to keep or trash
+    Protocol.StateUtils.accepts<{ id: string; winner: string; passenger: string }>(),
+  )
+  .finish()
+
+// Designing Reactions
+
+InitialP.react([Requested, Bid, BidderID], AuctionP, (context, [requested, bid, bidderId]) => {
+  const { pickup, destination } = requested
+  return AuctionP.make({
+    pickup,
+    destination,
+    bidData: {
+      bidderID: bidderId.id,
+      price: bid.price,
+      time: new Date(bid.time),
+    },
+  })
 })
 
-export const AuctionP = protocol.designState(
-  'AuctionP',
-  ({ bidData, ...rest }: { pickup: string; destination: string; bidData: BidData }) => ({
-    ...rest,
-    bids: [bidData] as BidData[],
+AuctionP.react([Bid, BidderID], AuctionP, (context, [bid, bidderID]) => {
+  context.self.bids.push({ bidderID: bidderID.id, price: bid.price, time: new Date(bid.time) })
+  return null
+})
+
+AuctionP.react([Selected, PassengerID], RideP, (context, [selected]) => {
+  const { taxiID } = selected
+  return RideP.make(taxiID)
+})
+
+RideP.react([Cancelled], InitialP, () => InitialP.make())
+
+InitialT.react([Requested], FirstBidT, (context, [{ pickup, destination }]) =>
+  FirstBidT.make({
+    id: context.self.id,
+    pickup,
+    destination,
   }),
-  {
-    designReaction: (reactTo) => {
-      reactTo([Bid, BidderID], ({ self }, [bid, bidderID]) => {
-        self.bids.push({ ...bid, bidderID: bidderID.id })
-        return null
-      })
-      reactTo([Selected, PassengerID], (self, [selected]) => {
-        const { taxiID } = selected
-        return RideP.make(taxiID)
-      })
-    },
-    commands: {
-      select: (context, bidderID: string) => {
-        const bids = context.self.bids
-        const matchingBid = bids.find((bid) => {
-          return bid.bidderID === bidderID
-        })
-
-        // Note: might need something like this
-        // Logic inside commands
-        if (matchingBid) {
-          return [Selected.new({ taxiID: matchingBid.bidderID }), PassengerID.new({ id: 'me' })]
-        }
-
-        return []
-      },
-    },
-  },
 )
 
-export const RideP = protocol.designState('RideP', (taxiID: string) => ({ taxiID }), {
-  designReaction: (reactTo) => {
-    reactTo([Cancelled], () => InitialP.make())
-  },
-  commands: {
-    cancel: () => [
-      Cancelled.new({
-        reason: "don't wanna",
-      }),
-    ],
-  },
+FirstBidT.react([Bid, BidderID], AuctionT, (context, []) => AuctionT.make({ ...context.self }))
+
+AuctionT.react([Bid, BidderID], AuctionT, (context, [bid]) => {
+  if (bid.price === 14) throw Error('Der Clown')
+  return null
 })
 
-export const InitialT = protocol.designState(
-  'InitialT',
-  // PROPOSAL: a syntactic sugar to write (params: {id :string}) => params
-  // TODO: choose to keep or trash
-  (params: { id: string }) => params,
-  {
-    designReaction: (reactTo) => {
-      reactTo([Requested], ({ self }, [{ pickup, destination }]) =>
-        FirstBidT.make({
-          id: self.id,
-          pickup,
-          destination,
-        }),
-      )
-    },
-    commands: {},
-  },
+AuctionT.react([Selected, PassengerID], RideT, (context, [selected, passengerId]) =>
+  RideT.make({
+    id: context.self.id,
+    winner: selected.taxiID,
+    passenger: passengerId.id,
+  }),
 )
 
-export const FirstBidT = protocol.designState(
-  'FirstBidT',
-  // PROPOSAL: a syntactic sugar to write (params: {id :string}) => params
-  // TODO: choose to keep or trash
-  ProtocolDesigner.StateUtils.accepts<{ id: string; pickup: string; destination: string }>(),
-  {
-    designReaction: (reactTo) => {
-      reactTo([Bid, BidderID], ({ self }) => AuctionT.make({ ...self }))
-    },
-    commands: {
-      bid: (context, { time, price }: { time: Date; price: number }) => {
-        return [Bid.new({ time, price }), BidderID.new({ id: context.self.id })]
-      },
-    },
-  },
-)
-
-export const AuctionT = protocol.designState(
-  'AuctionT',
-  // PROPOSAL: a syntactic sugar to write (params: {id :string}) => params
-  // TODO: choose to keep or trash
-  ProtocolDesigner.StateUtils.accepts<{ id: string; pickup: string; destination: string }>(),
-  {
-    designReaction: (reactTo) => {
-      reactTo([Bid, BidderID], ({ self }, [bid, bidderID]) => {
-        if (bid.price === 14) throw new Error('Der Clown')
-        return null
-      })
-      reactTo([Selected, PassengerID], ({ self }, [selected, passengerId]) => {
-        return RideT.make({
-          id: self.id,
-          winner: selected.taxiID,
-          passenger: passengerId.id,
-        })
-      })
-    },
-    commands: {
-      bid: ({ self }, { time, price }: { time: Date; price: number }) => [
-        Bid.new({ time, price }),
-        BidderID.new({ id: self.id }),
-      ],
-    },
-  },
-)
-
-export const RideT = protocol.designState(
-  'RideT',
-  // PROPOSAL: a syntactic sugar to write (params: {id :string}) => params
-  // TODO: choose to keep or trash
-  ProtocolDesigner.StateUtils.accepts<{ id: string; winner: string; passenger: string }>(),
-  {
-    designReaction: (reactTo) => {
-      reactTo([Cancelled], ({ self }, []) => InitialT.make({ id: self.id }))
-    },
-    commands: {},
-  },
+RideT.react([Cancelled], InitialT, (context) =>
+  InitialT.make({
+    id: context.self.id,
+  }),
 )

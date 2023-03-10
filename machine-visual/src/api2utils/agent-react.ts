@@ -38,7 +38,6 @@ export namespace AgentReact {
 
       return () => {
         unsub()
-        agent.destroy()
       }
     }, [deps])
 

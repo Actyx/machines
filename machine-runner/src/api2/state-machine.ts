@@ -23,7 +23,7 @@ export type ReactionHandler<EventChain extends Event.Any[], Context, RetVal> = (
 export type Reaction<Context> = {
   eventChainTrigger: Event.Factory.Any[]
   next: StateFactory.Any
-  handler: ReactionHandler<Event.Any[], Context, StateContainer.Any>
+  handler: ReactionHandler<Event.Any[], Context, StateContainer.Any | null>
 }
 
 export type ReactionContext<Self> = {
@@ -36,24 +36,23 @@ export type ReactionMap = {
   ) => Reaction<ReactionContext<Payload>>[]
   getAll: () => Reaction<any>[]
   add: (
-    now: StateMechanism<any, any, any, any, any, any>,
+    now: StateMechanism.Any,
     triggers: Event.Factory.Any[],
     next: StateFactory.Any,
-    reaction: ReactionHandler<Event.Any[], ReactionContext<any>, StateContainer.Any>,
+    reaction: ReactionHandler<Event.Any[], ReactionContext<any>, StateContainer.Any | null>,
   ) => void
 }
 
 export namespace ReactionMap {
   export const make = (): ReactionMap => {
-    const innerMap = new Map<
-      StateMechanism<any, any, any, any, any, any>,
-      Reaction<ReactionContext<any>>[]
-    >()
+    const innerMap = new Map<StateMechanism.Any, Reaction<ReactionContext<any>>[]>()
 
     const getAll: ReactionMap['getAll'] = () =>
       Array.from(innerMap.values()).reduce((acc, item) => acc.concat(item), [])
+
     const get: ReactionMap['get'] = (mechanism) => {
       const reactions = innerMap.get(mechanism) || []
+      innerMap.set(mechanism, reactions)
       return reactions
     }
 
@@ -91,26 +90,19 @@ export namespace ProtocolInternals {
 // StateMechanism
 // ==================================
 
-export type StateMechanismAny = StateMechanism<any, any, any, any, any, any>
 export type StateMechanism<
   ProtocolName extends string,
   RegisteredEventsFactoriesTuple extends Event.Factory.NonZeroTuple,
   StateName extends string,
   StateArgs extends any[],
   StatePayload extends any,
-  Commands extends {
-    [key in keyof Commands]: CommandDefiner<
-      StatePayload,
-      any,
-      Event.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>[]
-    >
-  },
+  Commands extends CommandDefinerMap<any, any, Event.Any[]>,
 > = {
   readonly protocol: ProtocolInternals<ProtocolName, RegisteredEventsFactoriesTuple>
 
   readonly name: StateName
 
-  constructor: StateConstructor<StateName, StateArgs, StatePayload>
+  constructor: PayloadConstructor<StateArgs, StatePayload>
 
   commands: Commands
 
@@ -120,15 +112,14 @@ export type StateMechanism<
       Event.Factory.Reduce<RegisteredEventsFactoriesTuple>
     >,
     CommandArgs extends any[],
-    CommandFn extends CommandDefiner<
-      StatePayload,
-      CommandArgs,
-      Event.Factory.MapToEvent<AcceptedEventFactories>
-    >,
   >(
     name: CommandName,
     events: AcceptedEventFactories,
-    commands: CommandFn,
+    handler: CommandDefiner<
+      StatePayload,
+      CommandArgs,
+      Event.Factory.MapToPayload<AcceptedEventFactories>
+    >,
   ) => StateMechanism<
     ProtocolName,
     RegisteredEventsFactoriesTuple,
@@ -136,7 +127,7 @@ export type StateMechanism<
     StateArgs,
     StatePayload,
     Commands & {
-      [key in CommandName]: CommandFn
+      [key in CommandName]: typeof handler
     }
   >
 
@@ -151,15 +142,14 @@ export type StateMechanism<
 }
 
 export namespace StateMechanism {
+  export type Any = StateMechanism<any, any, any, any, any, any>
   export const make = <
     ProtocolName extends string,
     RegisteredEventsFactoriesTuple extends Event.Factory.NonZeroTuple,
     StateName extends string,
     StateArgs extends any[],
     StatePayload extends any,
-    Commands extends {
-      [key: string]: CommandDefiner<StatePayload, any, any>
-    },
+    Commands extends CommandDefinerMap<any, any, Event.Any[]>,
   >(
     protocol: ProtocolInternals<ProtocolName, RegisteredEventsFactoriesTuple>,
     stateName: StateName,
@@ -184,20 +174,44 @@ export namespace StateMechanism {
       Commands
     >
 
-    const stateConstructor: Self['constructor'] = (...args) => ({
-      type: stateName,
-      payload: constructor(...args),
-    })
+    const stateConstructor: Self['constructor'] = constructor
 
     const commands: Self['commands'] = props?.commands || ({} as Commands)
 
-    const command: Self['command'] = (name, events, commandDefinition) =>
-      make(protocol, stateName, constructor, {
+    const command: Self['command'] = (name, factories, commandDefinition) => {
+      // TODO: make this more sturdy
+      // commandDefinition now is supposed to be returning event payload
+      // and the patched commandDefinition here
+
+      type Params = Parameters<typeof commandDefinition>
+
+      const patchedCommandDefinition = (...params: Params) => {
+        // Payload is either 0 or factories.length
+        // Therefore converting payload to event this way is safe-ish
+        const payloads = commandDefinition(...params)
+        const events = payloads.map((payload, index) => {
+          const factory = factories[index]
+          const event = factory.make(payload)
+          return event
+        })
+
+        return events
+      }
+
+      return make(protocol, stateName, constructor, {
         commands: {
           ...commands,
-          [name]: commandDefinition,
+
+          // TODO: continuing "sturdyness" note above
+          // This part is eventually used by convertCommandMapToCommandSignatureMap
+          // (find "convertCommandMapToCommandSignatureMap" in the StateContainer's code)
+          // "convertCommandMapToCommandSignatureMap" doesn't understand that non-patched commandDefinition
+          // is not returning events, but payloads.
+          // Therefore, changing this line and the patchedCommandDefinition above may break the library
+          [name]: patchedCommandDefinition,
         },
       })
+    }
 
     const finish: Self['finish'] = () => StateFactory.fromMechanism(mechanism)
 
@@ -219,7 +233,7 @@ export namespace StateMechanism {
 // StateFactory
 // ==================================
 
-export type StateFactoryFromMechanism<T extends StateMechanismAny> = T extends StateFactory<
+export type StateFactoryFromMechanism<T extends StateMechanism.Any> = T extends StateFactory<
   infer ProtocolName,
   infer RegisteredEventsFactoriesTuple,
   infer StateName,
@@ -270,22 +284,16 @@ export type StateFactory<
       Event.Factory.Reduce<RegisteredEventsFactoriesTuple>
     >,
     NextFactory extends StateFactory.Any,
+    Handler extends ReactionHandler<
+      Event.Factory.MapToEvent<EventFactoriesChain>,
+      ReactionContext<StatePayload>,
+      StateContainer.Of<NextFactory> | null
+    >,
   >(
     eventChainTrigger: EventFactoriesChain,
     nextFactory: NextFactory,
-    handler: ReactionHandler<
-      Event.Factory.MapToEvent<EventFactoriesChain>,
-      ReactionContext<StatePayload>,
-      StateContainer.Of<NextFactory>
-    >,
-  ) => StateFactory<
-    ProtocolName,
-    RegisteredEventsFactoriesTuple,
-    StateName,
-    StateArgs,
-    StatePayload,
-    Commands
-  >
+    handler: Handler,
+  ) => void
 
   makeOpaque: (...args: StateArgs) => StateContainerOpaque
 }
@@ -300,6 +308,7 @@ export namespace StateFactory {
     CommandDefinerMap<any, any, Event.Any[]>
   >
   export type Any = StateFactory<any, any, any, any, any, any>
+
   export const fromMechanism = <
     ProtocolName extends string,
     RegisteredEventsFactoriesTuple extends Event.Factory.NonZeroTuple,
@@ -327,22 +336,10 @@ export namespace StateFactory {
     >
     // TODO: to make it serializable, turn symbol into compile-consistent string
     const factorySymbol = Symbol(mechanism.name)
-    const react: Self['react'] = <
-      EventFactoriesChain extends utils.NonZeroTuple<
-        Event.Factory.Reduce<RegisteredEventsFactoriesTuple>
-      >,
-      NextFactory extends StateFactory.Any,
-    >(
-      eventChainTrigger: EventFactoriesChain,
-      nextFactory: NextFactory,
-      handler: ReactionHandler<
-        Event.Factory.MapToEvent<EventFactoriesChain>,
-        ReactionContext<StatePayload>,
-        StateContainer.Of<NextFactory>
-      >,
-    ) => {
+    const react: Self['react'] = (eventChainTrigger, nextFactory, handler) => {
+      // TODO: remove "as any", fix issue with suspicious typing error:
+      // Type 'Any[]' is not assignable to type 'LooseMapToEvent<EventFactoriesChain>'
       mechanism.protocol.reactionMap.add(mechanism, eventChainTrigger, nextFactory, handler as any)
-      return self
     }
 
     const make: Self['make'] = (...args) =>
@@ -552,16 +549,24 @@ export namespace StateContainerCommon {
           | ReactionHandling.Discard
       }
 
+  type ReactionMatchResult = {
+    reaction: Reaction<ReactionContext<any>>
+    queue: ActyxEvent<Event.Any>[]
+  }
+
   const determineEventQueueHandling = <Self>(
     reactions: Reaction<ReactionContext<Self>>[],
     queue: ActyxEvent<Event.Any>[],
-  ): EventQueueHandling => {
+  ): EventQueueHandling & {
+    reactionMatchResults?: ReactionMatchResult[]
+  } => {
     if (queue.length === 0) {
       return {
         handling: ReactionHandling.InvalidQueueEmpty,
       }
     }
 
+    const reactionMatchResults: ReactionMatchResult[] = []
     const partialMatches: Reaction<ReactionContext<Self>>[] = []
 
     for (const reaction of reactions) {
@@ -576,17 +581,21 @@ export namespace StateContainerCommon {
       } else if (result === ReactionMatchResult.PartialMatch) {
         partialMatches.push(reaction)
       }
+
+      reactionMatchResults.push({
+        queue: [...queue],
+        reaction: reaction,
+      })
     }
 
     if (partialMatches.length > 0) {
       return {
+        reactionMatchResults,
         handling: ReactionHandling.Queue,
       }
     }
 
-    return {
-      handling: ReactionHandling.Discard,
-    }
+    return { reactionMatchResults, handling: ReactionHandling.Discard }
   }
 
   export const reset = (internals: StateContainerInternals.Any) => {
@@ -678,28 +687,7 @@ export type StateContainer<
     StatePayload,
     Commands
   >
-  // const reactions: Self['reactions'] = props?.reactions || []
-  // const react: Self['react'] = (eventChainTrigger, factory, handler) => {
-  //   // TODO: do something with factory
-  //   const reaction = {
-  //     eventChainTrigger,
-  //     handler,
-  //   }
-  //   reactions.push(
-  //     // TODO: unit test
-  //     // NOTE: For some reason, Event.Any[] is not comparable to
-  //     // Event.Factory.MapToEvent<RegisteredEventsFactoriesTuple>
-  //     // Probably will have to rethink how to define Reaction
-  //     reaction as unknown as StateMechanismReaction<
-  //       Event.Factory.Any[],
-  //       Event.Any[],
-  //       StatePayload
-  //     >,
-  //   )
-
-  //   return mechanism
-  // }
-  obs: () => Obs<Event.Any[]>
+  commandObs: () => Obs<Event.Any[]>
   get: () => utils.DeepReadonly<State<StateName, StatePayload>>
   initial: () => utils.DeepReadonly<State<StateName, StatePayload>>
   commands: ToCommandSignatureMap<Commands, any, Event.Any[]>
@@ -715,14 +703,7 @@ export namespace StateContainer {
     CommandDefinerMap<any, any, Event.Any[]>
   >
 
-  export type Any = StateContainer<
-    any,
-    any,
-    any,
-    any,
-    any,
-    CommandDefinerMap<any, any, Event.Any[]>
-  >
+  export type Any = StateContainer<any, any, any, any, any, any>
 
   export type Of<T extends StateFactory.Any> = T extends StateFactory<
     infer ProtocolName,
@@ -811,19 +792,23 @@ export namespace StateContainer {
     const get = () => internals.current.state
     const initial = () => internals.initial.state
 
-    const commands = convertCommandMapToCommandSignatureMap<any, any, Event.Any[]>(
+    // TODO: refactor to be more sturdy
+    // TODO: unit test
+    const commands = convertCommandMapToCommandSignatureMap<any, StatePayload, Event.Any[]>(
       mechanism().commands,
       () => ({
         // TODO: think about the required context for a command
         someSystemCall: () => 1,
-        self: internals.current.state,
+        self: internals.current.state.payload,
       }),
-      (events) => internals.obs.emit(events),
+      (events) => {
+        internals.obs.emit(events)
+      },
     )
 
     const self: Self = {
       [StateContainerInternals.ACCESSOR]: () => internals,
-      obs: () => internals.obs,
+      commandObs: () => internals.obs,
       initial,
       get,
       commands,
@@ -911,7 +896,7 @@ export type StateContainerOpaque = {
   pushEvent: (events: ActyxEvent<Event.Any>) => PushEventResult
   get: () => utils.DeepReadonly<State<string, unknown>>
   initial: () => utils.DeepReadonly<State<string, unknown>>
-  obs: () => Obs<Event.Any[]>
+  commandObs: () => Obs<Event.Any[]>
   factory: () => StateFactory.Any
 }
 
@@ -933,7 +918,7 @@ export namespace StateContainerOpaque {
       pushEvent,
       get: get,
       initial: initial,
-      obs,
+      commandObs: obs,
       factory,
     }
     return self
