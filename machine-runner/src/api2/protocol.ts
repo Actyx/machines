@@ -6,11 +6,9 @@ export type Protocol<
   RegisteredEventsFactoriesTuple extends Event.Factory.NonZeroTuple,
 > = {
   // TODO: add NextState Factory type
-  designState: <StateName extends string, StateArgs extends any[], StatePayload extends any>(
+  designState: <StateName extends string>(
     stateName: StateName,
-    // TODO: with payload
-    constructor: PayloadConstructor<StateArgs, StatePayload>,
-  ) => StateMechanism<ProtocolName, RegisteredEventsFactoriesTuple, StateName, StatePayload, {}>
+  ) => Protocol.DesignStateIntermediate<ProtocolName, RegisteredEventsFactoriesTuple, StateName>
 
   designEmpty: <StateName extends string>(
     stateName: StateName,
@@ -29,12 +27,18 @@ export namespace Protocol {
     ? Event.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>
     : never
 
-  export namespace StateUtils {
-    export type Accepts<T extends {}> = (t: T) => T
-    export const accepts =
-      <T extends {}>(): Accepts<T> =>
-      (t: T) =>
-        t
+  export type DesignStateIntermediate<
+    ProtocolName extends string,
+    RegisteredEventsFactoriesTuple extends Event.Factory.NonZeroTuple,
+    StateName extends string,
+  > = {
+    withPayload: <StatePayload extends any>() => StateMechanism<
+      ProtocolName,
+      RegisteredEventsFactoriesTuple,
+      StateName,
+      StatePayload,
+      {}
+    >
   }
 
   export const make = <
@@ -60,11 +64,12 @@ export namespace Protocol {
       reactionMap: ReactionMap.make(),
     }
 
-    const designState: Self['designState'] = (stateName, constructor) =>
-      StateMechanism.make(protocolInternal, stateName, constructor)
+    const designState: Self['designState'] = (stateName) => ({
+      withPayload: () => StateMechanism.make(protocolInternal, stateName),
+    })
 
     const designEmpty: Self['designEmpty'] = (stateName) =>
-      StateMechanism.make(protocolInternal, stateName, () => undefined)
+      StateMechanism.make(protocolInternal, stateName)
 
     const internals: Self['internals'] = () => protocolInternal
 

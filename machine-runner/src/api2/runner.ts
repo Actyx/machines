@@ -8,6 +8,7 @@ import {
   Reaction,
   ReactionContext,
   ToCommandSignatureMap,
+  convertCommandMapToCommandSignatureMap,
 } from './state-machine.js'
 import { Agent } from '../api2utils/agent.js'
 import { Obs } from '../api2utils/obs.js'
@@ -21,46 +22,51 @@ export const createMachineRunner = <Payload>(
   factory: StateFactory<any, any, any, Payload, any>,
   payload: Payload,
 ) => {
+  const container = StateContainer.make(factory, payload)
+
+  const subscribeMonotonicQuery = {
+    query,
+    sessionId: 'dummy',
+    attemptStartFrom: { from: {}, latestEventKey: EventKey.zero },
+  }
+
+  const persistEvents = (e: any[]) =>
+    sdk.publish(query.apply(...e)).catch((err) => console.error('error publishing', err, ...e))
+
   return Agent.startBuild()
     .setChannels((c) => ({
       ...c,
       ...createChannelsForMachineRunner(),
     }))
-    .setAPI((agent) => {
-      const subscribeMonotonicQuery = {
-        query,
-        sessionId: 'dummy',
-        attemptStartFrom: { from: {}, latestEventKey: EventKey.zero },
+    .setAPI((machineInternal) => {
+      // Actyx Subscription management
+
+      let refToUnsubFunction = null as null | (() => void)
+
+      const unsubscribeFromActyx = () => {
+        refToUnsubFunction?.()
+        refToUnsubFunction = null
       }
 
-      const persist = (e: any[]) =>
-        sdk.publish(query.apply(...e)).catch((err) => console.error('error publishing', err, ...e))
-
-      let unsub = null as null | (() => void)
-
-      const unsubscribe = () => {
-        unsub?.()
-        unsub = null
-      }
-      const restartSubscription = () => {
-        unsubscribe()
-        unsub = sdk.subscribeMonotonic<Event.Any>(
+      const restartActyxSubscription = () => {
+        unsubscribeFromActyx()
+        refToUnsubFunction = sdk.subscribeMonotonic<Event.Any>(
           subscribeMonotonicQuery,
           (d) => {
             try {
               if (d.type === MsgType.timetravel) {
-                agent.channels.log.emit('Time travel')
+                machineInternal.channels.log.emit('Time travel')
 
                 container.reset()
-                agent.channels.audit.reset.emit()
+                machineInternal.channels.audit.reset.emit()
 
-                restartSubscription()
+                restartActyxSubscription()
               } else if (d.type === MsgType.events) {
                 for (const event of d.events) {
                   // TODO: Runtime typeguard for event
-                  agent.channels.debug.eventHandlingPrevState.emit(container.get())
+                  machineInternal.channels.debug.eventHandlingPrevState.emit(container.get())
                   const handlingReport = container.pushEvent(event)
-                  agent.channels.debug.eventHandling.emit({
+                  machineInternal.channels.debug.eventHandling.emit({
                     event,
                     handlingReport,
                     mechanism: container.factory().mechanism(),
@@ -68,12 +74,12 @@ export const createMachineRunner = <Payload>(
                     nextState: container.get(),
                   })
                   if (handlingReport.handling === StateContainerCommon.ReactionHandling.Execute) {
-                    agent.channels.audit.state.emit({
+                    machineInternal.channels.audit.state.emit({
                       state: container.get(),
                       events: handlingReport.queueSnapshotBeforeExecution,
                     })
                     if (handlingReport.orphans.length > 0) {
-                      agent.channels.audit.dropped.emit({
+                      machineInternal.channels.audit.dropped.emit({
                         state: container.get(),
                         events: handlingReport.orphans,
                       })
@@ -81,7 +87,7 @@ export const createMachineRunner = <Payload>(
                   }
 
                   if (handlingReport.handling === StateContainerCommon.ReactionHandling.Discard) {
-                    agent.channels.audit.dropped.emit({
+                    machineInternal.channels.audit.dropped.emit({
                       state: container.get(),
                       events: handlingReport.orphans,
                     })
@@ -90,9 +96,9 @@ export const createMachineRunner = <Payload>(
 
                 if (d.caughtUp) {
                   // the SDK translates an OffsetMap response into MsgType.events with caughtUp=true
-                  agent.channels.debug.caughtUp.emit()
-                  agent.channels.log.emit('Caught up')
-                  agent.channels.change.emit()
+                  machineInternal.channels.debug.caughtUp.emit()
+                  machineInternal.channels.log.emit('Caught up')
+                  machineInternal.channels.change.emit()
                 }
               }
             } catch (error) {
@@ -100,32 +106,74 @@ export const createMachineRunner = <Payload>(
             }
           },
           (err) => {
-            agent.channels.log.emit('Restarting in 1sec due to error')
+            machineInternal.channels.log.emit('Restarting in 1sec due to error')
 
             container.reset()
-            agent.channels.audit.reset.emit()
+            machineInternal.channels.audit.reset.emit()
 
-            unsubscribe()
-            setTimeout(() => restartSubscription, 1000)
+            unsubscribeFromActyx()
+            setTimeout(() => restartActyxSubscription, 1000)
           },
         )
       }
 
-      // run subscription
-      restartSubscription()
+      // First run of the subscription
+      restartActyxSubscription()
 
-      // Pipe events from stateContainer to sdk
+      // Bridge events from container
+      const eventBridge = container.commandObs()
+      const unsubscribeEventBridge = eventBridge.sub((events) => persistEvents(events))
 
-      const commandObs = container.commandObs()
-      const unsubEventsPipe = commandObs.sub((events) => persist(events))
+      // AsyncIterator part
+      const nextValueAwaiter = Agent.startBuild()
+        .setAPI((flaggerInternal) => {
+          let nextValue: null | StateSnapshotOpaque = null
+          const subscription = machineInternal.channels.change.sub(() => {
+            nextValue = container.snapshot()
+          })
 
-      // Important part, if agent is killed, unsubscribe is called
-      agent.addDestroyHook(unsubEventsPipe)
-      agent.addDestroyHook(unsubscribe)
+          const waitForNextValue = (): Promise<StateSnapshotOpaque> => {
+            let cancel = () => {}
+            const promise = new Promise<StateSnapshotOpaque>((resolve) => {
+              cancel = machineInternal.channels.change.sub(() => resolve(container.snapshot()))
+            })
+            return promise.finally(() => cancel())
+          }
 
-      return {
-        get: () => container,
+          flaggerInternal.addDestroyHook(subscription)
+
+          return {
+            consume: (): Promise<StateSnapshotOpaque> => {
+              const returned = (nextValue && Promise.resolve(nextValue)) || waitForNextValue()
+              nextValue = null
+              return returned
+            },
+          }
+        })
+        .build()
+
+      // IMPORTANT:
+      // Register hook when machine is killed
+      // Unsubscriptions are called
+      machineInternal.addDestroyHook(unsubscribeEventBridge)
+      machineInternal.addDestroyHook(unsubscribeFromActyx)
+      machineInternal.addDestroyHook(nextValueAwaiter.destroy)
+
+      // Self API construction
+      const self = {
+        get: container.get,
+        initial: container.initial,
+        snapshot: container.snapshot,
+        next: async (): Promise<IteratorResult<StateSnapshotOpaque, unknown>> => ({
+          value: await nextValueAwaiter.consume(),
+          done: false,
+        }),
+        return: machineInternal.selfDestroy,
+        throw: machineInternal.selfDestroy,
+        [Symbol.asyncIterator]: () => self,
       }
+
+      return self
     })
     .build()
 }
@@ -161,20 +209,19 @@ export const createChannelsForMachineRunner = () => ({
   log: Obs.make<string>(),
 })
 
-export type StateSnapshot = {
+export type StateSnapshotOpaque = {
   type: string
   current: unknown
   as: <
     StateName extends string,
     StatePayload extends any,
     Commands extends CommandDefinerMap<any, any, Event.Any[]>,
-    Factory extends StateFactory<any, any, StateName, StatePayload, Commands>,
   >(
-    factory: Factory,
-  ) => TypedStateSnapshot<StateName, StatePayload, Commands> | void
+    factory: StateFactory<any, any, StateName, StatePayload, Commands>,
+  ) => StateSnapshot<StateName, StatePayload, Commands> | void
 }
 
-export type TypedStateSnapshot<
+export type StateSnapshot<
   StateName extends string,
   StatePayload extends any,
   Commands extends CommandDefinerMap<any, any, Event.Any[]>,
@@ -185,12 +232,24 @@ export type TypedStateSnapshot<
   commands: ToCommandSignatureMap<Commands, any, Event.Any>
 }
 
+export namespace StateSnapshot {
+  export type Of<T extends StateFactory.Any> = T extends StateFactory<
+    any,
+    any,
+    infer StateName,
+    infer StatePayload,
+    infer Commands
+  >
+    ? StateSnapshot<StateName, StatePayload, Commands>
+    : never
+}
+
 // TODO: rename
 // ==================================
 // StateLensCommon
 // ==================================
 
-export type StateContainerData<
+type StateContainerData<
   ProtocolName extends string,
   RegisteredEventsFactoriesTuple extends Event.Factory.NonZeroTuple,
   StateName extends string,
@@ -207,7 +266,7 @@ export type StateContainerData<
   state: State<any, any>
 }
 
-export type StateContainerInternals<
+type StateContainerInternals<
   ProtocolName extends string,
   RegisteredEventsFactoriesTuple extends Event.Factory.NonZeroTuple,
   StateName extends string,
@@ -226,7 +285,7 @@ export type StateContainerInternals<
   obs: Obs<Event.Any[]>
 }
 
-export namespace StateContainerInternals {
+namespace StateContainerInternals {
   export const ACCESSOR: unique symbol = Symbol('StateContainerInternals/ACCESSOR')
 
   export type Any = StateContainerInternals<any, any, any, any, any>
@@ -258,7 +317,7 @@ export namespace StateContainerInternals {
  * For optimization purpose
  * Huge closure creation may have reduced performance in different JS engines
  */
-export namespace StateContainerCommon {
+namespace StateContainerCommon {
   export namespace ReactionMatchResult {
     export type All = TotalMatch | PartialMatch
 
@@ -433,18 +492,21 @@ export namespace StateContainerCommon {
 
       // internals.queue are mutated here
       // .splice mutates
-      const newContainer = reaction.handler(
+      const nextPayload = reaction.handler(
         {
           self: internals.current.state.payload,
         },
         matchingEventSequence,
       )
 
-      if (newContainer) {
-        internals.current = {
-          state: newContainer.get(),
-          factory: newContainer.factory(),
-        }
+      const nextFactory = reaction.next
+
+      internals.current = {
+        state: {
+          type: nextFactory.mechanism().name,
+          payload: nextPayload,
+        },
+        factory: reaction.next,
       }
 
       // TODO: change to satisfies
@@ -465,244 +527,167 @@ export namespace StateContainerCommon {
   }
 }
 
-// // TODO: rename
-// // ==================================
-// // StateLensTransparent
-// // ==================================
-
-// export type StateContainer<
-//   ProtocolName extends string,
-//   EventFactories extends Event.Factory.NonZeroTuple,
-//   StateName extends string,
-//   StatePayload extends any,
-//   Commands extends CommandDefinerMap<any, any, Event.Any[]>,
-// > = {
-//   [StateContainerInternals.ACCESSOR]: () => StateContainerInternals<
-//     ProtocolName,
-//     EventFactories,
-//     StateName,
-//     StatePayload,
-//     Commands
-//   >
-//   factory: () => StateFactory<ProtocolName, EventFactories, StateName, StatePayload, Commands>
-//   commandObs: () => Obs<Event.Any[]>
-//   get: () => utils.DeepReadonly<State<StateName, StatePayload>>
-//   initial: () => utils.DeepReadonly<State<StateName, StatePayload>>
-//   commands: ToCommandSignatureMap<Commands, any, Event.Any[]>
-// }
-
-// export namespace StateContainer {
-//   export type Minim = StateContainer<
-//     string,
-//     Event.Factory.NonZeroTuple,
-//     string,
-//     any,
-//     CommandDefinerMap<any, any, Event.Any[]>
-//   >
-
-//   export type Any = StateContainer<any, any, any, any, any>
-
-//   export type Of<T extends StateFactory.Any> = T extends StateFactory<
-//     infer ProtocolName,
-//     infer RegisteredEventsFactoriesTuple,
-//     infer StateName,
-//     infer StatePayload,
-//     infer Commands
-//   >
-//     ? StateContainer<
-//         ProtocolName,
-//         RegisteredEventsFactoriesTuple,
-//         StateName,
-//         StatePayload,
-//         Commands
-//       >
-//     : never
-
-//   export const fromFactory = <
-//     ProtocolName extends string,
-//     RegisteredEventsFactoriesTuple extends Event.Factory.NonZeroTuple,
-//     StateName extends string,
-//     StatePayload extends any,
-//     Commands extends CommandDefinerMap<any, any, Event.Any[]>,
-//     Data extends StateContainerData<
-//       ProtocolName,
-//       RegisteredEventsFactoriesTuple,
-//       StateName,
-//       StatePayload,
-//       Commands
-//     >,
-//   >(
-//     initial: Data,
-//   ) => {
-//     const internals: StateContainerInternals<
-//       ProtocolName,
-//       RegisteredEventsFactoriesTuple,
-//       StateName,
-//       StatePayload,
-//       Commands
-//     > = {
-//       initial: initial,
-//       current: {
-//         factory: initial.factory,
-//         state: deepCopy(initial.state),
-//       },
-//       obs: Obs.make(),
-//       queue: [],
-//     }
-
-//     return fromInternals(internals)
-//   }
-
-//   const fromInternals = <
-//     ProtocolName extends string,
-//     RegisteredEventsFactoriesTuple extends Event.Factory.NonZeroTuple,
-//     StateName extends string,
-//     StatePayload extends any,
-//     Commands extends CommandDefinerMap<any, any, Event.Any[]>,
-//   >(
-//     internals: StateContainerInternals<
-//       ProtocolName,
-//       RegisteredEventsFactoriesTuple,
-//       StateName,
-//       StatePayload,
-//       Commands
-//     >,
-//   ) => {
-//     type Self = StateContainer<
-//       ProtocolName,
-//       RegisteredEventsFactoriesTuple,
-//       StateName,
-//       StatePayload,
-//       Commands
-//     >
-
-//     const factory = () => internals.current.factory
-//     const mechanism = () => internals.current.factory.mechanism()
-//     const get = () => internals.current.state
-//     const initial = () => internals.initial.state
-
-//     // TODO: refactor to be more sturdy
-//     // TODO: unit test
-//     const commands = convertCommandMapToCommandSignatureMap<any, StatePayload, Event.Any[]>(
-//       mechanism().commands,
-//       () => ({
-//         // TODO: think about the required context for a command
-//         someSystemCall: () => 1,
-//         self: internals.current.state.payload,
-//       }),
-//       (events) => {
-//         internals.obs.emit(events)
-//       },
-//     )
-
-//     const self: Self = {
-//       [StateContainerInternals.ACCESSOR]: () => internals,
-//       commandObs: () => internals.obs,
-//       initial,
-//       get,
-//       commands,
-//       factory,
-//     }
-
-//     return self
-//   }
-
-//   export const tryFrom = <
-//     ProtocolName extends string,
-//     RegisteredEventFactories extends Event.Factory.NonZeroTuple,
-//     StateName extends string,
-//     StatePayload extends any,
-//     Commands extends CommandDefinerMap<any, any, Event.Any[]>,
-//   >(
-//     internals: StateContainerInternals.Any,
-//     factory: StateFactory<
-//       ProtocolName,
-//       RegisteredEventFactories,
-//       StateName,
-//       StatePayload,
-//       Commands
-//     >,
-//   ): StateContainer<
-//     ProtocolName,
-//     RegisteredEventFactories,
-//     StateName,
-//     StatePayload,
-//     Commands
-//   > | null => {
-//     if (StateContainerInternals.matchToFactory(factory, internals)) {
-//       return fromInternals<
-//         ProtocolName,
-//         RegisteredEventFactories,
-//         StateName,
-//         StatePayload,
-//         Commands
-//       >(internals)
-//     }
-//     return null
-//   }
-// }
-
-// // TODO: rename
-// // ==================================
-// // StateLensOpaque
-// // ==================================
-
-export type PushEventResult = StateContainerCommon.EventQueueHandling & {
+type PushEventResult = StateContainerCommon.EventQueueHandling & {
   queueSnapshotBeforeExecution: ActyxEvent<Event.Any>[]
 }
 
-// export type StateContainerOpaque = {
-//   [StateContainerInternals.ACCESSOR]: () => StateContainerInternals.Any
-//   as: <
-//     ProtocolName extends string,
-//     RegisteredEventsFactoriesTuple extends Event.Factory.NonZeroTuple,
-//     StateName extends string,
-//     StatePayload extends any,
-//     Commands extends CommandDefinerMap<any, any, Event.Any[]>,
-//   >(
-//     factory: StateFactory<
-//       ProtocolName,
-//       RegisteredEventsFactoriesTuple,
-//       StateName,
-//       StatePayload,
-//       Commands
-//     >,
-//   ) => StateContainer<
-//     ProtocolName,
-//     RegisteredEventsFactoriesTuple,
-//     StateName,
-//     StatePayload,
-//     Commands
-//   > | null
-//   reset: () => void
-//   pushEvent: (events: ActyxEvent<Event.Any>) => PushEventResult
-//   get: () => utils.DeepReadonly<State<string, unknown>>
-//   initial: () => utils.DeepReadonly<State<string, unknown>>
-//   commandObs: () => Obs<Event.Any[]>
-//   factory: () => StateFactory.Any
-// }
+type StateContainer = {
+  [StateContainerInternals.ACCESSOR]: () => StateContainerInternals.Any
+  factory: () => StateFactory.Any
+  commandObs: () => Obs<Event.Any[]>
 
-// export namespace StateContainerOpaque {
-//   export const fromStateContainer = (container: StateContainer.Any) => {
-//     const internals = container[StateContainerInternals.ACCESSOR]()
-//     const as: StateContainerOpaque['as'] = (factory) => StateContainer.tryFrom(internals, factory)
-//     const reset: StateContainerOpaque['reset'] = () => StateContainerCommon.reset(internals)
-//     const pushEvent: StateContainerOpaque['pushEvent'] = (event) =>
-//       StateContainerCommon.pushEvent(internals, event)
-//     const get = () => internals.current.state
-//     const initial = () => internals.initial.state
-//     const factory = () => internals.current.factory
-//     const obs = () => internals.obs
-//     const self: StateContainerOpaque = {
-//       [StateContainerInternals.ACCESSOR]: () => internals,
-//       as,
-//       reset: reset,
-//       pushEvent,
-//       get: get,
-//       initial: initial,
-//       commandObs: obs,
-//       factory,
-//     }
-//     return self
-//   }
-// }
+  snapshot: () => StateSnapshotOpaque
+  get: () => State.Any
+  initial: () => State.Any
+
+  reset: () => void
+  pushEvent: (events: ActyxEvent<Event.Any>) => PushEventResult
+}
+
+namespace StateContainer {
+  export const make = <
+    ProtocolName extends string,
+    RegisteredEventsFactoriesTuple extends Event.Factory.NonZeroTuple,
+    StateName extends string,
+    StatePayload extends any,
+    Commands extends CommandDefinerMap<any, any, Event.Any[]>,
+  >(
+    factory: StateFactory<
+      ProtocolName,
+      RegisteredEventsFactoriesTuple,
+      StateName,
+      StatePayload,
+      Commands
+    >,
+    payload: StatePayload,
+  ) => {
+    const initial: StateContainerData<
+      ProtocolName,
+      RegisteredEventsFactoriesTuple,
+      StateName,
+      StatePayload,
+      Commands
+    > = {
+      factory,
+      state: {
+        payload,
+        type: factory.mechanism().name,
+      },
+    }
+    const internals: StateContainerInternals<
+      ProtocolName,
+      RegisteredEventsFactoriesTuple,
+      StateName,
+      StatePayload,
+      Commands
+    > = {
+      initial: initial,
+      current: {
+        factory: initial.factory,
+        state: deepCopy(initial.state),
+      },
+      obs: Obs.make(),
+      queue: [],
+    }
+
+    return fromInternals(internals)
+  }
+
+  const fromInternals = <
+    ProtocolName extends string,
+    RegisteredEventsFactoriesTuple extends Event.Factory.NonZeroTuple,
+    StateName extends string,
+    StatePayload extends any,
+    Commands extends CommandDefinerMap<any, any, Event.Any[]>,
+  >(
+    internals: StateContainerInternals<
+      ProtocolName,
+      RegisteredEventsFactoriesTuple,
+      StateName,
+      StatePayload,
+      Commands
+    >,
+  ) => {
+    const factory: StateContainer['factory'] = () => internals.current.factory
+    const snapshot: StateContainer['snapshot'] = () => {
+      const stateAtSnapshot = internals.current.state
+      const factoryAtSnapshot = internals.current.factory as StateFactory.Any
+      const as: StateSnapshotOpaque['as'] = (factory) => {
+        // TODO: fix "has no overlap" issue
+        if (factoryAtSnapshot.mechanism() === factory.mechanism()) {
+          const mechanism = factory.mechanism()
+          return {
+            current: stateAtSnapshot.payload,
+            type: stateAtSnapshot.type,
+            commands: convertCommandMapToCommandSignatureMap<any, StatePayload, Event.Any[]>(
+              mechanism.commands,
+              {
+                isExpired: () =>
+                  factoryAtSnapshot !== internals.current.factory ||
+                  stateAtSnapshot !== internals.current.state,
+                getActualContext: () => ({
+                  // TODO: waste
+                  someSystemCall: () => 1,
+                  self: internals.current.state.payload,
+                }),
+                onReturn: (events) => internals.obs.emit(events),
+              },
+            ),
+          }
+        }
+        return undefined
+      }
+      return {
+        as,
+        current: stateAtSnapshot.payload,
+        type: stateAtSnapshot.type,
+      }
+    }
+    const get: StateContainer['get'] = () => internals.current.state
+    const initial: StateContainer['initial'] = () => internals.initial.state
+    const reset: StateContainer['reset'] = () => StateContainerCommon.reset(internals)
+    const pushEvent: StateContainer['pushEvent'] = (event) =>
+      StateContainerCommon.pushEvent(internals, event)
+
+    const self: StateContainer = {
+      [StateContainerInternals.ACCESSOR]: () => internals,
+      commandObs: () => internals.obs,
+      initial,
+      get,
+      snapshot,
+      factory,
+      reset,
+      pushEvent,
+    }
+
+    return self
+  }
+
+  export const tryFrom = <
+    ProtocolName extends string,
+    RegisteredEventFactories extends Event.Factory.NonZeroTuple,
+    StateName extends string,
+    StatePayload extends any,
+    Commands extends CommandDefinerMap<any, any, Event.Any[]>,
+  >(
+    internals: StateContainerInternals.Any,
+    factory: StateFactory<
+      ProtocolName,
+      RegisteredEventFactories,
+      StateName,
+      StatePayload,
+      Commands
+    >,
+  ): StateContainer | null => {
+    if (StateContainerInternals.matchToFactory(factory, internals)) {
+      return fromInternals<
+        ProtocolName,
+        RegisteredEventFactories,
+        StateName,
+        StatePayload,
+        Commands
+      >(internals)
+    }
+    return null
+  }
+}

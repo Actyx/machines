@@ -9,7 +9,7 @@ export * from './event.js'
 
 // https://hackmd.io/9ziWhXa1RamB2toqQard1g?both
 
-export type ReactionHandler<EventChain extends Event.Any[], Context, RetVal> = (
+export type ReactionHandler<EventChain extends Event.Any[], Context, RetVal extends any> = (
   context: Context,
   events: EventChain,
 ) => RetVal
@@ -17,7 +17,7 @@ export type ReactionHandler<EventChain extends Event.Any[], Context, RetVal> = (
 export type Reaction<Context> = {
   eventChainTrigger: Event.Factory.Any[]
   next: StateFactory.Any
-  handler: ReactionHandler<Event.Any[], Context, any>
+  handler: ReactionHandler<Event.Any[], Context, unknown>
 }
 
 export type ReactionContext<Self> = {
@@ -33,7 +33,7 @@ export type ReactionMap = {
     now: StateMechanism.Any,
     triggers: Event.Factory.Any[],
     next: StateFactory.Any,
-    reaction: ReactionHandler<Event.Any[], ReactionContext<any>, any>,
+    reaction: ReactionHandler<Event.Any[], ReactionContext<any>, unknown>,
   ) => void
 }
 
@@ -236,7 +236,7 @@ export type StateFactory<
   StatePayload extends any,
   Commands extends CommandDefinerMap<any, any, Event.Any[]>,
 > = {
-  make: (payload: StatePayload) => State<StateName, StatePayload>
+  make: (payload: StatePayload) => StatePayload
   symbol: () => Symbol
   mechanism: () => StateMechanism<
     ProtocolName,
@@ -250,16 +250,15 @@ export type StateFactory<
     EventFactoriesChain extends utils.NonZeroTuple<
       Event.Factory.Reduce<RegisteredEventsFactoriesTuple>
     >,
-    NextFactory extends StateFactory.Any,
-    Handler extends ReactionHandler<
-      Event.Factory.MapToEvent<EventFactoriesChain>,
-      ReactionContext<StatePayload>,
-      StateFactory.PayloadOf<NextFactory>
-    >,
+    NextPayload extends any,
   >(
     eventChainTrigger: EventFactoriesChain,
-    nextFactory: NextFactory,
-    handler: Handler,
+    nextFactory: StateFactory<ProtocolName, RegisteredEventsFactoriesTuple, any, NextPayload, any>,
+    handler: ReactionHandler<
+      Event.Factory.MapToEvent<EventFactoriesChain>,
+      ReactionContext<StatePayload>,
+      NextPayload
+    >,
   ) => void
 }
 
@@ -313,7 +312,7 @@ export namespace StateFactory {
       mechanism.protocol.reactionMap.add(mechanism, eventChainTrigger, nextFactory, handler as any)
     }
 
-    const make: Self['make'] = (payload) => ({ type: mechanism.name, payload })
+    const make: Self['make'] = (payload) => payload
 
     const self: Self = {
       react,

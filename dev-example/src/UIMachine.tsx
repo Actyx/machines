@@ -1,43 +1,51 @@
 import { MachineRunner } from '@actyx/machine-runner/lib/api2.js'
-import { AgentReact } from '@actyx/machine-visual'
+import { useEffect, useState } from 'react'
 import { AuctionP, AuctionT, FirstBidT, InitialP, InitialT, RideP, RideT } from './machines.js'
+import { PrintState } from './UIMachineCommon.js'
 import { UIAuctionP, UIInitialP, UIRideP } from './UIMachinePassenger.js'
 import { UIAuctionT, UIFirstBidT, UIInitialT, UIRideT } from './UIMachineTaxi.js'
 
-export const UIMachine = ({ machine: runner, name }: { name: string; machine: MachineRunner }) => {
-  AgentReact.useBorrowed(runner)
+export const UIMachine = ({ machine, name }: { name: string; machine: MachineRunner }) => {
+  const [stateSnapshot, setStateSnapshot] = useState(machine.snapshot())
 
-  const machine = runner.api.get()
+  useEffect(() => {
+    ;(async () => {
+      for await (const snapshot of machine) {
+        setStateSnapshot(snapshot)
+      }
+    })()
+  })
 
   return (
-    <>
-      {match(machine.as(InitialP), (machine) => (
-        <UIInitialP machine={machine} />
+    <div>
+      <PrintState snapshot={stateSnapshot} />
+      {match(stateSnapshot.as(InitialP), (machine) => (
+        <UIInitialP state={machine} />
       ))}
-      {match(machine.as(AuctionP), (machine) => (
-        <UIAuctionP machine={machine} />
+      {match(stateSnapshot.as(AuctionP), (machine) => (
+        <UIAuctionP state={machine} />
       ))}
-      {match(machine.as(RideP), (machine) => (
-        <UIRideP machine={machine} />
+      {match(stateSnapshot.as(RideP), (machine) => (
+        <UIRideP state={machine} />
       ))}
-      {match(machine.as(InitialT), (machine) => (
-        <UIInitialT machine={machine} />
+      {match(stateSnapshot.as(InitialT), (machine) => (
+        <UIInitialT state={machine} />
       ))}
-      {match(machine.as(FirstBidT), (machine) => (
-        <UIFirstBidT machine={machine} />
+      {match(stateSnapshot.as(FirstBidT), (machine) => (
+        <UIFirstBidT state={machine} />
       ))}
-      {match(machine.as(AuctionT), (machine) => (
-        <UIAuctionT machine={machine} />
+      {match(stateSnapshot.as(AuctionT), (machine) => (
+        <UIAuctionT state={machine} />
       ))}
-      {match(machine.as(RideT), (machine) => (
-        <UIRideT machine={machine} />
+      {match(stateSnapshot.as(RideT), (machine) => (
+        <UIRideT state={machine} />
       ))}
-    </>
+    </div>
   )
 }
 
 export const match: <Val, RetVal>(
-  initVal: Val | undefined | null,
+  initVal: Val | undefined | null | void,
   fn: (val: Val) => RetVal,
 ) => RetVal | undefined = (val, fn) => {
   if (val) {

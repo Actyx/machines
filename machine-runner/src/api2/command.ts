@@ -20,12 +20,11 @@ export type CommandDefinerMap<
   [key in keyof Dictionary]: Dictionary[key]
 }
 
-export type CommandSignature<Args extends any[], Retval extends any> = (...args: Args) => Retval
+export type CommandSignature<Args extends any[]> = (...args: Args) => void
 
-export type CommandSignatureMap<Dictionary extends { [key: string]: CommandSignature<any, any> }> =
-  {
-    [key in keyof Dictionary]: Dictionary[key]
-  }
+export type CommandSignatureMap<Dictionary extends { [key: string]: CommandSignature<any> }> = {
+  [key in keyof Dictionary]: Dictionary[key]
+}
 
 // TODO: unit test,
 export type ToCommandSignatureMap<
@@ -34,7 +33,7 @@ export type ToCommandSignatureMap<
   RetVal extends any,
 > = {
   [key in keyof Dictionary]: Dictionary[key] extends CommandDefiner<any, infer Args, infer Retval>
-    ? CommandSignature<Args, Retval>
+    ? CommandSignature<Args>
     : never
 }
 
@@ -47,20 +46,29 @@ export type ToCommandSignatureMap<
  */
 export type ActualContextGetter<Self> = () => Readonly<CommandContext<Self>>
 
+export type ConvertCommandMapParams<Self, RetVal> = {
+  getActualContext: () => CommandContext<Self>
+  onReturn: (retval: RetVal) => unknown
+  /**
+   * isExpired is intended to flag if a snapshot that owns the reference to a command
+   * is not up to date with the state container's state.
+   */
+  isExpired: () => boolean
+}
+
 export const convertCommandMapToCommandSignatureMap = <
   T extends CommandDefinerMap<any, any, RetVal>,
   Self extends any,
   RetVal extends any,
 >(
   t: T,
-  getActualContext: () => CommandContext<Self>,
-  onReturn: (retval: RetVal) => unknown,
-): ToCommandSignatureMap<T, any, RetVal> => {
+  params: ConvertCommandMapParams<Self, RetVal>,
+): ToCommandSignatureMap<T, any, void> => {
   return Object.fromEntries(
     Object.entries(t).map(([key, definer]) => {
-      return [key, convertCommandDefinerToCommandSignature(definer, getActualContext, onReturn)]
+      return [key, convertCommandDefinerToCommandSignature(definer, params)]
     }),
-  ) as ToCommandSignatureMap<T, any, RetVal>
+  ) as ToCommandSignatureMap<T, any, void>
 }
 
 export const convertCommandDefinerToCommandSignature = <
@@ -69,13 +77,15 @@ export const convertCommandDefinerToCommandSignature = <
   RetVal extends any,
 >(
   definer: CommandDefiner<Self, Args, RetVal>,
-  getActualContext: () => CommandContext<Self>,
-  onReturn: (retval: RetVal) => unknown,
-): CommandSignature<Args, RetVal> => {
+  { getActualContext, onReturn, isExpired }: ConvertCommandMapParams<Self, RetVal>,
+): CommandSignature<Args> => {
   return (...args: Args) => {
+    if (isExpired()) {
+      // TODO: Do we want to provide user an option to handle expired command?
+      console.error('Command has expired')
+    }
     const returnedValue = definer(getActualContext(), ...args)
     onReturn(returnedValue)
-    return returnedValue
   }
 }
 

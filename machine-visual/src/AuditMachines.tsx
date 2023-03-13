@@ -349,7 +349,7 @@ export function AuditMachines({ actyx, machines }: Props) {
           ))}
           {machines.map(({ name, machine }, machNr) => {
             const y = 40 * machNr + 130
-            const initial = machine.api.get().initial()
+            const initial = machine.initial()
             let prevState = initial
             const initCB =
               machNr === se?.machNr && -1 === se?.tpIdx

@@ -53,12 +53,14 @@ const Toggle2 = Event.design('Toggle2').withPayload<{ previousTimesToggled: numb
 const protocol = Protocol.make('switch', [Toggle])
 
 const Open = protocol
-  .designState('Open', (timesToggled: number = 0) => ({ timesToggled }))
+  .designState('Open')
+  .withPayload<{ timesToggled: number }>()
   .command('close', [Toggle], (context) => [{ previousTimesToggled: context.self.timesToggled }])
   .finish()
 
 const Close = protocol
-  .designState('Closed', (timesToggled: number = 0) => ({ timesToggled }))
+  .designState('Closed')
+  .withPayload<{ timesToggled: number }>()
   .command('open', [Toggle], (context) => [{ previousTimesToggled: context.self.timesToggled }])
   .finish()
 
@@ -70,11 +72,11 @@ Empty.make()
 // ===========================
 
 Open.react([Toggle], Close, (context, [toggle]) => {
-  return Close.make(context.self.timesToggled + 1)
+  return { timesToggled: 1 }
 })
 
 Open.react([Toggle], Open, (context, [toggle]) => {
-  return null
+  return context.self
 })
 
 // MUST COMPILE ERROR
@@ -87,15 +89,15 @@ Open.react([Toggle], Open, (context, [toggle]) => {
 //   return null as any
 // })
 
-const transparentState = Open.make(1)
-transparentState.commands.close()
+// const transparentState = Open.make({ timesToggled: 1 })
+// transparentState.commands.close()
 
-const opaqueState = Close.makeOpaque()
+// const opaqueState = Close.makeOpaque()
 
-const stateOnClose = opaqueState.as(Close)
-if (stateOnClose) {
-  stateOnClose.commands.open()
+// const stateOnClose = opaqueState.as(Close)
+// if (stateOnClose) {
+//   stateOnClose.commands.open()
 
-  // MUST COMPILE ERROR
-  // stateOnClose.commands.anotherCommand(1)
-}
+//   // MUST COMPILE ERROR
+//   // stateOnClose.commands.anotherCommand(1)
+// }

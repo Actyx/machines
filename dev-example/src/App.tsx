@@ -13,7 +13,7 @@ export const AppImpl = ({ actyx }: { actyx: Actyx }) => {
   const where = TaxiTag.withId(id)
 
   const passengerMachine: runnerAPI.MachineRunner = useMemo(() => {
-    return runnerAPI.createMachineRunner(actyx, where, InitialP.makeOpaque())
+    return runnerAPI.createMachineRunner(actyx, where, InitialP, void 0)
   }, [actyx, id])
 
   useEffect(() => {
@@ -34,10 +34,7 @@ export const AppImpl = ({ actyx }: { actyx: Actyx }) => {
     )
 
     const unsubCaughtUp = passengerMachine.channels.debug.caughtUp.sub(() => {
-      console.log(
-        'PassengerMachine state after caughtUp',
-        deepCopy(passengerMachine.api.get().get()),
-      )
+      console.log('PassengerMachine state after caughtUp', deepCopy(passengerMachine.get()))
     })
 
     const unsubAuditState = passengerMachine.channels.audit.state.sub((x) => {
@@ -56,13 +53,9 @@ export const AppImpl = ({ actyx }: { actyx: Actyx }) => {
 
   const taxi1Machine: runnerAPI.MachineRunner = useMemo(
     () =>
-      runnerAPI.createMachineRunner(
-        actyx,
-        where,
-        InitialT.makeOpaque({
-          id: 'one',
-        }),
-      ),
+      runnerAPI.createMachineRunner(actyx, where, InitialT, {
+        id: 'one',
+      }),
     [actyx, id],
   )
 
@@ -84,7 +77,7 @@ export const AppImpl = ({ actyx }: { actyx: Actyx }) => {
     )
 
     const unsubCaughtUp = taxi1Machine.channels.debug.caughtUp.sub(() => {
-      console.log('taxi1Machine1 state after caughtUp', deepCopy(passengerMachine.api.get().get()))
+      console.log('taxi1Machine1 state after caughtUp', deepCopy(passengerMachine.get()))
     })
 
     const unsubAuditState = taxi1Machine.channels.audit.state.sub((x) => {
@@ -102,13 +95,9 @@ export const AppImpl = ({ actyx }: { actyx: Actyx }) => {
 
   const taxi2Machine: runnerAPI.MachineRunner = useMemo(
     () =>
-      runnerAPI.createMachineRunner(
-        actyx,
-        where,
-        InitialT.makeOpaque({
-          id: 'two',
-        }),
-      ),
+      runnerAPI.createMachineRunner(actyx, where, InitialT, {
+        id: 'two',
+      }),
     [actyx, id],
   )
 
@@ -130,7 +119,7 @@ export const AppImpl = ({ actyx }: { actyx: Actyx }) => {
     )
 
     const unsubCaughtUp = taxi2Machine.channels.debug.caughtUp.sub(() => {
-      console.log('taxi2Machine state after caughtUp', deepCopy(passengerMachine.api.get().get()))
+      console.log('taxi2Machine state after caughtUp', deepCopy(passengerMachine.get()))
     })
 
     const unsubAuditState = taxi2Machine.channels.audit.state.sub((x) => {

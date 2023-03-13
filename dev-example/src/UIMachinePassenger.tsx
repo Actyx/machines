@@ -1,68 +1,56 @@
-import { StateContainer } from '@actyx/machine-runner/lib/api2/state-machine.js'
-import { deepCopy } from '@actyx/machine-runner/lib/runner.js'
+import { StateSnapshot } from '@actyx/machine-runner/lib/api2.js'
 import { useState } from 'react'
 import { AuctionP, BidData, InitialP, RideP } from './machines.js'
-import { PrintState } from './UIMachineCommon.js'
 
-export const UIInitialP = ({ machine }: { machine: StateContainer.Of<typeof InitialP> }) => {
+export const UIInitialP = ({ state }: { state: StateSnapshot.Of<typeof InitialP> }) => {
   const [pickup, setPickup] = useState('')
   const [destination, setDestination] = useState('')
   const buttonEnabled = !!pickup.trim() && !!destination.trim()
-  console.log('UIInitialP')
   return (
     <div>
-      <PrintState state={machine.get()} />
-      <div>
-        <label>
-          Pickup
-          <input type="text" value={pickup} onChange={(e) => setPickup(e.target.value)}></input>
-        </label>
-        <label>
-          Destination
-          <input
-            type="text"
-            value={destination}
-            onChange={(e) => setDestination(e.target.value)}
-          ></input>
-        </label>
-        <button
-          type="button"
-          disabled={!buttonEnabled}
-          onClick={() =>
-            machine.commands.request({
-              pickup,
-              destination,
-            })
-          }
-        >
-          Send Request
-        </button>
-      </div>
+      <label>
+        Pickup
+        <input type="text" value={pickup} onChange={(e) => setPickup(e.target.value)}></input>
+      </label>
+      <label>
+        Destination
+        <input
+          type="text"
+          value={destination}
+          onChange={(e) => setDestination(e.target.value)}
+        ></input>
+      </label>
+      <button
+        type="button"
+        disabled={!buttonEnabled}
+        onClick={() =>
+          state.commands.request({
+            pickup,
+            destination,
+          })
+        }
+      >
+        Send Request
+      </button>
     </div>
   )
 }
 
-export const UIAuctionP = ({ machine }: { machine: StateContainer.Of<typeof AuctionP> }) => {
-  const state = machine.get()
-  console.log('UIAuctionP:debug factory', machine.factory().symbol)
-  console.log('UIAuctionP:debug state', deepCopy(state))
-  console.log('UIAuctionP:debug state.payload', deepCopy(state).payload)
-  console.log('UIAuctionP:debug state.payload.bids', deepCopy(state).payload.bids)
-  const [selection, setSelection] = useState<BidData | null>(state.payload.bids[0] || null)
+export const UIAuctionP = ({ state }: { state: StateSnapshot.Of<typeof AuctionP> }) => {
+  const [selection, setSelection] = useState<BidData | null>(state.current.bids[0] || null)
 
   return (
     <div>
-      <PrintState state={machine.get()} />
       <select
         onChange={(e) => {
           const selectedBidderId = e.target.value
-          const matchingBidder = state.payload.bids.find((bid) => bid.bidderID === selectedBidderId)
+          const matchingBidder = state.current.bids.find((bid) => bid.bidderID === selectedBidderId)
 
           setSelection(matchingBidder || null)
         }}
       >
         {selection === null && <option>No taxis available</option>}
-        {state.payload.bids.map((bid) => {
+        {state.current.bids.map((bid) => {
           return (
             <option key={bid.bidderID} value={bid.bidderID}>
               {bid.bidderID}/{bid.price} at {bid.time.toISOString()}
@@ -74,7 +62,7 @@ export const UIAuctionP = ({ machine }: { machine: StateContainer.Of<typeof Auct
         disabled={selection === null}
         onClick={() => {
           if (selection !== null) {
-            machine.commands.select(selection.bidderID)
+            state.commands.select(selection.bidderID)
           }
         }}
       >
@@ -84,10 +72,9 @@ export const UIAuctionP = ({ machine }: { machine: StateContainer.Of<typeof Auct
   )
 }
 
-export const UIRideP = ({ machine }: { machine: StateContainer.Of<typeof RideP> }) => {
+export const UIRideP = ({ state: machine }: { state: StateSnapshot.Of<typeof RideP> }) => {
   return (
     <div>
-      <PrintState state={machine.get()} />
       <button
         onClick={() => {
           machine.commands.cancel()

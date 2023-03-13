@@ -84,13 +84,12 @@ export const InitialP = protocol
   .finish()
 
 export const AuctionP = protocol
-  .designState(
-    'AuctionP',
-    ({ bidData, ...rest }: { pickup: string; destination: string; bidData: BidData }) => ({
-      ...rest,
-      bids: [bidData] as BidData[],
-    }),
-  )
+  .designState('AuctionP')
+  .withPayload<{
+    pickup: string
+    destination: string
+    bids: BidData[]
+  }>()
   .command('select', [Selected, PassengerID], (context, bidderID: string) => {
     const bids = context.self.bids
     const matchingBid = bids.find((bid) => {
@@ -105,26 +104,16 @@ export const AuctionP = protocol
   .finish()
 
 export const RideP = protocol
-  .designState('RideP', (taxiID: string) => ({ taxiID }))
+  .designState('RideP')
+  .withPayload<{ taxiID: string }>()
   .command('cancel', [Cancelled], () => [{ reason: "don't wanna" }])
   .finish()
 
-export const InitialT = protocol
-  .designState(
-    'InitialT',
-    // PROPOSAL: a syntactic sugar to write (params: {id :string}) => params
-    // TODO: choose to keep or trash
-    (params: { id: string }) => params,
-  )
-  .finish()
+export const InitialT = protocol.designState('InitialT').withPayload<{ id: string }>().finish()
 
 export const FirstBidT = protocol
-  .designState(
-    'FirstBidT',
-    // PROPOSAL: a syntactic sugar to write (params: {id :string}) => params
-    // TODO: choose to keep or trash
-    Protocol.StateUtils.accepts<{ id: string; pickup: string; destination: string }>(),
-  )
+  .designState('FirstBidT')
+  .withPayload<{ id: string; pickup: string; destination: string }>()
   .command('bid', [Bid, BidderID], (context, { time, price }: { time: Date; price: number }) => [
     { time: time.toISOString(), price },
     { id: context.self.id },
@@ -132,12 +121,8 @@ export const FirstBidT = protocol
   .finish()
 
 export const AuctionT = protocol
-  .designState(
-    'AuctionT',
-    // PROPOSAL: a syntactic sugar to write (params: {id :string}) => params
-    // TODO: choose to keep or trash
-    Protocol.StateUtils.accepts<{ id: string; pickup: string; destination: string }>(),
-  )
+  .designState('AuctionT')
+  .withPayload<{ id: string; pickup: string; destination: string }>()
   .command('bid', [Bid, BidderID], (context, { time, price }: { time: Date; price: number }) => [
     { time: time.toISOString(), price },
     { id: context.self.id },
@@ -145,12 +130,8 @@ export const AuctionT = protocol
   .finish()
 
 export const RideT = protocol
-  .designState(
-    'RideT',
-    // PROPOSAL: a syntactic sugar to write (params: {id :string}) => params
-    // TODO: choose to keep or trash
-    Protocol.StateUtils.accepts<{ id: string; winner: string; passenger: string }>(),
-  )
+  .designState('RideT')
+  .withPayload<{ id: string; winner: string; passenger: string }>()
   .finish()
 
 // Designing Reactions
@@ -160,24 +141,24 @@ InitialP.react([Requested, Bid, BidderID], AuctionP, (context, [requested, bid, 
   return AuctionP.make({
     pickup,
     destination,
-    bidData: {
-      bidderID: bidderId.id,
-      price: bid.price,
-      time: new Date(bid.time),
-    },
+    bids: [
+      {
+        bidderID: bidderId.id,
+        price: bid.price,
+        time: new Date(bid.time),
+      },
+    ],
   })
 })
 
 AuctionP.react([Bid, BidderID], AuctionP, (context, [bid, bidderID]) => {
-  console.log(context.self)
   context.self.bids.push({ bidderID: bidderID.id, price: bid.price, time: new Date(bid.time) })
-  return null
+  return context.self
 })
 
-AuctionP.react([Selected, PassengerID], RideP, (context, [selected]) => {
-  const { taxiID } = selected
-  return RideP.make(taxiID)
-})
+AuctionP.react([Selected, PassengerID], RideP, (context, [selected]) =>
+  RideP.make({ taxiID: selected.taxiID }),
+)
 
 RideP.react([Cancelled], InitialP, () => InitialP.make())
 
@@ -193,7 +174,7 @@ FirstBidT.react([Bid, BidderID], AuctionT, (context, []) => AuctionT.make({ ...c
 
 AuctionT.react([Bid, BidderID], AuctionT, (context, [bid]) => {
   if (bid.price === 14) throw Error('Der Clown')
-  return null
+  return context.self
 })
 
 AuctionT.react([Selected, PassengerID], RideT, (context, [selected, passengerId]) =>
