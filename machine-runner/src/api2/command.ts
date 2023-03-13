@@ -1,10 +1,5 @@
 export type CommandContext<Self extends any> = {
   self: Self
-
-  /**
-   * Just for demo, we could put anything here
-   */
-  someSystemCall: () => unknown
 }
 
 export type CommandDefiner<Self extends any, Args extends any[], Retval extends any> = (

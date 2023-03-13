@@ -132,10 +132,29 @@ export const createMachineRunner = <Payload>(
             nextValue = container.snapshot()
           })
 
-          const waitForNextValue = (): Promise<StateSnapshotOpaque> => {
+          const intoIteratorResult = (
+            value: StateSnapshotOpaque | null,
+          ): IteratorResult<StateSnapshotOpaque, null> => {
+            if (value === null) {
+              return { done: true, value }
+            } else {
+              return { done: false, value }
+            }
+          }
+
+          const waitForNextValue = (): Promise<IteratorResult<StateSnapshotOpaque, null>> => {
             let cancel = () => {}
-            const promise = new Promise<StateSnapshotOpaque>((resolve) => {
-              cancel = machineInternal.channels.change.sub(() => resolve(container.snapshot()))
+            const promise = new Promise<IteratorResult<StateSnapshotOpaque, null>>((resolve) => {
+              const cancelChangeSub = machineInternal.channels.change.sub(() =>
+                resolve(intoIteratorResult(container.snapshot())),
+              )
+              const cancelDestroySub = machineInternal.channels.destroy.sub(() =>
+                resolve(intoIteratorResult(null)),
+              )
+              cancel = () => {
+                cancelChangeSub()
+                cancelDestroySub()
+              }
             })
             return promise.finally(() => cancel())
           }
@@ -143,9 +162,15 @@ export const createMachineRunner = <Payload>(
           flaggerInternal.addDestroyHook(subscription)
 
           return {
-            consume: (): Promise<StateSnapshotOpaque> => {
-              const returned = (nextValue && Promise.resolve(nextValue)) || waitForNextValue()
+            consume: (): Promise<IteratorResult<StateSnapshotOpaque, null>> => {
+              if (machineInternal.isDestroyed()) {
+                return Promise.resolve(intoIteratorResult(null))
+              }
+
+              const returned =
+                (nextValue && Promise.resolve(intoIteratorResult(nextValue))) || waitForNextValue()
               nextValue = null
+
               return returned
             },
           }
@@ -160,17 +185,27 @@ export const createMachineRunner = <Payload>(
       machineInternal.addDestroyHook(nextValueAwaiter.destroy)
 
       // Self API construction
-      const self = {
-        get: container.get,
+
+      const onThrowOrReturn = async (): Promise<IteratorResult<StateSnapshotOpaque, null>> => {
+        machineInternal.destroy()
+        return { done: true, value: null }
+      }
+
+      const api = {
+        get: container.snapshot,
         initial: container.initial,
-        snapshot: container.snapshot,
-        next: async (): Promise<IteratorResult<StateSnapshotOpaque, unknown>> => ({
-          value: await nextValueAwaiter.consume(),
-          done: false,
-        }),
-        return: machineInternal.selfDestroy,
-        throw: machineInternal.selfDestroy,
-        [Symbol.asyncIterator]: () => self,
+      }
+
+      const iterator: AsyncIterableIterator<StateSnapshotOpaque> = {
+        next: (): Promise<IteratorResult<StateSnapshotOpaque, null>> => nextValueAwaiter.consume(),
+        return: onThrowOrReturn,
+        throw: onThrowOrReturn,
+        [Symbol.asyncIterator]: () => iterator,
+      }
+
+      const self: AsyncIterableIterator<StateSnapshotOpaque> & typeof api = {
+        ...api,
+        ...iterator,
       }
 
       return self
@@ -209,9 +244,7 @@ export const createChannelsForMachineRunner = () => ({
   log: Obs.make<string>(),
 })
 
-export type StateSnapshotOpaque = {
-  type: string
-  current: unknown
+export type StateSnapshotOpaque = State<string, unknown> & {
   as: <
     StateName extends string,
     StatePayload extends any,
@@ -225,10 +258,7 @@ export type StateSnapshot<
   StateName extends string,
   StatePayload extends any,
   Commands extends CommandDefinerMap<any, any, Event.Any[]>,
-> = {
-  type: StateName
-  current: StatePayload
-  // TODO: rethink retval
+> = State<StateName, StatePayload> & {
   commands: ToCommandSignatureMap<Commands, any, Event.Any>
 }
 
@@ -610,24 +640,24 @@ namespace StateContainer {
   ) => {
     const factory: StateContainer['factory'] = () => internals.current.factory
     const snapshot: StateContainer['snapshot'] = () => {
+      // Capture state and factory at snapshot call-time
       const stateAtSnapshot = internals.current.state
       const factoryAtSnapshot = internals.current.factory as StateFactory.Any
+      const isExpired = () =>
+        factoryAtSnapshot !== internals.current.factory ||
+        stateAtSnapshot !== internals.current.state
+
       const as: StateSnapshotOpaque['as'] = (factory) => {
-        // TODO: fix "has no overlap" issue
         if (factoryAtSnapshot.mechanism() === factory.mechanism()) {
           const mechanism = factory.mechanism()
           return {
-            current: stateAtSnapshot.payload,
+            payload: stateAtSnapshot.payload,
             type: stateAtSnapshot.type,
             commands: convertCommandMapToCommandSignatureMap<any, StatePayload, Event.Any[]>(
               mechanism.commands,
               {
-                isExpired: () =>
-                  factoryAtSnapshot !== internals.current.factory ||
-                  stateAtSnapshot !== internals.current.state,
+                isExpired,
                 getActualContext: () => ({
-                  // TODO: waste
-                  someSystemCall: () => 1,
                   self: internals.current.state.payload,
                 }),
                 onReturn: (events) => internals.obs.emit(events),
@@ -639,7 +669,7 @@ namespace StateContainer {
       }
       return {
         as,
-        current: stateAtSnapshot.payload,
+        payload: stateAtSnapshot.payload,
         type: stateAtSnapshot.type,
       }
     }

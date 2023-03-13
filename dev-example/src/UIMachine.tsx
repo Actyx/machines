@@ -6,15 +6,24 @@ import { UIAuctionP, UIInitialP, UIRideP } from './UIMachinePassenger.js'
 import { UIAuctionT, UIFirstBidT, UIInitialT, UIRideT } from './UIMachineTaxi.js'
 
 export const UIMachine = ({ machine, name }: { name: string; machine: MachineRunner }) => {
-  const [stateSnapshot, setStateSnapshot] = useState(machine.snapshot())
+  const [stateSnapshot, setStateSnapshot] = useState(machine.get())
 
   useEffect(() => {
+    let active = true
+
     ;(async () => {
       for await (const snapshot of machine) {
+        if (!active) {
+          break
+        }
         setStateSnapshot(snapshot)
       }
     })()
-  })
+
+    return () => {
+      active = false
+    }
+  }, [machine.id])
 
   return (
     <div>

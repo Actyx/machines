@@ -2,14 +2,23 @@ import { Obs } from './obs.js'
 export * from './obs.js'
 
 type TDefaultAPI = {}
-type TDefaultChannels = { change: Obs<void> }
+type TDefaultChannels = { change: Obs<void>; destroy: Obs<void> }
+
+type DestructionAPI = {
+  addDestroyHook: (hook: () => unknown) => void
+  destroy: () => unknown
+  isDestroyed: () => boolean
+}
 
 export type Agent<API extends object, Channels extends TDefaultChannels> = {
   id: Symbol
   channels: Channels
-  destroy: () => unknown
-} & API
+} & API &
+  Pick<DestructionAPI, 'destroy' | 'isDestroyed'>
 
+/**
+ * Build a class-like object with `destroy` capability
+ */
 export namespace Agent {
   export type DefaultAPI = TDefaultAPI
   export type DefaultChannels = TDefaultChannels
@@ -21,12 +30,12 @@ export namespace Agent {
       fn: (oldChannels: Channels) => NewChannels,
     ) => AgentBuilder<API, NewChannels>
     setAPI: <NewAPI extends TDefaultAPI>(
-      fn: (params: {
-        oldApi: API
-        channels: Readonly<Channels>
-        addDestroyHook: (hook: () => unknown) => void
-        selfDestroy: () => unknown
-      }) => NewAPI & { channels?: never; destroy?: never },
+      fn: (
+        params: {
+          oldApi: API
+          channels: Readonly<Channels>
+        } & DestructionAPI,
+      ) => NewAPI & { channels?: never; destroy?: never; isDestroyed?: never },
     ) => AgentBuilder<NewAPI, Channels>
   }
 
@@ -35,24 +44,19 @@ export namespace Agent {
     channels: Channels
   } & {
     'identifier-string': string
-    destroyHooks: Set<() => unknown>
-  }
+  } & DestructionAPI
 
   const makeBuilderImpl = <API extends DefaultAPI, Channels extends DefaultChannels>(
     prototype: AgentPrototype<API, Channels>,
   ): AgentBuilder<API, Channels> => {
     type Self = AgentBuilder<API, Channels>
 
-    const destroy = () => {
-      for (const hook of prototype.destroyHooks) {
-        hook()
-      }
-    }
     const build: Self['build'] = () => ({
       ...prototype.api,
       id: Symbol(prototype['identifier-string']),
       channels: prototype.channels,
-      destroy,
+      destroy: prototype.destroy,
+      isDestroyed: prototype.isDestroyed,
     })
 
     const setChannels: Self['setChannels'] = (fn) =>
@@ -67,8 +71,9 @@ export namespace Agent {
         api: fn({
           oldApi: prototype.api,
           channels: prototype.channels,
-          addDestroyHook: (hook) => prototype.destroyHooks.add(hook),
-          selfDestroy: destroy,
+          addDestroyHook: prototype.addDestroyHook,
+          destroy: prototype.destroy,
+          isDestroyed: prototype.isDestroyed,
         }),
       })
 
@@ -86,11 +91,36 @@ export namespace Agent {
     }
   }
 
-  export const startBuild = () =>
-    makeBuilderImpl<DefaultAPI, DefaultChannels>({
+  export const startBuild = () => {
+    const destructionAPI = ((): DestructionAPI => {
+      let destroyed = false
+      const destroyhooks = new Set<Function>()
+      return {
+        addDestroyHook: (hook) => destroyhooks.add(hook),
+        destroy: () => {
+          if (!destroyed) {
+            channels.destroy.emit()
+            destroyed = true
+            for (const hook of destroyhooks) {
+              try {
+                hook()
+              } catch (err) {
+                console.error(err)
+              }
+            }
+          }
+        },
+        isDestroyed: () => destroyed,
+      }
+    })()
+
+    const channels: TDefaultChannels = { change: Obs.make(), destroy: Obs.make() }
+
+    return makeBuilderImpl<DefaultAPI, DefaultChannels>({
       api: {},
-      channels: { change: Obs.make() },
+      channels,
       'identifier-string': '',
-      destroyHooks: new Set(),
+      ...destructionAPI,
     })
+  }
 }
