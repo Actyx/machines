@@ -1,7 +1,6 @@
 import * as utils from '../api2utils/type-utils.js'
 import { CommandDefiner, CommandDefinerMap } from './command.js'
 import { Event } from './event.js'
-import { State } from './state-raw.js'
 
 export * from './state-raw.js'
 export * from './command.js'
@@ -24,11 +23,13 @@ export type ReactionContext<Self> = {
   self: Self
 }
 
+export type ReactionMapPerMechanism<Payload> = Map<string, Reaction<ReactionContext<Payload>>>
+
 export type ReactionMap = {
   get: <Payload extends any>(
     mechanism: StateMechanism<any, any, any, Payload, any>,
-  ) => Reaction<ReactionContext<Payload>>[]
-  getAll: () => Reaction<any>[]
+  ) => ReactionMapPerMechanism<Payload>
+  getAll: () => Map<StateMechanism.Any, ReactionMapPerMechanism<any>>
   add: (
     now: StateMechanism.Any,
     triggers: Event.Factory.Any[],
@@ -39,25 +40,22 @@ export type ReactionMap = {
 
 export namespace ReactionMap {
   export const make = (): ReactionMap => {
-    const innerMap = new Map<StateMechanism.Any, Reaction<ReactionContext<any>>[]>()
+    const innerMap = new Map<StateMechanism.Any, ReactionMapPerMechanism<any>>()
 
-    const getAll: ReactionMap['getAll'] = () =>
-      Array.from(innerMap.values()).reduce((acc, item) => acc.concat(item), [])
+    const getAll: ReactionMap['getAll'] = () => innerMap
 
     const get: ReactionMap['get'] = (mechanism) => {
-      const reactions = innerMap.get(mechanism) || []
+      const reactions = innerMap.get(mechanism) || new Map()
       innerMap.set(mechanism, reactions)
       return reactions
     }
 
     const add: ReactionMap['add'] = (now, triggers, next, handler) => {
-      const list = get(now)
-      list.push({
-        eventChainTrigger: triggers,
-        next,
-        handler,
-      })
+      const mapPerMechanism = get(now)
+      const firstTrigger = triggers[0]
+      mapPerMechanism.set(firstTrigger.type, { eventChainTrigger: triggers, next, handler })
     }
+
     return {
       getAll,
       get,
@@ -72,17 +70,13 @@ export type ProtocolInternals<
 > = {
   readonly name: ProtocolName
   readonly registeredEvents: RegisteredEventsFactoriesTuple
+  readonly registeredStateNames: Set<string>
   readonly reactionMap: ReactionMap
 }
 
 export namespace ProtocolInternals {
   export type Any = ProtocolInternals<any, any>
 }
-
-// TODO: rename
-// ==================================
-// StateMechanism
-// ==================================
 
 export type StateMechanism<
   ProtocolName extends string,

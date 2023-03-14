@@ -37,20 +37,20 @@ export const UIInitialP = ({ state }: { state: StateSnapshot.Of<typeof InitialP>
 }
 
 export const UIAuctionP = ({ state }: { state: StateSnapshot.Of<typeof AuctionP> }) => {
-  const [selection, setSelection] = useState<BidData | null>(state.current.bids[0] || null)
+  const [selection, setSelection] = useState<BidData | null>(state.payload.bids[0] || null)
 
   return (
     <div>
       <select
         onChange={(e) => {
           const selectedBidderId = e.target.value
-          const matchingBidder = state.current.bids.find((bid) => bid.bidderID === selectedBidderId)
+          const matchingBidder = state.payload.bids.find((bid) => bid.bidderID === selectedBidderId)
 
           setSelection(matchingBidder || null)
         }}
       >
         {selection === null && <option>No taxis available</option>}
-        {state.current.bids.map((bid) => {
+        {state.payload.bids.map((bid) => {
           return (
             <option key={bid.bidderID} value={bid.bidderID}>
               {bid.bidderID}/{bid.price} at {bid.time.toISOString()}

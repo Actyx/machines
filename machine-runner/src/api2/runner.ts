@@ -9,6 +9,7 @@ import {
   ReactionContext,
   ToCommandSignatureMap,
   convertCommandMapToCommandSignatureMap,
+  ReactionMapPerMechanism,
 } from './state-machine.js'
 import { Agent } from '../api2utils/agent.js'
 import { Obs } from '../api2utils/obs.js'
@@ -65,7 +66,9 @@ export const createMachineRunner = <Payload>(
                 for (const event of d.events) {
                   // TODO: Runtime typeguard for event
                   machineInternal.channels.debug.eventHandlingPrevState.emit(container.get())
+
                   const handlingReport = container.pushEvent(event)
+
                   machineInternal.channels.debug.eventHandling.emit({
                     event,
                     handlingReport,
@@ -73,11 +76,15 @@ export const createMachineRunner = <Payload>(
                     factory: container.factory(),
                     nextState: container.get(),
                   })
+
                   if (handlingReport.handling === StateContainerCommon.ReactionHandling.Execute) {
                     machineInternal.channels.audit.state.emit({
                       state: container.get(),
                       events: handlingReport.queueSnapshotBeforeExecution,
                     })
+                  }
+
+                  if (handlingReport.handling === StateContainerCommon.ReactionHandling.Discard) {
                     if (handlingReport.orphans.length > 0) {
                       machineInternal.channels.audit.dropped.emit({
                         state: container.get(),
@@ -86,10 +93,12 @@ export const createMachineRunner = <Payload>(
                     }
                   }
 
-                  if (handlingReport.handling === StateContainerCommon.ReactionHandling.Discard) {
+                  if (
+                    handlingReport.handling === StateContainerCommon.ReactionHandling.DiscardLast
+                  ) {
                     machineInternal.channels.audit.dropped.emit({
                       state: container.get(),
-                      events: handlingReport.orphans,
+                      events: [handlingReport.orphan],
                     })
                   }
                 }
@@ -274,11 +283,6 @@ export namespace StateSnapshot {
     : never
 }
 
-// TODO: rename
-// ==================================
-// StateLensCommon
-// ==================================
-
 type StateContainerData<
   ProtocolName extends string,
   RegisteredEventsFactoriesTuple extends Event.Factory.NonZeroTuple,
@@ -348,73 +352,12 @@ namespace StateContainerInternals {
  * Huge closure creation may have reduced performance in different JS engines
  */
 namespace StateContainerCommon {
-  export namespace ReactionMatchResult {
-    export type All = TotalMatch | PartialMatch
-
-    // TODO: explain, document
-    // Expect: [A, B, C]
-    // Receive: [A, ..., B, ..., C]
-    export type TotalMatch = typeof TotalMatch
-    export const TotalMatch: unique symbol = Symbol('TotalMatch')
-
-    // TODO: explain, document
-    // Expect: [A, B, C]
-    // Receive: [A, ..., B]
-    export type PartialMatch = typeof PartialMatch
-    export const PartialMatch: unique symbol = Symbol('PartialMatch')
-  }
-
-  // TODO: unit test
-  const matchReaction = <Self>(
-    reaction: Reaction<Self>,
-    queue: ActyxEvent<Event.Any>[],
-  ): {
-    result: ReactionMatchResult.All | null
-    orphans: ActyxEvent<Event.Any>[]
-    matching: Event.Any[]
-  } => {
-    const queueClone = [...queue]
-    const matchingEventSequence = []
-    const orphanEventSequence = []
-
-    const result = (() => {
-      for (const [index, trigger] of reaction.eventChainTrigger.entries()) {
-        const matchingEvent = (() => {
-          while (queueClone.length > 0) {
-            const actyxEvent = queueClone.shift()
-            if (actyxEvent) {
-              if (actyxEvent.payload.type === trigger.type) {
-                return actyxEvent.payload
-              } else {
-                orphanEventSequence.push(actyxEvent)
-              }
-            }
-          }
-          return null
-        })()
-
-        if (matchingEvent !== null) {
-          matchingEventSequence.push(matchingEvent)
-          continue
-        } else {
-          if (index > 0) return ReactionMatchResult.PartialMatch
-          if (index === 0) return null
-        }
-      }
-
-      return ReactionMatchResult.TotalMatch
-    })()
-
-    return {
-      result,
-      orphans: orphanEventSequence,
-      matching: matchingEventSequence,
-    }
-  }
-
   export namespace ReactionHandling {
     export type Queue = typeof Queue
     export const Queue: unique symbol = Symbol('Queue')
+
+    export type DiscardLast = typeof DiscardLast
+    export const DiscardLast: unique symbol = Symbol('DiscardLast')
 
     export type Discard = typeof Discard
     export const Discard: unique symbol = Symbol('Discard')
@@ -426,15 +369,15 @@ namespace StateContainerCommon {
     export const InvalidQueueEmpty: unique symbol = Symbol('InvalidQueueEmpty')
   }
 
-  // TODO: optimize reaction query checking and queueing by only checking the first and the last index
-  // as how the first runner version does it
-
   export type EventQueueHandling =
     | {
         handling: ReactionHandling.Execute
         reaction: Reaction<ReactionContext<any>>
-        orphans: ActyxEvent<Event.Any>[]
         matching: Event.Any[]
+      }
+    | {
+        handling: ReactionHandling.DiscardLast
+        orphan: ActyxEvent<Event.Any>
       }
     | {
         handling: ReactionHandling.Discard
@@ -450,47 +393,45 @@ namespace StateContainerCommon {
   }
 
   const determineEventQueueHandling = <Self>(
-    reactions: Reaction<ReactionContext<Self>>[],
+    reactions: ReactionMapPerMechanism<Self>,
     queue: ActyxEvent<Event.Any>[],
   ): EventQueueHandling & {
     reactionMatchResults?: ReactionMatchResult[]
   } => {
-    if (queue.length === 0) {
+    const firstEvent = queue.at(0)
+    if (!firstEvent) {
       return {
         handling: ReactionHandling.InvalidQueueEmpty,
       }
     }
 
-    const reactionMatchResults: ReactionMatchResult[] = []
-    const partialMatches: Reaction<ReactionContext<Self>>[] = []
+    const matchingReaction = reactions.get(firstEvent.payload.type)
 
-    for (const reaction of reactions) {
-      const { result, orphans, matching } = matchReaction(reaction, queue)
-      if (result === ReactionMatchResult.TotalMatch) {
-        return {
-          handling: ReactionHandling.Execute,
-          reaction,
-          orphans,
-          matching,
-        }
-      } else if (result === ReactionMatchResult.PartialMatch) {
-        partialMatches.push(reaction)
-      }
-
-      reactionMatchResults.push({
-        queue: [...queue],
-        reaction: reaction,
-      })
+    if (!matchingReaction) {
+      return { handling: ReactionHandling.Discard, orphans: [...queue] }
     }
 
-    if (partialMatches.length > 0) {
+    const lastEventIndex = queue.length - 1
+    const lastEvent = queue[lastEventIndex]
+
+    if (lastEvent.payload.type !== matchingReaction.eventChainTrigger[lastEventIndex]?.type) {
       return {
-        reactionMatchResults,
-        handling: ReactionHandling.Queue,
+        handling: ReactionHandling.DiscardLast,
+        orphan: lastEvent,
       }
     }
 
-    return { reactionMatchResults, handling: ReactionHandling.Discard, orphans: [...queue] }
+    if (queue.length === matchingReaction.eventChainTrigger.length) {
+      return {
+        handling: ReactionHandling.Execute,
+        matching: [...queue].map((actyxEvent) => actyxEvent.payload),
+        reaction: matchingReaction,
+      }
+    }
+
+    return {
+      handling: ReactionHandling.Queue,
+    }
   }
 
   export const reset = (internals: StateContainerInternals.Any) => {
@@ -511,10 +452,10 @@ namespace StateContainerCommon {
     const queueSnapshotBeforeExecution = [...internals.queue]
 
     const mechanism = internals.current.factory.mechanism()
-    const protocol = internals.current.factory.mechanism().protocol
+    const protocol = mechanism.protocol
     const reactions = protocol.reactionMap.get(mechanism)
 
-    const handlingResult = determineEventQueueHandling(reactions, internals.queue)
+    const handlingResult = determineEventQueueHandling<StatePayload>(reactions, internals.queue)
 
     if (handlingResult.handling === ReactionHandling.Execute) {
       const reaction = handlingResult.reaction
@@ -539,12 +480,13 @@ namespace StateContainerCommon {
         factory: reaction.next,
       }
 
-      // TODO: change to satisfies
       internals.queue = []
     } else if (handlingResult.handling === ReactionHandling.Queue) {
       // do nothing, item has been pushed
     } else if (handlingResult.handling === ReactionHandling.Discard) {
       internals.queue = []
+    } else if (handlingResult.handling === ReactionHandling.DiscardLast) {
+      internals.queue.pop()
     } else if (handlingResult.handling === ReactionHandling.InvalidQueueEmpty) {
       // impossible to happen because `internal.queue.push(event)` above but who knows?
       // TODO: implement anyway

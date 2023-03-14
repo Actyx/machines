@@ -58,18 +58,32 @@ export namespace Protocol {
   ): Protocol<ProtocolName, EventFactoriesTuple> => {
     type Self = Protocol<ProtocolName, EventFactoriesTuple>
     type Internals = ProtocolInternals<ProtocolName, EventFactoriesTuple>
+
     const protocolInternal: Internals = {
       name: protocolName,
       registeredEvents,
+      registeredStateNames: new Set(),
       reactionMap: ReactionMap.make(),
     }
 
-    const designState: Self['designState'] = (stateName) => ({
-      withPayload: () => StateMechanism.make(protocolInternal, stateName),
-    })
+    const markStateNameAsUsed = (stateName: string) => {
+      if (protocolInternal.registeredStateNames.has(stateName)) {
+        throw new Error(`State "${stateName}" already registered within this protocol`)
+      }
+      protocolInternal.registeredStateNames.add(stateName)
+    }
 
-    const designEmpty: Self['designEmpty'] = (stateName) =>
-      StateMechanism.make(protocolInternal, stateName)
+    const designState: Self['designState'] = (stateName) => {
+      markStateNameAsUsed(stateName)
+      return {
+        withPayload: () => StateMechanism.make(protocolInternal, stateName),
+      }
+    }
+
+    const designEmpty: Self['designEmpty'] = (stateName) => {
+      markStateNameAsUsed(stateName)
+      return StateMechanism.make(protocolInternal, stateName)
+    }
 
     const internals: Self['internals'] = () => protocolInternal
 

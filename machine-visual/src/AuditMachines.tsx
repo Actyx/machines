@@ -342,6 +342,7 @@ export function AuditMachines({ actyx, machines }: Props) {
                 y={typeLabels}
                 text={states.merged[ppIdx].event.payload.type}
                 rotation={90}
+                
                 verticalAlign="middle"
                 height={20}
               />
