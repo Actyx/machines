@@ -8,9 +8,9 @@
     ".": "./lib/index.js"
   },
   "scripts": {
-    "prepare:machine-check": "cd ../machine-check && npm install && npm run build",
     "prepare:machine-runner": "cd ../machine-runner && npm install && npm run build",
-    "prepare": "npm run prepare:machine-runner && npm run prepare:machine-check",
+    "prepare": "npm run prepare:machine-runner",
+    "clean": "rimraf ./lib",
     "build": "tsc"
   },
   "keywords": [
