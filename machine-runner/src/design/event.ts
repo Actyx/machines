@@ -1,4 +1,4 @@
-import * as utils from '../api2utils/type-utils.js'
+import * as utils from '../utils/type-utils.js'
 
 // TODO: rethink name "Event" is an overused name and maybe a global name in TS/JS
 export type Event<Key extends string, Payload extends object> = {

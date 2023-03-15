@@ -1,24 +1,23 @@
+import { createMachineRunner, MachineRunner, utils } from '@actyx/machine-runner'
+import { AuditMachines } from '@actyx/machine-visual'
 import { Actyx } from '@actyx/sdk'
 import { useEffect, useMemo, useState } from 'react'
-import * as runnerAPI from '@actyx/machine-runner/lib/api2.js'
-import { AuditMachines } from '@actyx/machine-visual'
 import { InitialP, InitialT, TaxiTag } from './machines.js'
 
 import { UIMachine } from './UIMachine.js'
-import { deepCopy } from '@actyx/machine-runner/lib/runner.js'
 
 export const AppImpl = ({ actyx }: { actyx: Actyx }) => {
   const [id, setId] = useState('1')
 
   const where = TaxiTag.withId(id)
 
-  const passengerMachine: runnerAPI.MachineRunner = useMemo(() => {
-    return runnerAPI.createMachineRunner(actyx, where, InitialP, void 0)
+  const passengerMachine: MachineRunner = useMemo(() => {
+    return createMachineRunner(actyx, where, InitialP, void 0)
   }, [actyx, id])
 
   useEffect(() => {
     const unsubPrevstate = passengerMachine.channels.debug.eventHandlingPrevState.sub((prevstate) =>
-      console.log('PassengerMachine prevstate', deepCopy(prevstate)),
+      console.log('PassengerMachine prevstate', utils.deepCopy(prevstate)),
     )
 
     const unsubDebug = passengerMachine.channels.debug.eventHandling.sub(
@@ -28,17 +27,17 @@ export const AppImpl = ({ actyx }: { actyx: Actyx }) => {
           factory,
           handlingReport,
           mechanism,
-          nextState: deepCopy(nextState),
+          nextState: utils.deepCopy(nextState),
         })
       },
     )
 
     const unsubCaughtUp = passengerMachine.channels.debug.caughtUp.sub(() => {
-      console.log('PassengerMachine state after caughtUp', deepCopy(passengerMachine.get()))
+      console.log('PassengerMachine state after caughtUp', utils.deepCopy(passengerMachine.get()))
     })
 
     const unsubAuditState = passengerMachine.channels.audit.state.sub((x) => {
-      console.log('PassengerMachine state change to ', deepCopy(x.state))
+      console.log('PassengerMachine state change to ', utils.deepCopy(x.state))
     })
 
     return () => {
@@ -51,9 +50,9 @@ export const AppImpl = ({ actyx }: { actyx: Actyx }) => {
     }
   }, [passengerMachine])
 
-  const taxi1Machine: runnerAPI.MachineRunner = useMemo(
+  const taxi1Machine: MachineRunner = useMemo(
     () =>
-      runnerAPI.createMachineRunner(actyx, where, InitialT, {
+      createMachineRunner(actyx, where, InitialT, {
         id: 'one',
       }),
     [actyx, id],
@@ -61,7 +60,7 @@ export const AppImpl = ({ actyx }: { actyx: Actyx }) => {
 
   useEffect(() => {
     const unsubPrevstate = taxi1Machine.channels.debug.eventHandlingPrevState.sub((prevstate) =>
-      console.log('taxi1Machine1 prevstate', deepCopy(prevstate)),
+      console.log('taxi1Machine1 prevstate', utils.deepCopy(prevstate)),
     )
 
     const unsubDebug = taxi1Machine.channels.debug.eventHandling.sub(
@@ -71,17 +70,17 @@ export const AppImpl = ({ actyx }: { actyx: Actyx }) => {
           factory,
           handlingReport,
           mechanism,
-          nextState: deepCopy(nextState),
+          nextState: utils.deepCopy(nextState),
         })
       },
     )
 
     const unsubCaughtUp = taxi1Machine.channels.debug.caughtUp.sub(() => {
-      console.log('taxi1Machine1 state after caughtUp', deepCopy(passengerMachine.get()))
+      console.log('taxi1Machine1 state after caughtUp', utils.deepCopy(passengerMachine.get()))
     })
 
     const unsubAuditState = taxi1Machine.channels.audit.state.sub((x) => {
-      console.log('taxi1Machine1 state change to ', deepCopy(x.state))
+      console.log('taxi1Machine1 state change to ', utils.deepCopy(x.state))
     })
 
     return () => {
@@ -93,9 +92,9 @@ export const AppImpl = ({ actyx }: { actyx: Actyx }) => {
     }
   }, [taxi1Machine])
 
-  const taxi2Machine: runnerAPI.MachineRunner = useMemo(
+  const taxi2Machine: MachineRunner = useMemo(
     () =>
-      runnerAPI.createMachineRunner(actyx, where, InitialT, {
+      createMachineRunner(actyx, where, InitialT, {
         id: 'two',
       }),
     [actyx, id],
@@ -103,7 +102,7 @@ export const AppImpl = ({ actyx }: { actyx: Actyx }) => {
 
   useEffect(() => {
     const unsubPrevstate = taxi2Machine.channels.debug.eventHandlingPrevState.sub((prevstate) =>
-      console.log('taxi2Machine prevstate', deepCopy(prevstate)),
+      console.log('taxi2Machine prevstate', utils.deepCopy(prevstate)),
     )
 
     const unsubDebug = taxi2Machine.channels.debug.eventHandling.sub(
@@ -113,17 +112,17 @@ export const AppImpl = ({ actyx }: { actyx: Actyx }) => {
           factory,
           handlingReport,
           mechanism,
-          nextState: deepCopy(nextState),
+          nextState: utils.deepCopy(nextState),
         })
       },
     )
 
     const unsubCaughtUp = taxi2Machine.channels.debug.caughtUp.sub(() => {
-      console.log('taxi2Machine state after caughtUp', deepCopy(passengerMachine.get()))
+      console.log('taxi2Machine state after caughtUp', utils.deepCopy(passengerMachine.get()))
     })
 
     const unsubAuditState = taxi2Machine.channels.audit.state.sub((x) => {
-      console.log('taxi2Machine state change to ', deepCopy(x.state))
+      console.log('taxi2Machine state change to ', utils.deepCopy(x.state))
     })
     return () => {
       unsubCaughtUp()

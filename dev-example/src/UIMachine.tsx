@@ -1,4 +1,4 @@
-import { MachineRunner } from '@actyx/machine-runner/lib/api2.js'
+import { MachineRunner } from '@actyx/machine-runner'
 import { useEffect, useState } from 'react'
 import { AuctionP, AuctionT, FirstBidT, InitialP, InitialT, RideP, RideT } from './machines.js'
 import { PrintState } from './UIMachineCommon.js'
@@ -29,25 +29,25 @@ export const UIMachine = ({ machine, name }: { name: string; machine: MachineRun
     <div>
       <PrintState snapshot={stateSnapshot} />
       {match(stateSnapshot.as(InitialP), (machine) => (
-        <UIInitialP state={machine} />
+        <UIInitialP snapshot={machine} />
       ))}
       {match(stateSnapshot.as(AuctionP), (machine) => (
-        <UIAuctionP state={machine} />
+        <UIAuctionP snapshot={machine} />
       ))}
       {match(stateSnapshot.as(RideP), (machine) => (
-        <UIRideP state={machine} />
+        <UIRideP snapshot={machine} />
       ))}
       {match(stateSnapshot.as(InitialT), (machine) => (
         <UIInitialT state={machine} />
       ))}
       {match(stateSnapshot.as(FirstBidT), (machine) => (
-        <UIFirstBidT state={machine} />
+        <UIFirstBidT snapshot={machine} />
       ))}
       {match(stateSnapshot.as(AuctionT), (machine) => (
-        <UIAuctionT state={machine} />
+        <UIAuctionT snapshot={machine} />
       ))}
       {match(stateSnapshot.as(RideT), (machine) => (
-        <UIRideT state={machine} />
+        <UIRideT snapshot={machine} />
       ))}
     </div>
   )

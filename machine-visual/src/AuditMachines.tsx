@@ -1,6 +1,5 @@
-import { MachineRunner } from '@actyx/machine-runner/lib/api2.js'
-import { State } from '@actyx/machine-runner/lib/api2/state-machine.js'
-import { Actyx, ActyxEvent, Where } from '@actyx/sdk'
+import { MachineRunner, State } from '@actyx/machine-runner'
+import { Actyx, ActyxEvent } from '@actyx/sdk'
 import { Fragment, useEffect, useState } from 'react'
 import { Stage, Layer, Circle, Line, Label, Tag, Text, Rect } from 'react-konva'
 
@@ -342,7 +341,6 @@ export function AuditMachines({ actyx, machines }: Props) {
                 y={typeLabels}
                 text={states.merged[ppIdx].event.payload.type}
                 rotation={90}
-                
                 verticalAlign="middle"
                 height={20}
               />

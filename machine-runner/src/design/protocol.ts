@@ -1,4 +1,4 @@
-import { StateMechanism, Event, ProtocolInternals, ReactionMap } from './state-machine.js'
+import { StateMechanism, Event, ProtocolInternals, ReactionMap } from './state.js'
 
 // TODO: alternative protocol designer with builder pattern
 export type Protocol<

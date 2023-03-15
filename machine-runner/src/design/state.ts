@@ -1,12 +1,18 @@
-import * as utils from '../api2utils/type-utils.js'
+import * as utils from '../utils/type-utils.js'
 import { CommandDefiner, CommandDefinerMap } from './command.js'
 import { Event } from './event.js'
 
-export * from './state-raw.js'
 export * from './command.js'
 export * from './event.js'
 
-// https://hackmd.io/9ziWhXa1RamB2toqQard1g?both
+export type State<Name extends string, Payload extends any> = {
+  type: Name
+  payload: Payload
+}
+
+export namespace State {
+  export type Any = State<string, any>
+}
 
 export type ReactionHandler<EventChain extends Event.Any[], Context, RetVal extends any> = (
   context: Context,
@@ -86,12 +92,10 @@ export type StateMechanism<
   Commands extends CommandDefinerMap<any, any, Event.Any[]>,
 > = {
   readonly protocol: ProtocolInternals<ProtocolName, RegisteredEventsFactoriesTuple>
-
   readonly name: StateName
+  readonly commands: Commands
 
-  commands: Commands
-
-  command: <
+  readonly command: <
     CommandName extends string,
     AcceptedEventFactories extends utils.NonZeroTuple<
       Event.Factory.Reduce<RegisteredEventsFactoriesTuple>
@@ -119,7 +123,7 @@ export type StateMechanism<
     }
   >
 
-  finish: () => StateFactory<
+  readonly finish: () => StateFactory<
     ProtocolName,
     RegisteredEventsFactoriesTuple,
     StateName,
@@ -232,7 +236,7 @@ export type StateFactory<
 > = {
   make: (payload: StatePayload) => StatePayload
   symbol: () => Symbol
-  mechanism: () => StateMechanism<
+  readonly mechanism: StateMechanism<
     ProtocolName,
     RegisteredEventsFactoriesTuple,
     StateName,
@@ -311,8 +315,8 @@ export namespace StateFactory {
     const self: Self = {
       react,
       make,
+      mechanism,
       symbol: () => factorySymbol,
-      mechanism: () => mechanism,
     }
     return self
   }

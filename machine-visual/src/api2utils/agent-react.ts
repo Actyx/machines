@@ -1,14 +1,11 @@
-import { Agent } from '@actyx/machine-runner/lib/api2.js'
+import { MachineRunner } from '@actyx/machine-runner'
 import { useEffect, useMemo, useState } from 'react'
 
-export namespace AgentReact {
+export namespace MachineRunnerReact {
   const DEFAULT_SYMBOL = Symbol()
 
-  export const use = <API extends Agent.DefaultAPI, Channels extends Agent.DefaultChannels>(
-    factoryFn: () => Agent<API, Channels>,
-    deps: any[] = [],
-  ) => {
-    const agent = useMemo(() => factoryFn(), deps)
+  export const use = (runnerFactoryFn: () => MachineRunner, deps: any[] = []) => {
+    const agent = useMemo(() => runnerFactoryFn(), deps)
     const [_, setKey] = useState<Symbol>(DEFAULT_SYMBOL)
 
     useEffect(() => {
@@ -25,14 +22,11 @@ export namespace AgentReact {
     return agent
   }
 
-  export const useBorrowed = <API extends Agent.DefaultAPI, Channels extends Agent.DefaultChannels>(
-    agent: Agent<API, Channels>,
-    deps: any[] = [],
-  ) => {
+  export const useBorrowed = (runner: MachineRunner, deps: any[] = []) => {
     const [_, setKey] = useState<Symbol>(DEFAULT_SYMBOL)
 
     useEffect(() => {
-      const unsub = agent.channels.change.sub(() => {
+      const unsub = runner.channels.change.sub(() => {
         setKey(Symbol())
       })
 
@@ -41,6 +35,6 @@ export namespace AgentReact {
       }
     }, [deps])
 
-    return agent
+    return runner
   }
 }

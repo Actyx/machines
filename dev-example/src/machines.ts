@@ -1,6 +1,5 @@
 import { Tag } from '@actyx/sdk'
-import { Protocol } from '@actyx/machine-runner/lib/api2.js'
-import { Event } from '@actyx/machine-runner/lib/api2/event.js'
+import { Event, Protocol } from '@actyx/machine-runner'
 
 /**
  * Actyx pub-sub is based on topics selected by tagging (which supports

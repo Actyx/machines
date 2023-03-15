@@ -1,13 +1,12 @@
-import { StateSnapshot } from '@actyx/machine-runner/lib/api2.js'
+import { StateSnapshot } from '@actyx/machine-runner'
 import { useState } from 'react'
 import { AuctionT, FirstBidT, InitialT, RideT } from './machines.js'
-import { PrintState } from './UIMachineCommon.js'
 
 export const UIInitialT = ({ state: machine }: { state: StateSnapshot.Of<typeof InitialT> }) => {
   return <div>Waiting for passengers...</div>
 }
 
-export const UIFirstBidT = ({ state: machine }: { state: StateSnapshot.Of<typeof FirstBidT> }) => {
+export const UIFirstBidT = ({ snapshot }: { snapshot: StateSnapshot.Of<typeof FirstBidT> }) => {
   const [price, setPrice] = useState<number | null>(null)
   return (
     <div>
@@ -31,7 +30,7 @@ export const UIFirstBidT = ({ state: machine }: { state: StateSnapshot.Of<typeof
         type="button"
         onClick={() => {
           if (price !== null) {
-            machine.commands.bid({
+            snapshot.commands.bid({
               price: price,
               time: new Date(),
             })
@@ -44,7 +43,7 @@ export const UIFirstBidT = ({ state: machine }: { state: StateSnapshot.Of<typeof
   )
 }
 
-export const UIAuctionT = ({ state: machine }: { state: StateSnapshot.Of<typeof AuctionT> }) => {
+export const UIAuctionT = ({ snapshot }: { snapshot: StateSnapshot.Of<typeof AuctionT> }) => {
   const [price, setPrice] = useState<number | null>(null)
   return (
     <div>
@@ -68,7 +67,7 @@ export const UIAuctionT = ({ state: machine }: { state: StateSnapshot.Of<typeof 
         type="button"
         onClick={() => {
           if (price !== null) {
-            machine.commands.bid({
+            snapshot.commands.bid({
               price: price,
               time: new Date(),
             })
@@ -81,6 +80,6 @@ export const UIAuctionT = ({ state: machine }: { state: StateSnapshot.Of<typeof 
   )
 }
 
-export const UIRideT = ({ state: machine }: { state: StateSnapshot.Of<typeof RideT> }) => {
+export const UIRideT = ({ snapshot }: { snapshot: StateSnapshot.Of<typeof RideT> }) => {
   return null
 }

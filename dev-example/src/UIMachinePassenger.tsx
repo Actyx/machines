@@ -1,8 +1,8 @@
-import { StateSnapshot } from '@actyx/machine-runner/lib/api2.js'
+import { StateSnapshot } from '@actyx/machine-runner'
 import { useState } from 'react'
 import { AuctionP, BidData, InitialP, RideP } from './machines.js'
 
-export const UIInitialP = ({ state }: { state: StateSnapshot.Of<typeof InitialP> }) => {
+export const UIInitialP = ({ snapshot }: { snapshot: StateSnapshot.Of<typeof InitialP> }) => {
   const [pickup, setPickup] = useState('')
   const [destination, setDestination] = useState('')
   const buttonEnabled = !!pickup.trim() && !!destination.trim()
@@ -24,7 +24,7 @@ export const UIInitialP = ({ state }: { state: StateSnapshot.Of<typeof InitialP>
         type="button"
         disabled={!buttonEnabled}
         onClick={() =>
-          state.commands.request({
+          snapshot.commands.request({
             pickup,
             destination,
           })
@@ -36,21 +36,23 @@ export const UIInitialP = ({ state }: { state: StateSnapshot.Of<typeof InitialP>
   )
 }
 
-export const UIAuctionP = ({ state }: { state: StateSnapshot.Of<typeof AuctionP> }) => {
-  const [selection, setSelection] = useState<BidData | null>(state.payload.bids[0] || null)
+export const UIAuctionP = ({ snapshot }: { snapshot: StateSnapshot.Of<typeof AuctionP> }) => {
+  const [selection, setSelection] = useState<BidData | null>(snapshot.payload.bids[0] || null)
 
   return (
     <div>
       <select
         onChange={(e) => {
           const selectedBidderId = e.target.value
-          const matchingBidder = state.payload.bids.find((bid) => bid.bidderID === selectedBidderId)
+          const matchingBidder = snapshot.payload.bids.find(
+            (bid) => bid.bidderID === selectedBidderId,
+          )
 
           setSelection(matchingBidder || null)
         }}
       >
         {selection === null && <option>No taxis available</option>}
-        {state.payload.bids.map((bid) => {
+        {snapshot.payload.bids.map((bid) => {
           return (
             <option key={bid.bidderID} value={bid.bidderID}>
               {bid.bidderID}/{bid.price} at {bid.time.toISOString()}
@@ -62,7 +64,7 @@ export const UIAuctionP = ({ state }: { state: StateSnapshot.Of<typeof AuctionP>
         disabled={selection === null}
         onClick={() => {
           if (selection !== null) {
-            state.commands.select(selection.bidderID)
+            snapshot.commands.select(selection.bidderID)
           }
         }}
       >
@@ -72,12 +74,12 @@ export const UIAuctionP = ({ state }: { state: StateSnapshot.Of<typeof AuctionP>
   )
 }
 
-export const UIRideP = ({ state: machine }: { state: StateSnapshot.Of<typeof RideP> }) => {
+export const UIRideP = ({ snapshot }: { snapshot: StateSnapshot.Of<typeof RideP> }) => {
   return (
     <div>
       <button
         onClick={() => {
-          machine.commands.cancel()
+          snapshot.commands.cancel()
         }}
       >
         Cancel Ride

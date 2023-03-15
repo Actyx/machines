@@ -1,5 +1,9 @@
-export { init, proto as protoUseGeneratedReExportInstead } from './decorator.js'
-export { runMachine, auditMachine, Auditor } from './runner.js'
-export { ToEmit, Reactions, Commands, State, Events, States } from './types.js'
-import * as api2 from './api2.js'
-export { api2 }
+export * from './runner/index.js'
+export { Event } from './design/event.js'
+export { Protocol } from './design/protocol.js'
+export { State } from './design/state.js'
+import { deepCopy } from './utils/object-utils.js'
+
+export const utils = {
+  deepCopy,
+}
