@@ -6,17 +6,17 @@ import { UIAuctionP, UIInitialP, UIRideP } from './UIMachinePassenger.js'
 import { UIAuctionT, UIFirstBidT, UIInitialT, UIRideT } from './UIMachineTaxi.js'
 
 export const UIMachine = ({ machine, name }: { name: string; machine: MachineRunner }) => {
-  const [stateSnapshot, setStateSnapshot] = useState(machine.get())
+  const [state, setState] = useState(machine.get())
 
   useEffect(() => {
     let active = true
 
     ;(async () => {
-      for await (const snapshot of machine) {
+      for await (const state of machine) {
         if (!active) {
           break
         }
-        setStateSnapshot(snapshot)
+        setState(state)
       }
     })()
 
@@ -27,38 +27,28 @@ export const UIMachine = ({ machine, name }: { name: string; machine: MachineRun
 
   return (
     <div>
-      <PrintState snapshot={stateSnapshot} />
-      {match(stateSnapshot.as(InitialP), (machine) => (
-        <UIInitialP snapshot={machine} />
+      <PrintState state={state} />
+      {state.as(InitialP, (state) => (
+        <UIInitialP state={state} />
       ))}
-      {match(stateSnapshot.as(AuctionP), (machine) => (
-        <UIAuctionP snapshot={machine} />
+      {state.as(AuctionP, (state) => (
+        <UIAuctionP state={state} />
       ))}
-      {match(stateSnapshot.as(RideP), (machine) => (
-        <UIRideP snapshot={machine} />
+      {state.as(RideP, (state) => (
+        <UIRideP state={state} />
       ))}
-      {match(stateSnapshot.as(InitialT), (machine) => (
-        <UIInitialT state={machine} />
+      {state.as(InitialT, (state) => (
+        <UIInitialT state={state} />
       ))}
-      {match(stateSnapshot.as(FirstBidT), (machine) => (
-        <UIFirstBidT snapshot={machine} />
+      {state.as(FirstBidT, (state) => (
+        <UIFirstBidT state={state} />
       ))}
-      {match(stateSnapshot.as(AuctionT), (machine) => (
-        <UIAuctionT snapshot={machine} />
+      {state.as(AuctionT, (state) => (
+        <UIAuctionT state={state} />
       ))}
-      {match(stateSnapshot.as(RideT), (machine) => (
-        <UIRideT snapshot={machine} />
+      {state.as(RideT, (state) => (
+        <UIRideT state={state} />
       ))}
     </div>
   )
-}
-
-export const match: <Val, RetVal>(
-  initVal: Val | undefined | null | void,
-  fn: (val: Val) => RetVal,
-) => RetVal | undefined = (val, fn) => {
-  if (val) {
-    return fn(val)
-  }
-  return undefined
 }

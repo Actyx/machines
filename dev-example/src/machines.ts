@@ -71,10 +71,6 @@ export const TaxiTag = Tag<Protocol.EventsOf<typeof protocol>>('taxi')
 
 // States
 
-// TODO: fix ergonomic
-// Writing reactions before all states are defined is janky because
-// E.g. Writing AuctionP.make(...) before AuctionP makes TS marks AuctionP as a compile error in the IDE
-// Consideration, focus on State creation and commands before writing reactions?
 export const InitialP = protocol
   .designEmpty('InitialP')
   .command('request', [Requested], (_, params: { pickup: string; destination: string }) => [

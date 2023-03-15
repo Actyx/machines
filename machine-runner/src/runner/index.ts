@@ -1,1 +1,1 @@
-export { MachineRunner, StateSnapshot, StateSnapshotOpaque, createMachineRunner } from './runner.js'
+export { MachineRunner, State, StateOpaque, createMachineRunner } from './runner.js'

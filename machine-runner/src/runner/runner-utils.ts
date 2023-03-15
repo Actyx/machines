@@ -1,6 +1,6 @@
 import { ActyxEvent } from '@actyx/sdk'
 import { Obs } from '../utils/obs.js'
-import { State, StateFactory, StateMechanism } from '../design/state.js'
+import { StateRaw, StateFactory, StateMechanism } from '../design/state.js'
 import { Event } from '../design/event.js'
 import { PushEventResult } from './runner-internals.js'
 
@@ -8,15 +8,15 @@ export const createChannelsForMachineRunner = () => ({
   audit: {
     reset: Obs.make<void>(),
     state: Obs.make<{
-      state: State.Any
+      state: StateRaw.Any
       events: ActyxEvent<Event.Any>[]
     }>(),
     dropped: Obs.make<{
-      state: State.Any
+      state: StateRaw.Any
       events: ActyxEvent<Event.Any>[]
     }>(),
     error: Obs.make<{
-      state: State.Any
+      state: StateRaw.Any
       events: ActyxEvent<Event.Any>[]
       error: unknown
     }>(),

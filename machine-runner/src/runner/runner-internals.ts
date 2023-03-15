@@ -7,7 +7,7 @@ import {
   Reaction,
   ReactionContext,
   ReactionMapPerMechanism,
-  State,
+  StateRaw,
   StateFactory,
 } from '../design/state.js'
 
@@ -37,6 +37,7 @@ export namespace RunnerInternals {
     reaction: Reaction<ReactionContext<any>>
     queue: ActyxEvent<Event.Any>[]
   }
+
   export const make = <
     ProtocolName extends string,
     RegisteredEventsFactoriesTuple extends Event.Factory.NonZeroTuple,
@@ -61,7 +62,7 @@ export namespace RunnerInternals {
       Commands
     > = {
       factory,
-      state: {
+      data: {
         payload,
         type: factory.mechanism.name,
       },
@@ -76,7 +77,7 @@ export namespace RunnerInternals {
       initial: initial,
       current: {
         factory: initial.factory,
-        state: deepCopy(initial.state),
+        data: deepCopy(initial.data),
       },
       obs: Obs.make(),
       queue: [],
@@ -131,7 +132,7 @@ export namespace RunnerInternals {
     const initial = internals.initial
     internals.current = {
       factory: initial.factory,
-      state: deepCopy(initial.state),
+      data: deepCopy(initial.data),
     }
     internals.queue = []
   }
@@ -158,7 +159,7 @@ export namespace RunnerInternals {
       // .splice mutates
       const nextPayload = reaction.handler(
         {
-          self: internals.current.state.payload,
+          self: internals.current.data.payload,
         },
         matchingEventSequence,
       )
@@ -166,7 +167,7 @@ export namespace RunnerInternals {
       const nextFactory = reaction.next
 
       internals.current = {
-        state: {
+        data: {
           type: nextFactory.mechanism.name,
           payload: nextPayload,
         },
@@ -206,7 +207,7 @@ type StateAndFactory<
     StatePayload,
     Commands
   >
-  state: State<any, any>
+  data: StateRaw<any, any>
 }
 
 export type PushEventResult = EventQueueHandling & {

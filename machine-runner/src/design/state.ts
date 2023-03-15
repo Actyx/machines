@@ -5,13 +5,13 @@ import { Event } from './event.js'
 export * from './command.js'
 export * from './event.js'
 
-export type State<Name extends string, Payload extends any> = {
+export type StateRaw<Name extends string, Payload extends any> = {
   type: Name
   payload: Payload
 }
 
-export namespace State {
-  export type Any = State<string, any>
+export namespace StateRaw {
+  export type Any = StateRaw<string, any>
 }
 
 export type ReactionHandler<EventChain extends Event.Any[], Context, RetVal extends any> = (
@@ -212,7 +212,6 @@ export namespace StateMechanism {
   }
 }
 
-// TODO: rename
 // ==================================
 // StateFactory
 // ==================================
@@ -302,7 +301,6 @@ export namespace StateFactory {
       StatePayload,
       Commands
     >
-    // TODO: to make it serializable, turn symbol into compile-consistent string
     const factorySymbol = Symbol(mechanism.name)
     const react: Self['react'] = (eventChainTrigger, nextFactory, handler) => {
       // TODO: remove "as any", fix issue with suspicious typing error:

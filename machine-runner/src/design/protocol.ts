@@ -1,11 +1,9 @@
 import { StateMechanism, Event, ProtocolInternals, ReactionMap } from './state.js'
 
-// TODO: alternative protocol designer with builder pattern
 export type Protocol<
   ProtocolName extends string,
   RegisteredEventsFactoriesTuple extends Event.Factory.NonZeroTuple,
 > = {
-  // TODO: add NextState Factory type
   designState: <StateName extends string>(
     stateName: StateName,
   ) => Protocol.DesignStateIntermediate<ProtocolName, RegisteredEventsFactoriesTuple, StateName>

@@ -1,4 +1,4 @@
-import { MachineRunner, State } from '@actyx/machine-runner'
+import { MachineRunner, State, StateRaw } from '@actyx/machine-runner'
 import { Actyx, ActyxEvent } from '@actyx/sdk'
 import { Fragment, useEffect, useState } from 'react'
 import { Stage, Layer, Circle, Line, Label, Tag, Text, Rect } from 'react-konva'
@@ -11,8 +11,8 @@ type Props = {
 }
 
 type MachineState =
-  | { idx: number; type: 'state'; state: State.Any }
-  | { idx: number; type: 'unhandled'; state: State.Any }
+  | { idx: number; type: 'state'; state: StateRaw.Any }
+  | { idx: number; type: 'unhandled'; state: StateRaw.Any }
   | { idx: number; type: 'queued' }
   | { idx: number; type: 'error'; error: unknown }
 
@@ -23,9 +23,9 @@ type TimePoint = {
 }
 
 type MachinePoint =
-  | { type: 'state'; state: State.Any; events: ActyxEvent<Ev>[] }
-  | { type: 'unhandled'; state: State.Any; event: ActyxEvent<Ev> }
-  | { type: 'error'; state: State.Any; events: ActyxEvent<Ev>[]; err: unknown }
+  | { type: 'state'; state: StateRaw.Any; events: ActyxEvent<Ev>[] }
+  | { type: 'unhandled'; state: StateRaw.Any; event: ActyxEvent<Ev> }
+  | { type: 'error'; state: StateRaw.Any; events: ActyxEvent<Ev>[]; err: unknown }
 
 type States = {
   merged: TimePoint[]
@@ -189,7 +189,7 @@ export function AuditMachines({ actyx, machines }: Props) {
   const [states] = useState<States>(() => init(machines))
   const [places, setPlaces] = useState<Placement>({ minutes: [], perPoint: [] })
   const [se, setSE] = useState<{
-    state: State.Any
+    state: StateRaw.Any
     name: string
     machNr: number
     tpIdx: number
@@ -379,7 +379,7 @@ export function AuditMachines({ actyx, machines }: Props) {
                   if (mPos < 0) return
                   const m = tp.machines[mPos]
                   const x = mkX(places.perPoint[tpIdx].center)
-                  const mkCB = (state: State.Any) =>
+                  const mkCB = (state: StateRaw.Any) =>
                     machNr === se?.machNr && tpIdx === se?.tpIdx
                       ? undefined
                       : () => setSE({ name, state, machNr, tpIdx })

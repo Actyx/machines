@@ -10,7 +10,7 @@ import {
 } from '@actyx/sdk'
 import {
   Event,
-  State,
+  StateRaw,
   StateFactory,
   CommandDefinerMap,
   ToCommandSignatureMap,
@@ -89,7 +89,7 @@ export const createMachineRunnerInternal = <Payload>(
               } else if (d.type === MsgType.events) {
                 for (const event of d.events) {
                   // TODO: Runtime typeguard for event
-                  runnerAgent.channels.debug.eventHandlingPrevState.emit(internals.current.state)
+                  runnerAgent.channels.debug.eventHandlingPrevState.emit(internals.current.data)
 
                   const handlingReport = RunnerInternals.pushEvent(internals, event)
 
@@ -98,12 +98,12 @@ export const createMachineRunnerInternal = <Payload>(
                     handlingReport,
                     mechanism: internals.current.factory.mechanism,
                     factory: internals.current.factory,
-                    nextState: internals.current.state,
+                    nextState: internals.current.data,
                   })
 
                   if (handlingReport.handling === ReactionHandling.Execute) {
                     runnerAgent.channels.audit.state.emit({
-                      state: internals.current.state,
+                      state: internals.current.data,
                       events: handlingReport.queueSnapshotBeforeExecution,
                     })
                   }
@@ -111,7 +111,7 @@ export const createMachineRunnerInternal = <Payload>(
                   if (handlingReport.handling === ReactionHandling.Discard) {
                     if (handlingReport.orphans.length > 0) {
                       runnerAgent.channels.audit.dropped.emit({
-                        state: internals.current.state,
+                        state: internals.current.data,
                         events: handlingReport.orphans,
                       })
                     }
@@ -119,7 +119,7 @@ export const createMachineRunnerInternal = <Payload>(
 
                   if (handlingReport.handling === ReactionHandling.DiscardLast) {
                     runnerAgent.channels.audit.dropped.emit({
-                      state: internals.current.state,
+                      state: internals.current.data,
                       events: [handlingReport.orphan],
                     })
                   }
@@ -157,14 +157,14 @@ export const createMachineRunnerInternal = <Payload>(
       // AsyncIterator part
       const nextValueAwaiter = Agent.startBuild()
         .setAPI((flaggerInternal) => {
-          let nextValue: null | StateSnapshotOpaque = null
+          let nextValue: null | StateOpaque = null
           const subscription = runnerAgent.channels.change.sub(() => {
-            nextValue = StateSnapshotOpaque.make(internals)
+            nextValue = StateOpaque.make(internals)
           })
 
           const intoIteratorResult = (
-            value: StateSnapshotOpaque | null,
-          ): IteratorResult<StateSnapshotOpaque, null> => {
+            value: StateOpaque | null,
+          ): IteratorResult<StateOpaque, null> => {
             if (value === null) {
               return { done: true, value }
             } else {
@@ -172,11 +172,11 @@ export const createMachineRunnerInternal = <Payload>(
             }
           }
 
-          const waitForNextValue = (): Promise<IteratorResult<StateSnapshotOpaque, null>> => {
+          const waitForNextValue = (): Promise<IteratorResult<StateOpaque, null>> => {
             let cancel = () => {}
-            const promise = new Promise<IteratorResult<StateSnapshotOpaque, null>>((resolve) => {
+            const promise = new Promise<IteratorResult<StateOpaque, null>>((resolve) => {
               const cancelChangeSub = runnerAgent.channels.change.sub(() =>
-                resolve(intoIteratorResult(StateSnapshotOpaque.make(internals))),
+                resolve(intoIteratorResult(StateOpaque.make(internals))),
               )
               const cancelDestroySub = runnerAgent.channels.destroy.sub(() =>
                 resolve(intoIteratorResult(null)),
@@ -192,7 +192,7 @@ export const createMachineRunnerInternal = <Payload>(
           flaggerInternal.addDestroyHook(subscription)
 
           return {
-            consume: (): Promise<IteratorResult<StateSnapshotOpaque, null>> => {
+            consume: (): Promise<IteratorResult<StateOpaque, null>> => {
               if (runnerAgent.isDestroyed()) {
                 return Promise.resolve(intoIteratorResult(null))
               }
@@ -216,24 +216,24 @@ export const createMachineRunnerInternal = <Payload>(
 
       // Self API construction
 
-      const onThrowOrReturn = async (): Promise<IteratorResult<StateSnapshotOpaque, null>> => {
+      const onThrowOrReturn = async (): Promise<IteratorResult<StateOpaque, null>> => {
         runnerAgent.destroy()
         return { done: true, value: null }
       }
 
       const api = {
-        get: () => StateSnapshotOpaque.make(internals),
-        initial: () => internals.initial.state,
+        get: () => StateOpaque.make(internals),
+        initial: () => internals.initial.data,
       }
 
-      const iterator: AsyncIterableIterator<StateSnapshotOpaque> = {
-        next: (): Promise<IteratorResult<StateSnapshotOpaque, null>> => nextValueAwaiter.consume(),
+      const iterator: AsyncIterableIterator<StateOpaque> = {
+        next: (): Promise<IteratorResult<StateOpaque, null>> => nextValueAwaiter.consume(),
         return: onThrowOrReturn,
         throw: onThrowOrReturn,
         [Symbol.asyncIterator]: () => iterator,
       }
 
-      const self: AsyncIterableIterator<StateSnapshotOpaque> & typeof api = {
+      const self: AsyncIterableIterator<StateOpaque> & typeof api = {
         ...api,
         ...iterator,
       }
@@ -243,28 +243,30 @@ export const createMachineRunnerInternal = <Payload>(
     .build()
 }
 
-export type StateSnapshotOpaque = State<string, unknown> & {
+export type StateOpaque = StateRaw<string, unknown> & {
   as: <
     StateName extends string,
     StatePayload extends any,
     Commands extends CommandDefinerMap<any, any, Event.Any[]>,
+    Then extends (arg: State<StateName, StatePayload, Commands>) => any,
   >(
     factory: StateFactory<any, any, StateName, StatePayload, Commands>,
-  ) => StateSnapshot<StateName, StatePayload, Commands> | void
+    then?: Then,
+  ) => ReturnType<Then> | undefined
 }
 
-export namespace StateSnapshotOpaque {
+export namespace StateOpaque {
   export const make = (internals: RunnerInternals.Any) => {
     // Capture state and factory at snapshot call-time
-    const stateAtSnapshot = internals.current.state
+    const stateAtSnapshot = internals.current.data
     const factoryAtSnapshot = internals.current.factory as StateFactory.Any
     const isExpired = () =>
-      factoryAtSnapshot !== internals.current.factory || stateAtSnapshot !== internals.current.state
+      factoryAtSnapshot !== internals.current.factory || stateAtSnapshot !== internals.current.data
 
-    const as: StateSnapshotOpaque['as'] = (factory) => {
+    const as: StateOpaque['as'] = (factory, then) => {
       if (factoryAtSnapshot.mechanism === factory.mechanism) {
         const mechanism = factory.mechanism
-        return {
+        const snapshot = {
           payload: stateAtSnapshot.payload,
           type: stateAtSnapshot.type,
           commands: convertCommandMapToCommandSignatureMap<any, unknown, Event.Any[]>(
@@ -272,12 +274,13 @@ export namespace StateSnapshotOpaque {
             {
               isExpired,
               getActualContext: () => ({
-                self: internals.current.state.payload,
+                self: internals.current.data.payload,
               }),
               onReturn: (events) => internals.obs.emit(events),
             },
           ),
         }
+        return then ? then(snapshot) : snapshot
       }
       return undefined
     }
@@ -289,15 +292,15 @@ export namespace StateSnapshotOpaque {
   }
 }
 
-export type StateSnapshot<
+export type State<
   StateName extends string,
   StatePayload extends any,
   Commands extends CommandDefinerMap<any, any, Event.Any[]>,
-> = State<StateName, StatePayload> & {
+> = StateRaw<StateName, StatePayload> & {
   commands: ToCommandSignatureMap<Commands, any, Event.Any>
 }
 
-export namespace StateSnapshot {
+export namespace State {
   export type Of<T extends StateFactory.Any> = T extends StateFactory<
     any,
     any,
@@ -305,6 +308,6 @@ export namespace StateSnapshot {
     infer StatePayload,
     infer Commands
   >
-    ? StateSnapshot<StateName, StatePayload, Commands>
+    ? State<StateName, StatePayload, Commands>
     : never
 }

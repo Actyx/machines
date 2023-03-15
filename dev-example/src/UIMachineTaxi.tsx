@@ -1,12 +1,12 @@
-import { StateSnapshot } from '@actyx/machine-runner'
+import { State } from '@actyx/machine-runner'
 import { useState } from 'react'
 import { AuctionT, FirstBidT, InitialT, RideT } from './machines.js'
 
-export const UIInitialT = ({ state: machine }: { state: StateSnapshot.Of<typeof InitialT> }) => {
+export const UIInitialT = ({ state: state }: { state: State.Of<typeof InitialT> }) => {
   return <div>Waiting for passengers...</div>
 }
 
-export const UIFirstBidT = ({ snapshot }: { snapshot: StateSnapshot.Of<typeof FirstBidT> }) => {
+export const UIFirstBidT = ({ state: state }: { state: State.Of<typeof FirstBidT> }) => {
   const [price, setPrice] = useState<number | null>(null)
   return (
     <div>
@@ -30,7 +30,7 @@ export const UIFirstBidT = ({ snapshot }: { snapshot: StateSnapshot.Of<typeof Fi
         type="button"
         onClick={() => {
           if (price !== null) {
-            snapshot.commands.bid({
+            state.commands.bid({
               price: price,
               time: new Date(),
             })
@@ -43,7 +43,7 @@ export const UIFirstBidT = ({ snapshot }: { snapshot: StateSnapshot.Of<typeof Fi
   )
 }
 
-export const UIAuctionT = ({ snapshot }: { snapshot: StateSnapshot.Of<typeof AuctionT> }) => {
+export const UIAuctionT = ({ state: state }: { state: State.Of<typeof AuctionT> }) => {
   const [price, setPrice] = useState<number | null>(null)
   return (
     <div>
@@ -67,7 +67,7 @@ export const UIAuctionT = ({ snapshot }: { snapshot: StateSnapshot.Of<typeof Auc
         type="button"
         onClick={() => {
           if (price !== null) {
-            snapshot.commands.bid({
+            state.commands.bid({
               price: price,
               time: new Date(),
             })
@@ -80,6 +80,6 @@ export const UIAuctionT = ({ snapshot }: { snapshot: StateSnapshot.Of<typeof Auc
   )
 }
 
-export const UIRideT = ({ snapshot }: { snapshot: StateSnapshot.Of<typeof RideT> }) => {
+export const UIRideT = ({ state: state }: { state: State.Of<typeof RideT> }) => {
   return null
 }

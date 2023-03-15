@@ -1,9 +1,9 @@
-import { ActyxEvent, EventsOrTimetravel, MsgType, OnCompleteOrErr } from '@actyx/sdk'
+import { EventsOrTimetravel, MsgType, OnCompleteOrErr } from '@actyx/sdk'
 import { describe, expect, it } from '@jest/globals'
-import { createMachineRunnerInternal, StateSnapshot, StateSnapshotOpaque } from './runner/runner.js'
+import { createMachineRunnerInternal, State, StateOpaque } from './runner/runner.js'
 import { Event } from './design/event.js'
 import { Protocol } from './index.js'
-import { State, StateFactory } from './design/state.js'
+import { StateFactory } from './design/state.js'
 import { deepCopy } from './utils/object-utils.js'
 
 const One = Event.design('One').withPayload<{ x: number }>()
@@ -63,7 +63,7 @@ type StateUtil<E> = {
 class Runner<E extends Event.Any, Payload> {
   private cb: null | ((i: EventsOrTimetravel<E>) => void) = null
   private err: null | OnCompleteOrErr = null
-  private states: { snapshot: StateSnapshotOpaque; unhandled: Event.Any[] }[] = []
+  private states: { snapshot: StateOpaque; unhandled: Event.Any[] }[] = []
   private persisted: E[] = []
   private cancelCB
   private subCancel
@@ -156,10 +156,7 @@ class Runner<E extends Event.Any, Payload> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   assertState<Factory extends StateFactory<any, any, any, any, any>>(
     factory: Factory,
-    assertStateFurther?: (params: {
-      snapshot: StateSnapshot.Of<Factory>
-      unhandled: Event.Any[]
-    }) => void,
+    assertStateFurther?: (params: { snapshot: State.Of<Factory>; unhandled: Event.Any[] }) => void,
   ) {
     expect(this.unhandled).toHaveLength(0)
     const firstStateHistory = this.states.at(0)
@@ -168,7 +165,7 @@ class Runner<E extends Event.Any, Payload> {
 
     const { snapshot: s0, unhandled } = firstStateHistory
 
-    const snapshot = s0.as(factory) as StateSnapshot.Of<Factory> | void
+    const snapshot = s0.as(factory) as State.Of<Factory> | void
     expect(snapshot).toBeTruthy()
     if (assertStateFurther && !!snapshot) {
       assertStateFurther({ snapshot, unhandled })
