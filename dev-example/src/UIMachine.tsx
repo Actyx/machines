@@ -25,6 +25,14 @@ export const UIMachine = ({ machine, name }: { name: string; machine: MachineRun
     }
   }, [machine.id])
 
+  if (state.is(AuctionP)) {
+    const { bids } = state.payload
+    // just to demonstrate that `state.is()` works
+    console.log(bids)
+  }
+  // check that this is not `any`:
+  const x = state.as(AuctionP)
+
   return (
     <div>
       <PrintState state={state} />
