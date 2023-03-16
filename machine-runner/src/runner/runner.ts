@@ -18,11 +18,14 @@ import {
 } from '../design/state.js'
 import { Agent } from '../utils/agent.js'
 import { ReactionHandling, RunnerInternals } from './runner-internals.js'
-import { createChannelsForMachineRunner } from './runner-utils.js'
+import { MachineRunnerEventMap } from './runner-utils.js'
 
 export type MachineRunner = ReturnType<typeof createMachineRunnerInternal>
 
-// callback: (data: EventsOrTimetravel<E>) => Promise<void> | void, onCompleteOrErr?: OnCompleteOrErr
+export namespace MachineRunner {
+  type AllEventMap = MachineRunnerEventMap & Agent.DefaultEventMap
+  export type EventListener<Key extends keyof AllEventMap> = AllEventMap[Key]
+}
 
 export type SubscribeFn<E> = (
   callback: (data: EventsOrTimetravel<E>) => Promise<void>,
@@ -61,12 +64,10 @@ export const createMachineRunnerInternal = <Payload>(
   const internals = RunnerInternals.make(factory, payload)
 
   return Agent.startBuild()
-    .setChannels((c) => ({
-      ...c,
-      ...createChannelsForMachineRunner(),
-    }))
+    .setChannels<MachineRunnerEventMap>()
     .setAPI((runnerAgent) => {
       // Actyx Subscription management
+      const events = runnerAgent.events
 
       let refToUnsubFunction = null as null | (() => void)
 
@@ -81,19 +82,19 @@ export const createMachineRunnerInternal = <Payload>(
           async (d) => {
             try {
               if (d.type === MsgType.timetravel) {
-                runnerAgent.channels.log.emit('Time travel')
+                events.emit('log', 'Time travel')
                 RunnerInternals.reset(internals)
-                runnerAgent.channels.audit.reset.emit()
+                events.emit('audit.reset')
 
                 restartActyxSubscription()
               } else if (d.type === MsgType.events) {
                 for (const event of d.events) {
                   // TODO: Runtime typeguard for event
-                  runnerAgent.channels.debug.eventHandlingPrevState.emit(internals.current.data)
+                  events.emit('debug.eventHandlingPrevState', internals.current.data)
 
                   const handlingReport = RunnerInternals.pushEvent(internals, event)
 
-                  runnerAgent.channels.debug.eventHandling.emit({
+                  events.emit('debug.eventHandling', {
                     event,
                     handlingReport,
                     mechanism: internals.current.factory.mechanism,
@@ -102,7 +103,7 @@ export const createMachineRunnerInternal = <Payload>(
                   })
 
                   if (handlingReport.handling === ReactionHandling.Execute) {
-                    runnerAgent.channels.audit.state.emit({
+                    events.emit('audit.state', {
                       state: internals.current.data,
                       events: handlingReport.queueSnapshotBeforeExecution,
                     })
@@ -110,7 +111,7 @@ export const createMachineRunnerInternal = <Payload>(
 
                   if (handlingReport.handling === ReactionHandling.Discard) {
                     if (handlingReport.orphans.length > 0) {
-                      runnerAgent.channels.audit.dropped.emit({
+                      events.emit('audit.dropped', {
                         state: internals.current.data,
                         events: handlingReport.orphans,
                       })
@@ -118,7 +119,7 @@ export const createMachineRunnerInternal = <Payload>(
                   }
 
                   if (handlingReport.handling === ReactionHandling.DiscardLast) {
-                    runnerAgent.channels.audit.dropped.emit({
+                    events.emit('audit.dropped', {
                       state: internals.current.data,
                       events: [handlingReport.orphan],
                     })
@@ -127,9 +128,9 @@ export const createMachineRunnerInternal = <Payload>(
 
                 if (d.caughtUp) {
                   // the SDK translates an OffsetMap response into MsgType.events with caughtUp=true
-                  runnerAgent.channels.debug.caughtUp.emit()
-                  runnerAgent.channels.log.emit('Caught up')
-                  runnerAgent.channels.change.emit()
+                  events.emit('debug.caughtUp')
+                  events.emit('log', 'Caught up')
+                  events.emit('change')
                 }
               }
             } catch (error) {
@@ -137,9 +138,9 @@ export const createMachineRunnerInternal = <Payload>(
             }
           },
           (err) => {
-            runnerAgent.channels.log.emit('Restarting in 1sec due to error')
+            events.emit('log', 'Restarting in 1sec due to error')
             RunnerInternals.reset(internals)
-            runnerAgent.channels.audit.reset.emit()
+            events.emit('audit.reset')
 
             unsubscribeFromActyx()
             setTimeout(() => restartActyxSubscription, 1000)
@@ -151,16 +152,18 @@ export const createMachineRunnerInternal = <Payload>(
       restartActyxSubscription()
 
       // Bridge events from container
-      const eventBridge = internals.obs
-      const unsubscribeEventBridge = eventBridge.sub((events) => persist(events))
+      // IMPORTANT: pipe the event via `commandEmitFn`
+      internals.commandEmitFn = (events) => persist(events)
 
       // AsyncIterator part
       const nextValueAwaiter = Agent.startBuild()
         .setAPI((flaggerInternal) => {
           let nextValue: null | StateOpaque = null
-          const subscription = runnerAgent.channels.change.sub(() => {
+
+          const onChange: MachineRunner.EventListener<'change'> = () => {
             nextValue = StateOpaque.make(internals)
-          })
+          }
+          events.addListener('change', onChange)
 
           const intoIteratorResult = (
             value: StateOpaque | null,
@@ -175,21 +178,20 @@ export const createMachineRunnerInternal = <Payload>(
           const waitForNextValue = (): Promise<IteratorResult<StateOpaque, null>> => {
             let cancel = () => {}
             const promise = new Promise<IteratorResult<StateOpaque, null>>((resolve) => {
-              const cancelChangeSub = runnerAgent.channels.change.sub(() =>
-                resolve(intoIteratorResult(StateOpaque.make(internals))),
-              )
-              const cancelDestroySub = runnerAgent.channels.destroy.sub(() =>
-                resolve(intoIteratorResult(null)),
-              )
+              const onChange = () => resolve(intoIteratorResult(StateOpaque.make(internals)))
+              const onDestroy = () => resolve(intoIteratorResult(null))
+
+              events.addListener('change', onChange)
+              events.addListener('destroyed', onDestroy)
               cancel = () => {
-                cancelChangeSub()
-                cancelDestroySub()
+                events.off('change', onChange)
+                events.off('destroyed', onDestroy)
               }
             })
             return promise.finally(() => cancel())
           }
 
-          flaggerInternal.addDestroyHook(subscription)
+          flaggerInternal.addDestroyHook(() => events.off('change', onChange))
 
           return {
             consume: (): Promise<IteratorResult<StateOpaque, null>> => {
@@ -210,7 +212,6 @@ export const createMachineRunnerInternal = <Payload>(
       // IMPORTANT:
       // Register hook when machine is killed
       // Unsubscriptions are called
-      runnerAgent.addDestroyHook(unsubscribeEventBridge)
       runnerAgent.addDestroyHook(unsubscribeFromActyx)
       runnerAgent.addDestroyHook(nextValueAwaiter.destroy)
 
@@ -276,7 +277,7 @@ export namespace StateOpaque {
               getActualContext: () => ({
                 self: internals.current.data.payload,
               }),
-              onReturn: (events) => internals.obs.emit(events),
+              onReturn: (events) => internals.commandEmitFn?.(events),
             },
           ),
         }

@@ -11,46 +11,12 @@ export const AppImpl = ({ actyx }: { actyx: Actyx }) => {
 
   const where = TaxiTag.withId(id)
 
-  const passengerMachine: MachineRunner = useMemo(() => {
-    return createMachineRunner(actyx, where, InitialP, void 0)
-  }, [actyx, id])
+  const passengerMachine = useMachine(
+    () => createMachineRunner(actyx, where, InitialP, void 0),
+    [actyx, id],
+  )
 
-  useEffect(() => {
-    const unsubPrevstate = passengerMachine.channels.debug.eventHandlingPrevState.sub((prevstate) =>
-      console.log('PassengerMachine prevstate', utils.deepCopy(prevstate)),
-    )
-
-    const unsubDebug = passengerMachine.channels.debug.eventHandling.sub(
-      ({ event, factory, handlingReport, mechanism, nextState }) => {
-        console.log('PassengerMachine event handling', handlingReport.handling, {
-          event,
-          factory,
-          handlingReport,
-          mechanism,
-          nextState: utils.deepCopy(nextState),
-        })
-      },
-    )
-
-    const unsubCaughtUp = passengerMachine.channels.debug.caughtUp.sub(() => {
-      console.log('PassengerMachine state after caughtUp', utils.deepCopy(passengerMachine.get()))
-    })
-
-    const unsubAuditState = passengerMachine.channels.audit.state.sub((x) => {
-      console.log('PassengerMachine state change to ', utils.deepCopy(x.state))
-    })
-
-    return () => {
-      console.log('called')
-      unsubCaughtUp()
-      unsubPrevstate()
-      unsubDebug()
-      unsubAuditState()
-      passengerMachine.destroy()
-    }
-  }, [passengerMachine])
-
-  const taxi1Machine: MachineRunner = useMemo(
+  const taxi1Machine: MachineRunner = useMachine(
     () =>
       createMachineRunner(actyx, where, InitialT, {
         id: 'one',
@@ -58,41 +24,7 @@ export const AppImpl = ({ actyx }: { actyx: Actyx }) => {
     [actyx, id],
   )
 
-  useEffect(() => {
-    const unsubPrevstate = taxi1Machine.channels.debug.eventHandlingPrevState.sub((prevstate) =>
-      console.log('taxi1Machine1 prevstate', utils.deepCopy(prevstate)),
-    )
-
-    const unsubDebug = taxi1Machine.channels.debug.eventHandling.sub(
-      ({ event, factory, handlingReport, mechanism, nextState }) => {
-        console.log('taxi1Machine1 event handling', handlingReport.handling, {
-          event,
-          factory,
-          handlingReport,
-          mechanism,
-          nextState: utils.deepCopy(nextState),
-        })
-      },
-    )
-
-    const unsubCaughtUp = taxi1Machine.channels.debug.caughtUp.sub(() => {
-      console.log('taxi1Machine1 state after caughtUp', utils.deepCopy(passengerMachine.get()))
-    })
-
-    const unsubAuditState = taxi1Machine.channels.audit.state.sub((x) => {
-      console.log('taxi1Machine1 state change to ', utils.deepCopy(x.state))
-    })
-
-    return () => {
-      unsubCaughtUp()
-      unsubPrevstate()
-      unsubDebug()
-      unsubAuditState()
-      taxi1Machine.destroy()
-    }
-  }, [taxi1Machine])
-
-  const taxi2Machine: MachineRunner = useMemo(
+  const taxi2Machine: MachineRunner = useMachine(
     () =>
       createMachineRunner(actyx, where, InitialT, {
         id: 'two',
@@ -100,38 +32,9 @@ export const AppImpl = ({ actyx }: { actyx: Actyx }) => {
     [actyx, id],
   )
 
-  useEffect(() => {
-    const unsubPrevstate = taxi2Machine.channels.debug.eventHandlingPrevState.sub((prevstate) =>
-      console.log('taxi2Machine prevstate', utils.deepCopy(prevstate)),
-    )
-
-    const unsubDebug = taxi2Machine.channels.debug.eventHandling.sub(
-      ({ event, factory, handlingReport, mechanism, nextState }) => {
-        console.log('taxi2Machine event handling', handlingReport.handling, {
-          event,
-          factory,
-          handlingReport,
-          mechanism,
-          nextState: utils.deepCopy(nextState),
-        })
-      },
-    )
-
-    const unsubCaughtUp = taxi2Machine.channels.debug.caughtUp.sub(() => {
-      console.log('taxi2Machine state after caughtUp', utils.deepCopy(passengerMachine.get()))
-    })
-
-    const unsubAuditState = taxi2Machine.channels.audit.state.sub((x) => {
-      console.log('taxi2Machine state change to ', utils.deepCopy(x.state))
-    })
-    return () => {
-      unsubCaughtUp()
-      unsubPrevstate()
-      unsubDebug()
-      unsubAuditState()
-      taxi2Machine.destroy()
-    }
-  }, [taxi2Machine])
+  useMachineDebug(passengerMachine, 'passengerMachine')
+  useMachineDebug(taxi1Machine, 'taxi1Machine')
+  useMachineDebug(taxi2Machine, 'taxi2Machine')
 
   return (
     <>
@@ -153,6 +56,56 @@ export const AppImpl = ({ actyx }: { actyx: Actyx }) => {
       </div>
     </>
   )
+}
+
+export const useMachine = (factoryFn: () => MachineRunner, deps: unknown[]) => {
+  const memoized = useMemo(factoryFn, deps)
+  useEffect(() => {
+    return () => {
+      memoized.destroy()
+    }
+  }, [memoized])
+  return memoized
+}
+
+export const useMachineDebug = (machine: MachineRunner, label: string) => {
+  useEffect(() => {
+    const onPrevState: MachineRunner.EventListener<'debug.eventHandlingPrevState'> = (prevstate) =>
+      console.log(label, 'prevstate', utils.deepCopy(prevstate))
+
+    const onDebug: MachineRunner.EventListener<'debug.eventHandling'> = ({
+      event,
+      factory,
+      handlingReport,
+      mechanism,
+      nextState,
+    }) =>
+      console.log(label, 'event handling', handlingReport.handling, {
+        event,
+        factory,
+        handlingReport,
+        mechanism,
+        nextState: utils.deepCopy(nextState),
+      })
+
+    const onCaughtUp: MachineRunner.EventListener<'debug.caughtUp'> = () =>
+      console.log(label, 'state after caughtUp', utils.deepCopy(machine.get()))
+
+    const onAuditState: MachineRunner.EventListener<'audit.state'> = (x) =>
+      console.log(label, 'state change to ', utils.deepCopy(x.state))
+
+    machine.events.addListener('debug.eventHandlingPrevState', onPrevState)
+    machine.events.addListener('debug.eventHandling', onDebug)
+    machine.events.addListener('debug.caughtUp', onCaughtUp)
+    machine.events.addListener('audit.state', onAuditState)
+
+    return () => {
+      machine.events.off('debug.eventHandlingPrevState', onPrevState)
+      machine.events.off('debug.eventHandling', onDebug)
+      machine.events.off('debug.caughtUp', onCaughtUp)
+      machine.events.off('audit.state', onAuditState)
+    }
+  }, [machine])
 }
 
 export function App() {

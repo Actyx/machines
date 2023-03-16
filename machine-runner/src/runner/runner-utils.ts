@@ -1,36 +1,31 @@
 import { ActyxEvent } from '@actyx/sdk'
-import { Obs } from '../utils/obs.js'
 import { StateRaw, StateFactory, StateMechanism } from '../design/state.js'
 import { Event } from '../design/event.js'
 import { PushEventResult } from './runner-internals.js'
+import EventEmitter from 'events'
+import { EventMap } from 'typed-emitter'
+type TypedEventEmitter<Events extends EventMap> = import('typed-emitter').default<Events>
 
-export const createChannelsForMachineRunner = () => ({
-  audit: {
-    reset: Obs.make<void>(),
-    state: Obs.make<{
-      state: StateRaw.Any
-      events: ActyxEvent<Event.Any>[]
-    }>(),
-    dropped: Obs.make<{
-      state: StateRaw.Any
-      events: ActyxEvent<Event.Any>[]
-    }>(),
-    error: Obs.make<{
-      state: StateRaw.Any
-      events: ActyxEvent<Event.Any>[]
-      error: unknown
-    }>(),
-  },
-  debug: {
-    eventHandlingPrevState: Obs.make<unknown>(),
-    eventHandling: Obs.make<{
-      event: ActyxEvent<Event.Any>
-      handlingReport: PushEventResult
-      mechanism: StateMechanism.Any
-      factory: StateFactory.Any
-      nextState: unknown
-    }>(),
-    caughtUp: Obs.make<void>(),
-  },
-  log: Obs.make<string>(),
-})
+export type MachineRunnerEventMap = {
+  'audit.reset': (_: void) => unknown
+  'audit.state': (_: { state: StateRaw.Any; events: ActyxEvent<Event.Any>[] }) => unknown
+  'audit.dropped': (_: { state: StateRaw.Any; events: ActyxEvent<Event.Any>[] }) => unknown
+  'audit.error': (_: {
+    state: StateRaw.Any
+    events: ActyxEvent<Event.Any>[]
+    error: unknown
+  }) => unknown
+  'debug.eventHandlingPrevState': (_: unknown) => unknown
+  'debug.eventHandling': (_: {
+    event: ActyxEvent<Event.Any>
+    handlingReport: PushEventResult
+    mechanism: StateMechanism.Any
+    factory: StateFactory.Any
+    nextState: unknown
+  }) => unknown
+  'debug.caughtUp': (_: void) => unknown
+  log: (_: string) => unknown
+}
+
+export const createEventEmittersForMachineRunner = () =>
+  new EventEmitter() as TypedEventEmitter<MachineRunnerEventMap>

@@ -1,4 +1,4 @@
-import { MachineRunner, State, StateRaw } from '@actyx/machine-runner'
+import { MachineRunner, State, StateRaw, Event } from '@actyx/machine-runner'
 import { Actyx, ActyxEvent } from '@actyx/sdk'
 import { Fragment, useEffect, useState } from 'react'
 import { Stage, Layer, Circle, Line, Label, Tag, Text, Rect } from 'react-konva'
@@ -209,24 +209,52 @@ export function AuditMachines({ actyx, machines }: Props) {
 
     const subscriptions = machines
       .map(({ machine }, machineNumber) => {
+        const onReset: MachineRunner.EventListener<'audit.reset'> = () => {
+          states.split[machineNumber].length = 0
+          recompute()
+        }
+
+        const onStateChange: MachineRunner.EventListener<'audit.state'> = ({
+          events,
+          state,
+        }) => {
+          states.split[machineNumber].push({ type: 'state', events, state: { ...state } })
+          recompute()
+        }
+
+        const onDroppedEvents: MachineRunner.EventListener<'audit.dropped'> = ({
+          events,
+          state,
+        }) => {
+          events.forEach((event) => {
+            states.split[machineNumber].push({ type: 'unhandled', event, state: { ...state } })
+          })
+          recompute()
+        }
+
+        const onError: MachineRunner.EventListener<'audit.error'> = ({
+          error,
+          events,
+          state,
+        }) => {
+          states.split[machineNumber].push({
+            type: 'error',
+            events,
+            err: error,
+            state: { ...state },
+          })
+        }
+
+        machine.events.on('audit.reset', onReset)
+        machine.events.on('audit.state', onStateChange)
+        machine.events.on('audit.dropped', onDroppedEvents)
+        machine.events.on('audit.error', onError)
+
         return [
-          machine.channels.audit.reset.sub(() => {
-            states.split[machineNumber].length = 0
-            recompute()
-          }),
-          machine.channels.audit.state.sub(({ events, state }) => {
-            states.split[machineNumber].push({ type: 'state', events, state: { ...state } })
-            recompute()
-          }),
-          machine.channels.audit.dropped.sub(({ events, state }) => {
-            events.forEach((event) => {
-              states.split[machineNumber].push({ type: 'unhandled', event, state: { ...state } })
-            })
-            recompute()
-          }),
-          machine.channels.audit.error.sub(({ error: err, events, state }) => {
-            states.split[machineNumber].push({ type: 'error', events, err, state: { ...state } })
-          }),
+          () => machine.events.off('audit.reset', onReset),
+          () => machine.events.off('audit.state', onStateChange),
+          () => machine.events.off('audit.dropped', onDroppedEvents),
+          () => machine.events.off('audit.error', onError),
         ]
       })
       .reduce((a: (() => unknown)[], b) => a.concat(b), [])

@@ -96,7 +96,7 @@ class Runner<E extends Event.Any, Payload> {
       payload,
     )
 
-    machine.channels.audit.state.sub(() => {
+    machine.events.addListener('audit.state', () => {
       this.states.push({
         snapshot: machine.get(),
         unhandled: this.unhandled,
@@ -104,7 +104,7 @@ class Runner<E extends Event.Any, Payload> {
       this.unhandled = []
     })
 
-    machine.channels.audit.dropped.sub((dropped) => {
+    machine.events.addListener('audit.dropped', (dropped) => {
       this.unhandled.push(...dropped.events.map((actyxEvent) => actyxEvent.payload))
     })
 

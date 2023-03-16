@@ -1,9 +1,10 @@
-import { Obs } from './obs.js'
-export * from './obs.js'
+import EventEmitter from 'events'
+import { EventMap } from 'typed-emitter'
+type TypedEventEmitter<Events extends EventMap> = import('typed-emitter').default<Events>
 
-export type Agent<API extends object, Channels extends DefaultChannels> = {
+export type Agent<API extends object, EventMap extends Agent.DefaultEventMap> = {
   id: Symbol
-  channels: Channels
+  events: TypedEventEmitter<EventMap>
 } & API &
   Pick<DestructionAPI, 'destroy' | 'isDestroyed'>
 
@@ -11,31 +12,36 @@ export type Agent<API extends object, Channels extends DefaultChannels> = {
  * Build a class-like object with `destroy` capability
  */
 export namespace Agent {
-  const makeBuilderImpl = <API extends DefaultAPI, Channels extends DefaultChannels>(
-    prototype: AgentPrototype<API, Channels>,
-  ): AgentBuilder<API, Channels> => {
-    type Self = AgentBuilder<API, Channels>
+  export type DefaultAPI = {}
+  export type DefaultEventMap = {
+    change: (_: void) => unknown
+    destroyed: (_: void) => unknown
+  }
+  export type NegatedDefaultEventMap = object & {
+    [key in keyof DefaultEventMap]?: never
+  }
+
+  const makeBuilderImpl = <API extends Agent.DefaultAPI, EventMap extends Agent.DefaultEventMap>(
+    prototype: AgentPrototype<API, EventMap>,
+  ): AgentBuilder<API, EventMap> => {
+    type Self = AgentBuilder<API, EventMap>
 
     const build: Self['build'] = () => ({
       ...prototype.api,
       id: Symbol(prototype['identifier-string']),
-      channels: prototype.channels,
+      events: prototype.events,
       destroy: prototype.destroy,
       isDestroyed: prototype.isDestroyed,
     })
 
-    const setChannels: Self['setChannels'] = (fn) =>
-      makeBuilderImpl({
-        ...prototype,
-        channels: fn(prototype.channels),
-      })
+    const setChannels: Self['setChannels'] = () => self
 
     const setAPI: Self['setAPI'] = (fn) =>
       makeBuilderImpl({
         ...prototype,
         api: fn({
           oldApi: prototype.api,
-          channels: prototype.channels,
+          events: prototype.events,
           addDestroyHook: prototype.addDestroyHook,
           destroy: prototype.destroy,
           isDestroyed: prototype.isDestroyed,
@@ -48,52 +54,52 @@ export namespace Agent {
         'identifier-string': id,
       })
 
-    return {
+    const self = {
       build,
       setIdentifier,
       setChannels,
       setAPI,
     }
+    return self
   }
 
   export const startBuild = () => {
-    const defaultChannels: DefaultChannels = { change: Obs.make(), destroy: Obs.make() }
-    const destructionAPI = DestructionAPI.make(defaultChannels)
+    const eventEmitter: TypedEventEmitter<DefaultEventMap> =
+      new EventEmitter() as TypedEventEmitter<DefaultEventMap>
+    const destructionAPI = DestructionAPI.make(eventEmitter)
 
-    return makeBuilderImpl<DefaultAPI, DefaultChannels>({
+    return makeBuilderImpl<DefaultAPI, DefaultEventMap>({
       api: {},
-      channels: defaultChannels,
+      events: eventEmitter,
       'identifier-string': '',
       ...destructionAPI,
     })
   }
 }
 
-type AgentBuilder<API extends DefaultAPI, Channels extends DefaultChannels> = {
-  build: () => Agent<API, Channels>
-  setIdentifier: (str: string) => AgentBuilder<API, Channels>
-  setChannels: <NewChannels extends Channels>(
-    fn: (oldChannels: Channels) => NewChannels,
-  ) => AgentBuilder<API, NewChannels>
-  setAPI: <NewAPI extends DefaultAPI>(
+type AgentBuilder<API extends Agent.DefaultAPI, EventMap extends Agent.DefaultEventMap> = {
+  build: () => Agent<API, EventMap>
+  setIdentifier: (str: string) => AgentBuilder<API, EventMap>
+  setChannels: <NewEventMap extends Agent.NegatedDefaultEventMap>() => AgentBuilder<
+    API,
+    EventMap & Omit<NewEventMap, keyof Agent.NegatedDefaultEventMap>
+  >
+  setAPI: <NewAPI extends Agent.DefaultAPI>(
     fn: (
       params: {
         oldApi: API
-        channels: Readonly<Channels>
+        events: Readonly<TypedEventEmitter<EventMap>>
       } & DestructionAPI,
     ) => NewAPI & { channels?: never; destroy?: never; isDestroyed?: never },
-  ) => AgentBuilder<NewAPI, Channels>
+  ) => AgentBuilder<NewAPI, EventMap>
 }
 
-type AgentPrototype<API extends object, Channels extends DefaultChannels> = {
+type AgentPrototype<API extends object, EventMap extends Agent.DefaultEventMap> = {
   api: API
-  channels: Channels
+  events: TypedEventEmitter<EventMap>
 } & {
   'identifier-string': string
 } & DestructionAPI
-
-type DefaultAPI = {}
-type DefaultChannels = { change: Obs<void>; destroy: Obs<void> }
 
 type DestructionAPI = {
   addDestroyHook: (hook: () => unknown) => void
@@ -102,14 +108,14 @@ type DestructionAPI = {
 }
 
 export namespace DestructionAPI {
-  export const make = (channels: DefaultChannels): DestructionAPI => {
+  export const make = (events: TypedEventEmitter<Agent.DefaultEventMap>): DestructionAPI => {
     let destroyed = false
     const destroyhooks = new Set<Function>()
     return {
       addDestroyHook: (hook) => destroyhooks.add(hook),
       destroy: () => {
         if (!destroyed) {
-          channels.destroy.emit()
+          events.emit('destroyed')
           destroyed = true
           for (const hook of destroyhooks) {
             try {

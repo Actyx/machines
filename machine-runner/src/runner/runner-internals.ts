@@ -1,5 +1,4 @@
 import { ActyxEvent } from '@actyx/sdk'
-import { Obs } from '../utils/obs.js'
 import { deepCopy } from '../utils/object-utils.js'
 import { CommandDefinerMap } from '../design/command.js'
 import { Event } from '../design/event.js'
@@ -11,6 +10,8 @@ import {
   StateFactory,
 } from '../design/state.js'
 
+type CommandCallback = (_: Event.Any[]) => unknown
+
 export type RunnerInternals<
   ProtocolName extends string,
   RegisteredEventsFactoriesTuple extends Event.Factory.NonZeroTuple,
@@ -19,7 +20,7 @@ export type RunnerInternals<
   Commands extends CommandDefinerMap<any, any, Event.Any[]>,
 > = {
   readonly initial: StateAndFactory<any, any, any, any, any>
-  readonly obs: Obs<Event.Any[]>
+  commandEmitFn?: CommandCallback
   queue: ActyxEvent<Event.Any>[]
   current: StateAndFactory<
     ProtocolName,
@@ -79,7 +80,6 @@ export namespace RunnerInternals {
         factory: initial.factory,
         data: deepCopy(initial.data),
       },
-      obs: Obs.make(),
       queue: [],
     }
 
