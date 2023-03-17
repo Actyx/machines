@@ -58,16 +58,6 @@ export const AppImpl = ({ actyx }: { actyx: Actyx }) => {
   )
 }
 
-export const useMachine = (factoryFn: () => MachineRunner, deps: unknown[]) => {
-  const memoized = useMemo(factoryFn, deps)
-  useEffect(() => {
-    return () => {
-      memoized.destroy()
-    }
-  }, [memoized])
-  return memoized
-}
-
 export const useMachineDebug = (machine: MachineRunner, label: string) => {
   useEffect(() => {
     const onPrevState: MachineRunner.EventListener<'debug.eventHandlingPrevState'> = (prevstate) =>
@@ -124,4 +114,14 @@ export function App() {
       {!actyx && <h1>loading …</h1>}
     </>
   )
+}
+
+export const useMachine = (factoryFn: () => MachineRunner, deps: unknown[]) => {
+  const memoized = useMemo(factoryFn, deps)
+  useEffect(() => {
+    return () => {
+      memoized.destroy()
+    }
+  }, [memoized])
+  return memoized
 }

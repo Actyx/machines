@@ -8,7 +8,7 @@
     ".": "./lib/index.js"
   },
   "scripts": {
-    "prepare:machine-runner": "cd ../machine-runner && npm install && npm run build",
+    "prepare:machine-runner": "cd ../machine-runner && npm install && npm run test && npm run build",
     "prepare": "npm run prepare:machine-runner",
     "clean": "rimraf ./lib",
     "build": "tsc"

@@ -8,6 +8,7 @@ import {
   OnCompleteOrErr,
   Tags,
 } from '@actyx/sdk'
+import EventEmitter from 'events'
 import {
   Event,
   StateRaw,
@@ -16,15 +17,41 @@ import {
   ToCommandSignatureMap,
   convertCommandMapToCommandSignatureMap,
 } from '../design/state.js'
-import { Agent } from '../utils/agent.js'
+import { Destruction } from '../utils/destruction.js'
 import { NOP } from '../utils/index.js'
+import { DeepReadonly } from '../utils/type-utils.js'
 import { ReactionHandling, RunnerInternals } from './runner-internals.js'
-import { MachineRunnerEventMap } from './runner-utils.js'
+import { MachineRunnerEventMap, TypedEventEmitter } from './runner-utils.js'
 
-export type MachineRunner = ReturnType<typeof createMachineRunnerInternal>
+// const api = {
+//   id: Symbol(),
+//   events,
+//   get: (): StateOpaque => StateOpaque.make(internals),
+//   initial: (): DeepReadonly<StateRaw.Any> => internals.initial.data,
+//   destroy: destruction.destroy,
+//   isDestroyed: destruction.isDestroyed,
+// }
+
+// const iterator: AsyncIterableIterator<StateOpaque> = {
+//   next: (): Promise<IteratorResult<StateOpaque>> => nextValueAwaiter.consume(),
+//   return: onThrowOrReturn,
+//   throw: onThrowOrReturn,
+//   [Symbol.asyncIterator]: (): AsyncIterableIterator<StateOpaque> => iterator,
+// }
+
+export type MachineRunner = {
+  id: Symbol
+  events: TypedEventEmitter<MachineRunnerEventMap>
+  destroy: () => unknown
+  isDestroyed: () => boolean
+
+  get: () => StateOpaque
+  initial: () => DeepReadonly<StateRaw.Any>
+} & AsyncIterable<StateOpaque> &
+  AsyncIterator<StateOpaque, unknown>
 
 export namespace MachineRunner {
-  type AllEventMap = MachineRunnerEventMap & Agent.DefaultEventMap
+  type AllEventMap = MachineRunnerEventMap
   export type EventListener<Key extends keyof AllEventMap> = AllEventMap[Key]
 }
 
@@ -61,192 +88,196 @@ export const createMachineRunnerInternal = <Payload>(
   persist: PersistFn,
   factory: StateFactory<any, any, any, Payload, any>,
   payload: Payload,
-) => {
+): MachineRunner => {
   const internals = RunnerInternals.make(factory, payload)
+  const destruction = Destruction.make()
 
-  return Agent.startBuild()
-    .setChannels<MachineRunnerEventMap>()
-    .setAPI((runnerAgent) => {
-      // Actyx Subscription management
-      const events = runnerAgent.events
+  // Actyx Subscription management
+  const events = new EventEmitter() as TypedEventEmitter<MachineRunnerEventMap>
 
-      let refToUnsubFunction = null as null | (() => void)
+  let refToUnsubFunction = null as null | (() => void)
 
-      const unsubscribeFromActyx = () => {
-        refToUnsubFunction?.()
-        refToUnsubFunction = null
-      }
+  const unsubscribeFromActyx = () => {
+    refToUnsubFunction?.()
+    refToUnsubFunction = null
+  }
 
-      const restartActyxSubscription = () => {
-        unsubscribeFromActyx()
-        refToUnsubFunction = subscribe(
-          async (d) => {
-            try {
-              if (d.type === MsgType.timetravel) {
-                events.emit('log', 'Time travel')
-                RunnerInternals.reset(internals)
-                events.emit('audit.reset')
+  const restartActyxSubscription = () => {
+    unsubscribeFromActyx()
 
-                restartActyxSubscription()
-              } else if (d.type === MsgType.events) {
-                for (const event of d.events) {
-                  // TODO: Runtime typeguard for event
-                  events.emit('debug.eventHandlingPrevState', internals.current.data)
+    if (destruction.isDestroyed()) return
 
-                  const handlingReport = RunnerInternals.pushEvent(internals, event)
-
-                  events.emit('debug.eventHandling', {
-                    event,
-                    handlingReport,
-                    mechanism: internals.current.factory.mechanism,
-                    factory: internals.current.factory,
-                    nextState: internals.current.data,
-                  })
-
-                  if (handlingReport.handling === ReactionHandling.Execute) {
-                    events.emit('audit.state', {
-                      state: internals.current.data,
-                      events: handlingReport.queueSnapshotBeforeExecution,
-                    })
-                  }
-
-                  if (handlingReport.handling === ReactionHandling.Discard) {
-                    if (handlingReport.orphans.length > 0) {
-                      events.emit('audit.dropped', {
-                        state: internals.current.data,
-                        events: handlingReport.orphans,
-                      })
-                    }
-                  }
-
-                  if (handlingReport.handling === ReactionHandling.DiscardLast) {
-                    events.emit('audit.dropped', {
-                      state: internals.current.data,
-                      events: [handlingReport.orphan],
-                    })
-                  }
-                }
-
-                if (d.caughtUp) {
-                  // the SDK translates an OffsetMap response into MsgType.events with caughtUp=true
-                  events.emit('debug.caughtUp')
-                  events.emit('log', 'Caught up')
-                  events.emit('change')
-                }
-              }
-            } catch (error) {
-              console.error(error)
-            }
-          },
-          (err) => {
-            events.emit('log', 'Restarting in 1sec due to error')
+    refToUnsubFunction = subscribe(
+      async (d) => {
+        try {
+          if (d.type === MsgType.timetravel) {
+            events.emit('log', 'Time travel')
             RunnerInternals.reset(internals)
             events.emit('audit.reset')
 
-            unsubscribeFromActyx()
-            setTimeout(() => restartActyxSubscription, 1000)
-          },
-        )
-      }
+            restartActyxSubscription()
+          } else if (d.type === MsgType.events) {
+            for (const event of d.events) {
+              // TODO: Runtime typeguard for event
+              events.emit('debug.eventHandlingPrevState', internals.current.data)
 
-      // First run of the subscription
-      restartActyxSubscription()
+              const handlingReport = RunnerInternals.pushEvent(internals, event)
 
-      // Bridge events from container
-      // IMPORTANT: pipe the event via `commandEmitFn`
-      internals.commandEmitFn = (events) => persist(events)
+              events.emit('debug.eventHandling', {
+                event,
+                handlingReport,
+                mechanism: internals.current.factory.mechanism,
+                factory: internals.current.factory,
+                nextState: internals.current.data,
+              })
 
-      // AsyncIterator part
-      const nextValueAwaiter = Agent.startBuild()
-        .setAPI((flaggerInternal) => {
-          let nextValue: null | StateOpaque = null
+              if (handlingReport.handling === ReactionHandling.Execute) {
+                events.emit('audit.state', {
+                  state: internals.current.data,
+                  events: handlingReport.queueSnapshotBeforeExecution,
+                })
+              }
 
-          const onChange: MachineRunner.EventListener<'change'> = () => {
-            nextValue = StateOpaque.make(internals)
-          }
-          events.addListener('change', onChange)
+              if (handlingReport.handling === ReactionHandling.Discard) {
+                if (handlingReport.orphans.length > 0) {
+                  events.emit('audit.dropped', {
+                    state: internals.current.data,
+                    events: handlingReport.orphans,
+                  })
+                }
+              }
 
-          const intoIteratorResult = (
-            value: StateOpaque | null,
-          ): IteratorResult<StateOpaque, null> => {
-            if (value === null) {
-              return { done: true, value }
-            } else {
-              return { done: false, value }
+              if (handlingReport.handling === ReactionHandling.DiscardLast) {
+                events.emit('audit.dropped', {
+                  state: internals.current.data,
+                  events: [handlingReport.orphan],
+                })
+              }
+            }
+
+            if (d.caughtUp) {
+              // the SDK translates an OffsetMap response into MsgType.events with caughtUp=true
+              console.log('Caught uppppppppppppppppppppp')
+              events.emit('debug.caughtUp')
+              events.emit('log', 'Caught up')
+              events.emit('change')
             }
           }
+        } catch (error) {
+          console.error(error)
+        }
+      },
+      (err) => {
+        events.emit('log', 'Restarting in 1sec due to error')
+        RunnerInternals.reset(internals)
+        events.emit('audit.reset')
 
-          const waitForNextValue = (): Promise<IteratorResult<StateOpaque, null>> => {
-            let cancel = NOP
-            const promise = new Promise<IteratorResult<StateOpaque, null>>((resolve) => {
-              const onChange = () => resolve(intoIteratorResult(StateOpaque.make(internals)))
-              const onDestroy = () => resolve(intoIteratorResult(null))
+        unsubscribeFromActyx()
+        setTimeout(() => restartActyxSubscription, 1000)
+      },
+    )
+  }
 
-              events.addListener('change', onChange)
-              events.addListener('destroyed', onDestroy)
-              cancel = () => {
-                events.off('change', onChange)
-                events.off('destroyed', onDestroy)
-              }
-            })
-            return promise.finally(() => cancel())
-          }
+  // First run of the subscription
+  restartActyxSubscription()
 
-          flaggerInternal.addDestroyHook(() => events.off('change', onChange))
+  // Bridge events from container
+  // IMPORTANT: pipe the event via `commandEmitFn`
+  internals.commandEmitFn = (events) => persist(events)
 
-          return {
-            consume: (): Promise<IteratorResult<StateOpaque, null>> => {
-              if (runnerAgent.isDestroyed()) {
-                return Promise.resolve(intoIteratorResult(null))
-              }
+  // AsyncIterator part
+  // ==================
 
-              const returned =
-                (nextValue && Promise.resolve(intoIteratorResult(nextValue))) || waitForNextValue()
-              nextValue = null
+  /**
+   * Object to help "awaiting" next value
+   */
+  const nextValueAwaiter = (() => {
+    let nextValue: null | StateOpaque = null
 
-              return returned
-            },
-          }
-        })
-        .build()
+    const onChange: MachineRunner.EventListener<'change'> = () => {
+      nextValue = StateOpaque.make(internals)
+    }
+    events.addListener('change', onChange)
 
-      // IMPORTANT:
-      // Register hook when machine is killed
-      // Unsubscriptions are called
-      runnerAgent.addDestroyHook(unsubscribeFromActyx)
-      runnerAgent.addDestroyHook(nextValueAwaiter.destroy)
-
-      // Self API construction
-
-      const onThrowOrReturn = async (): Promise<IteratorResult<StateOpaque, null>> => {
-        runnerAgent.destroy()
-        return { done: true, value: null }
+    const intoIteratorResult = (value: StateOpaque | null): IteratorResult<StateOpaque, null> => {
+      if (value === null) {
+        return { done: true, value }
+      } else {
+        return { done: false, value }
       }
+    }
 
-      const api = {
-        get: (): StateOpaque => StateOpaque.make(internals),
-        initial: () => internals.initial.data,
-      }
+    const waitForNextValue = (): Promise<IteratorResult<StateOpaque, null>> => {
+      let cancel = NOP
+      const promise = new Promise<IteratorResult<StateOpaque, null>>((resolve) => {
+        const onChange = () => resolve(intoIteratorResult(StateOpaque.make(internals)))
+        const onDestroy = () => resolve(intoIteratorResult(null))
 
-      const iterator: AsyncIterableIterator<StateOpaque> = {
-        next: (): Promise<IteratorResult<StateOpaque, null>> => nextValueAwaiter.consume(),
-        return: onThrowOrReturn,
-        throw: onThrowOrReturn,
-        [Symbol.asyncIterator]: () => iterator,
-      }
+        events.addListener('change', onChange)
+        events.addListener('destroyed', onDestroy)
+        cancel = () => {
+          events.off('change', onChange)
+          events.off('destroyed', onDestroy)
+        }
+      })
+      return promise.finally(() => cancel())
+    }
 
-      const self: AsyncIterableIterator<StateOpaque> & typeof api = {
-        ...api,
-        ...iterator,
-      }
+    return {
+      consume: (): Promise<IteratorResult<StateOpaque, null>> => {
+        if (destruction.isDestroyed()) {
+          return Promise.resolve(intoIteratorResult(null))
+        }
 
-      return self
-    })
-    .build()
+        const returned =
+          (nextValue && Promise.resolve(intoIteratorResult(nextValue))) || waitForNextValue()
+        nextValue = null
+
+        return returned
+      },
+    }
+  })()
+
+  // IMPORTANT:
+  // Register hook when machine is killed
+  // Unsubscriptions are called
+  destruction.addDestroyHook(unsubscribeFromActyx)
+  destruction.addDestroyHook(() => events.emit('destroyed'))
+
+  // Self API construction
+
+  const onThrowOrReturn = async (): Promise<IteratorResult<StateOpaque, null>> => {
+    destruction.destroy()
+    return { done: true, value: null }
+  }
+
+  const api = {
+    id: Symbol(),
+    events,
+    get: (): StateOpaque => StateOpaque.make(internals),
+    initial: (): DeepReadonly<StateRaw.Any> => internals.initial.data,
+    destroy: destruction.destroy,
+    isDestroyed: destruction.isDestroyed,
+  }
+
+  const iterator: AsyncIterableIterator<StateOpaque> = {
+    next: (): Promise<IteratorResult<StateOpaque>> => nextValueAwaiter.consume(),
+    return: onThrowOrReturn,
+    throw: onThrowOrReturn,
+    [Symbol.asyncIterator]: (): AsyncIterableIterator<StateOpaque> => iterator,
+  }
+
+  const self: AsyncIterableIterator<StateOpaque> & typeof api = {
+    ...api,
+    ...iterator,
+  }
+
+  return self
 }
 
 export interface StateOpaque<P = unknown> extends StateRaw<string, P> {
   is<Payload>(factory: StateFactory<any, any, any, Payload, any>): this is StateOpaque<Payload>
+
   as<
     StateName extends string,
     StatePayload extends any,
@@ -254,6 +285,7 @@ export interface StateOpaque<P = unknown> extends StateRaw<string, P> {
   >(
     factory: StateFactory<any, any, StateName, StatePayload, Commands>,
   ): State<StateName, StatePayload, Commands> | undefined
+
   as<
     StateName extends string,
     StatePayload extends any,

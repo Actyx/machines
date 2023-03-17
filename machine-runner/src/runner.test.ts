@@ -29,6 +29,7 @@ const Second = protocol.designState('Second').withPayload<{ x: number; y: number
 
 Initial.react([One, Two], Second, (c, [one, two]) => {
   c.self.transitioned = true
+  console.log('transitioned transitioned')
   return Second.make({
     x: one.x,
     y: two.y,
@@ -40,11 +41,11 @@ Initial.react([One, Two], Second, (c, [one, two]) => {
 class Runner<E extends Event.Any, Payload> {
   private cb: null | ((i: EventsOrTimetravel<E>) => void) = null
   private err: null | OnCompleteOrErr = null
-  private states: { snapshot: StateOpaque; unhandled: Event.Any[] }[] = []
   private persisted: E[] = []
   private cancelCB
-  private subCancel
   private unhandled: Event.Any[] = []
+  private caughtUpHistory: StateOpaque[] = []
+  private stateChangeHistory: { state: StateOpaque; unhandled: Event.Any[] }[] = []
   public machine
 
   constructor(factory: StateFactory<any, any, any, Payload, any>, payload: Payload) {
@@ -74,26 +75,34 @@ class Runner<E extends Event.Any, Payload> {
     )
 
     machine.events.addListener('audit.state', () => {
-      this.states.push({
-        snapshot: machine.get(),
+      console.log('audit.state')
+      this.stateChangeHistory.unshift({
+        state: machine.get(),
         unhandled: this.unhandled,
       })
       this.unhandled = []
     })
 
+    machine.events.addListener('debug.caughtUp', () => {
+      console.log('debug.caughtup')
+      this.caughtUpHistory.unshift(machine.get())
+    })
+
     machine.events.addListener('audit.dropped', (dropped) => {
+      console.log('audit.dropped', ...dropped.events.map((actyxEvent) => actyxEvent.payload))
       this.unhandled.push(...dropped.events.map((actyxEvent) => actyxEvent.payload))
     })
 
     this.machine = machine
-    this.subCancel = () => machine.destroy()
   }
 
-  resetStateHistory = () => (this.states = [])
+  resetStateChangeHistory = () => (this.stateChangeHistory = [])
+  resetCaughtUpHistory = () => (this.caughtUpHistory = [])
 
   feed(ev: E[], caughtUp: boolean) {
     if (this.cb === null) throw new Error('not subscribed')
-    this.cb({
+    console.log('feed', ev)
+    return this.cb({
       type: MsgType.events,
       caughtUp,
       events: ev.map((payload) => ({
@@ -116,7 +125,6 @@ class Runner<E extends Event.Any, Payload> {
   timeTravel() {
     if (this.cb === null) throw new Error('not subscribed')
     const cb = this.cb
-    this.cancelCB()
     cb({ type: MsgType.timetravel, trigger: { lamport: 0, offset: 0, stream: 'stream' } })
     if (this.cb === null) throw new Error('did not resubscribe')
   }
@@ -126,23 +134,18 @@ class Runner<E extends Event.Any, Payload> {
     this.err(new Error('boo!'))
   }
 
-  cancel() {
-    this.subCancel()
-  }
-
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  assertState<Factory extends StateFactory<any, any, any, any, any>>(
+  assertLastStateChange<Factory extends StateFactory<any, any, any, any, any>>(
     factory: Factory,
     assertStateFurther?: (params: { snapshot: State.Of<Factory>; unhandled: Event.Any[] }) => void,
   ) {
-    expect(this.unhandled).toHaveLength(0)
-    const firstStateHistory = this.states.at(0)
-    expect(firstStateHistory).not.toBeFalsy()
-    if (!firstStateHistory) return
+    const last = this.stateChangeHistory.at(0)
+    expect(last).toBeTruthy()
+    if (!last) return
 
-    const { snapshot: s0, unhandled } = firstStateHistory
+    const { state, unhandled } = last
 
-    const snapshot = s0.as(factory) as State.Of<Factory> | void
+    const snapshot = state.as(factory) as State.Of<Factory> | void
     expect(snapshot).toBeTruthy()
     if (assertStateFurther && !!snapshot) {
       assertStateFurther({ snapshot, unhandled })
@@ -150,14 +153,27 @@ class Runner<E extends Event.Any, Payload> {
     // expect(cmd0).toBe(cmd)
   }
 
-  assertNoState() {
-    expect(this.states).toHaveLength(0)
+  assertLastCaughtUp<Factory extends StateFactory<any, any, any, any, any>>(
+    factory: Factory,
+    assertStateFurther?: (params: { snapshot: State.Of<Factory> }) => void,
+  ) {
+    const state = this.caughtUpHistory.at(0)
+    expect(state).toBeTruthy()
+    if (!state) return
+
+    const snapshot = state.as(factory) as State.Of<Factory> | void
+    expect(snapshot).toBeTruthy()
+    if (assertStateFurther && !!snapshot) {
+      assertStateFurther({ snapshot })
+    }
+    // expect(cmd0).toBe(cmd)
   }
 
-  getState() {
-    expect(this.states).toHaveLength(1)
-    return this.states[0]
-  }
+  getLastUnhandled = () => [...this.unhandled]
+
+  assertNoStateChange = () => expect(this.stateChangeHistory.length).toBe(0)
+  assertNoCaughtUp = () => expect(this.caughtUpHistory.length).toBe(0)
+  assertNoCurrentUnhandled = () => expect(this.unhandled.length).toBe(0)
 
   assertSubscribed(b: boolean) {
     if (b) {
@@ -176,49 +192,77 @@ class Runner<E extends Event.Any, Payload> {
 }
 
 describe('machine runner', () => {
+  it('should emit initial state', () => {
+    const r = new Runner(Initial, { transitioned: false })
+
+    r.feed([], false)
+    r.assertNoStateChange()
+    r.assertNoCaughtUp()
+    r.assertNoCurrentUnhandled()
+
+    r.feed([], true)
+    r.assertNoStateChange()
+    r.assertLastCaughtUp(Initial)
+    r.assertNoCurrentUnhandled()
+  })
+
   it('should run', () => {
     const r = new Runner(Initial, { transitioned: false })
+
     r.feed([{ type: 'One', x: 1 }], true)
-    r.assertState(Initial, ({ snapshot, unhandled }) => {
-      expect(snapshot.payload.transitioned).toBe(true)
-      expect(unhandled).toHaveLength(0)
+    r.assertNoStateChange()
+    r.assertLastCaughtUp(Initial, ({ snapshot }) => {
+      expect(snapshot.payload.transitioned).toBe(false)
     })
+    r.assertNoCurrentUnhandled()
+
     r.feed([{ type: 'Two', y: 2 }], true)
-    r.assertState(Second, ({ snapshot }) => {
+    r.assertLastCaughtUp(Second, ({ snapshot }) => {
       expect(snapshot.payload.x).toBe(1)
       expect(snapshot.payload.y).toBe(2)
     })
+    r.assertLastStateChange(Second, ({ snapshot }) => {
+      expect(snapshot.payload.x).toBe(1)
+      expect(snapshot.payload.y).toBe(2)
+    })
+    r.assertNoCurrentUnhandled()
+
+    r.resetCaughtUpHistory()
+    r.resetStateChangeHistory()
+
     r.timeTravel()
-    r.assertNoState()
+    r.assertNoStateChange()
+    r.assertNoCaughtUp()
+    r.assertNoCurrentUnhandled()
+
     r.feed([One.make({ x: 1 }), One.make({ x: 4 }), Two.make({ y: 3 }), Two.make({ y: 2 })], true)
-    r.assertState(Second, ({ snapshot, unhandled }) => {
+    r.assertLastStateChange(Second, ({ snapshot, unhandled }) => {
       expect(snapshot.payload.x).toBe(1)
       expect(snapshot.payload.y).toBe(3)
-      expect(unhandled).toEqual([Two.make({ y: 2 })])
+      expect(unhandled).toEqual([One.make({ x: 4 })])
     })
+
+    expect(r.getLastUnhandled()).toEqual([Two.make({ y: 2 })])
   })
 
-  it('should emit initial state', () => {
+  it('should mark itself as destroyed after "destroy" is called', () => {
     const r = new Runner(Initial, { transitioned: false })
-    r.feed([], false)
-    r.assertNoState()
-    r.feed([], true)
-    r.assertState(Initial, ({ snapshot }) => {
-      expect(snapshot.payload.transitioned).toBeFalsy()
-    })
+    expect(r.machine.isDestroyed()).toBe(false)
+    r.machine.destroy()
+    expect(r.machine.isDestroyed()).toBe(true)
   })
 
   it('should cancel when empty', () => {
     const r = new Runner(Initial, { transitioned: false })
     r.assertSubscribed(true)
-    r.cancel()
+    r.machine.destroy()
     r.assertSubscribed(false)
   })
 
   it('should cancel when not empty', () => {
     const r = new Runner(Initial, { transitioned: false })
     r.feed([{ type: 'One', x: 1 }], true)
-    r.cancel()
+    r.machine.destroy()
     r.assertSubscribed(false)
   })
 
@@ -226,8 +270,88 @@ describe('machine runner', () => {
     const r = new Runner(Initial, { transitioned: false })
     r.feed([{ type: 'One', x: 1 }], true)
     r.timeTravel()
-    r.cancel()
+    r.machine.destroy()
     r.assertSubscribed(false)
+  })
+})
+
+describe('machine as async generator', () => {
+  const Toggle = Event.design('Toggle').withoutPayload()
+
+  const protocol = Protocol.make('switch', [Toggle])
+
+  type StatePayload = { toggleCount: number }
+  const On = protocol.designState('On').withPayload<StatePayload>().finish()
+  const Off = protocol.designState('Off').withPayload<StatePayload>().finish()
+
+  On.react([Toggle], Off, ({ self }) => ({ toggleCount: self.toggleCount + 1 }))
+  Off.react([Toggle], On, ({ self }) => ({ toggleCount: self.toggleCount + 1 }))
+
+  it('should not yield snapshot if destroyed', async () => {
+    const r1 = new Runner(On, { toggleCount: 0 })
+    const { machine } = r1
+    machine.destroy()
+    const iterResult = await machine.next()
+    expect(iterResult.done).toBe(true)
+  })
+
+  it('should yield initial state after first caughtUp', async () => {
+    const r1 = new Runner(On, { toggleCount: 0 })
+    const { machine } = r1
+
+    const before = new Date()
+    const promise = machine.next()
+
+    // First caughtUp after TIMEOUT
+    const TIMEOUT = 50 // milliseconds
+    setTimeout(() => r1.feed([], true), TIMEOUT)
+
+    // await promise here
+    const iterResult = await promise
+    const after = new Date()
+
+    expect(after.getTime() - before.getTime()).toBeGreaterThanOrEqual(TIMEOUT)
+
+    expect(iterResult.done).toBe(false)
+    if (iterResult.done !== false) return
+
+    const snapshot = iterResult.value
+    let typeTest: NotAnyOrUnknown<typeof snapshot> = snapshot
+    NOP(typeTest)
+
+    expect(snapshot).toBeTruthy()
+    expect(snapshot.as(Off)).toBeFalsy()
+    expect(snapshot.as(On, (state) => state.payload.toggleCount)).toBe(0)
+    machine.destroy()
+  })
+
+  it('should resolve all previously unsolved yielded promises on one caughtUp event', async () => {
+    const r1 = new Runner(On, { toggleCount: 0 })
+    const { machine } = r1
+
+    const promise1 = machine.next()
+    const promise2 = machine.next()
+
+    r1.feed([], true)
+    await promise1
+    await promise2
+    expect(true).toBe(true)
+
+    machine.destroy()
+  })
+
+  it('should be destroyed on breaks from for-await loop', async () => {
+    const r1 = new Runner(On, { toggleCount: 0 })
+    r1.feed([], true)
+    let i = 0
+    for await (const _ of r1.machine) {
+      i++
+      if (i > 3) {
+        break
+      }
+      r1.feed([], true)
+    }
+    expect(r1.machine.isDestroyed()).toBe(true)
   })
 })
 
@@ -257,34 +381,37 @@ describe('StateOpaque', () => {
     it('should produce state snapshot', () => {
       // Initial State
 
-      const r1 = new Runner(Initial, { transitioned: false })
-      const s1 = r1.machine.get()
+      ;(() => {
+        const r = new Runner(Initial, { transitioned: false })
+        const s = r.machine.get()
 
-      const snapshot1Invalid = s1.as(Second)
-      expect(snapshot1Invalid).toBeFalsy()
+        const snapshot1Invalid = s.as(Second)
+        expect(snapshot1Invalid).toBeFalsy()
 
-      const snapshot1 = s1.as(Initial)
-      expect(snapshot1).toBeTruthy()
+        const snapshot1 = s.as(Initial)
+        expect(snapshot1).toBeTruthy()
 
-      if (snapshot1) {
-        expect(snapshot1.payload.transitioned).toBe(false)
-      }
+        if (snapshot1) {
+          expect(snapshot1.payload.transitioned).toBe(false)
+        }
+      })()
 
       // Second State
+      ;(() => {
+        const r = new Runner(Second, { x: 1, y: 2 })
+        const s = r.machine.get()
 
-      const r2 = new Runner(Second, { x: 1, y: 2 })
-      const s2 = r2.machine.get()
+        const snapshot2Invalid = s.as(Initial)
+        expect(snapshot2Invalid).toBeFalsy()
 
-      const snapshot2Invalid = s2.as(Initial)
-      expect(snapshot2Invalid).toBeFalsy()
+        const snapshot2 = s.as(Second)
+        expect(snapshot2).toBeTruthy()
 
-      const snapshot2 = s1.as(Second)
-      expect(snapshot2).toBeTruthy()
-
-      if (snapshot2) {
-        expect(snapshot2.payload.x).toBe(1)
-        expect(snapshot2.payload.y).toBe(2)
-      }
+        if (snapshot2) {
+          expect(snapshot2.payload.x).toBe(1)
+          expect(snapshot2.payload.y).toBe(2)
+        }
+      })()
     })
   })
 })

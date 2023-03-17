@@ -4,7 +4,8 @@ import { Event } from '../design/event.js'
 import { PushEventResult } from './runner-internals.js'
 import EventEmitter from 'events'
 import { EventMap } from 'typed-emitter'
-type TypedEventEmitter<Events extends EventMap> = import('typed-emitter').default<Events>
+
+export type TypedEventEmitter<Events extends EventMap> = import('typed-emitter').default<Events>
 
 export type MachineRunnerEventMap = {
   'audit.reset': (_: void) => unknown
@@ -24,6 +25,8 @@ export type MachineRunnerEventMap = {
     nextState: unknown
   }) => unknown
   'debug.caughtUp': (_: void) => unknown
+  change: (_: void) => unknown
+  destroyed: (_: void) => unknown
   log: (_: string) => unknown
 }
 
