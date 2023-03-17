@@ -17,6 +17,7 @@ import {
   convertCommandMapToCommandSignatureMap,
 } from '../design/state.js'
 import { Agent } from '../utils/agent.js'
+import { NOP } from '../utils/index.js'
 import { ReactionHandling, RunnerInternals } from './runner-internals.js'
 import { MachineRunnerEventMap } from './runner-utils.js'
 
@@ -176,7 +177,7 @@ export const createMachineRunnerInternal = <Payload>(
           }
 
           const waitForNextValue = (): Promise<IteratorResult<StateOpaque, null>> => {
-            let cancel = () => {}
+            let cancel = NOP
             const promise = new Promise<IteratorResult<StateOpaque, null>>((resolve) => {
               const onChange = () => resolve(intoIteratorResult(StateOpaque.make(internals)))
               const onDestroy = () => resolve(intoIteratorResult(null))
@@ -244,16 +245,24 @@ export const createMachineRunnerInternal = <Payload>(
     .build()
 }
 
-export type StateOpaque = StateRaw<string, unknown> & {
-  as: <
+export interface StateOpaque<P = unknown> extends StateRaw<string, P> {
+  is<Payload>(factory: StateFactory<any, any, any, Payload, any>): this is StateOpaque<Payload>
+  as<
+    StateName extends string,
+    StatePayload extends any,
+    Commands extends CommandDefinerMap<any, any, Event.Any[]>,
+  >(
+    factory: StateFactory<any, any, StateName, StatePayload, Commands>,
+  ): State<StateName, StatePayload, Commands> | undefined
+  as<
     StateName extends string,
     StatePayload extends any,
     Commands extends CommandDefinerMap<any, any, Event.Any[]>,
     Then extends (arg: State<StateName, StatePayload, Commands>) => any,
   >(
     factory: StateFactory<any, any, StateName, StatePayload, Commands>,
-    then?: Then,
-  ) => ReturnType<Then> | undefined
+    then: Then,
+  ): ReturnType<Then> | undefined
 }
 
 export namespace StateOpaque {
@@ -264,7 +273,17 @@ export namespace StateOpaque {
     const isExpired = () =>
       factoryAtSnapshot !== internals.current.factory || stateAtSnapshot !== internals.current.data
 
-    const as: StateOpaque['as'] = (factory, then) => {
+    const is: StateOpaque['is'] = (factory) => {
+      factoryAtSnapshot.mechanism === factory.mechanism
+    }
+    const as: StateOpaque['as'] = <
+      StateName extends string,
+      StatePayload,
+      Commands extends CommandDefinerMap<any, any, Event.Any[]>,
+    >(
+      factory: StateFactory<any, any, StateName, StatePayload, Commands>,
+      then?: any,
+    ) => {
       if (factoryAtSnapshot.mechanism === factory.mechanism) {
         const mechanism = factory.mechanism
         const snapshot = {
@@ -286,6 +305,7 @@ export namespace StateOpaque {
       return undefined
     }
     return {
+      is,
       as,
       payload: stateAtSnapshot.payload,
       type: stateAtSnapshot.type,

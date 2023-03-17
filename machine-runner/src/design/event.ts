@@ -14,10 +14,15 @@ export namespace Event {
         type: key,
       }),
     }),
+    withoutPayload: () => ({
+      type: key,
+      make: () => ({ type: key }),
+    }),
   })
 
   type EventFactoryIntermediate<Key extends string> = {
     withPayload: <Payload extends object>() => Factory<Key, Payload>
+    withoutPayload: () => Factory<Key, Record<never, never>>
   }
 
   export type Any = Event<string, { [key: string | number | symbol]: any }>
