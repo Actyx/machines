@@ -29,7 +29,6 @@ const Second = protocol.designState('Second').withPayload<{ x: number; y: number
 
 Initial.react([One, Two], Second, (c, [one, two]) => {
   c.self.transitioned = true
-  console.log('transitioned transitioned')
   return Second.make({
     x: one.x,
     y: two.y,
@@ -75,7 +74,6 @@ class Runner<E extends Event.Any, Payload> {
     )
 
     machine.events.addListener('audit.state', () => {
-      console.log('audit.state')
       this.stateChangeHistory.unshift({
         state: machine.get(),
         unhandled: this.unhandled,
@@ -84,12 +82,10 @@ class Runner<E extends Event.Any, Payload> {
     })
 
     machine.events.addListener('debug.caughtUp', () => {
-      console.log('debug.caughtup')
       this.caughtUpHistory.unshift(machine.get())
     })
 
     machine.events.addListener('audit.dropped', (dropped) => {
-      console.log('audit.dropped', ...dropped.events.map((actyxEvent) => actyxEvent.payload))
       this.unhandled.push(...dropped.events.map((actyxEvent) => actyxEvent.payload))
     })
 
@@ -101,7 +97,6 @@ class Runner<E extends Event.Any, Payload> {
 
   feed(ev: E[], caughtUp: boolean) {
     if (this.cb === null) throw new Error('not subscribed')
-    console.log('feed', ev)
     return this.cb({
       type: MsgType.events,
       caughtUp,

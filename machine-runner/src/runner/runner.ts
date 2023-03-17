@@ -23,22 +23,6 @@ import { DeepReadonly } from '../utils/type-utils.js'
 import { ReactionHandling, RunnerInternals } from './runner-internals.js'
 import { MachineRunnerEventMap, TypedEventEmitter } from './runner-utils.js'
 
-// const api = {
-//   id: Symbol(),
-//   events,
-//   get: (): StateOpaque => StateOpaque.make(internals),
-//   initial: (): DeepReadonly<StateRaw.Any> => internals.initial.data,
-//   destroy: destruction.destroy,
-//   isDestroyed: destruction.isDestroyed,
-// }
-
-// const iterator: AsyncIterableIterator<StateOpaque> = {
-//   next: (): Promise<IteratorResult<StateOpaque>> => nextValueAwaiter.consume(),
-//   return: onThrowOrReturn,
-//   throw: onThrowOrReturn,
-//   [Symbol.asyncIterator]: (): AsyncIterableIterator<StateOpaque> => iterator,
-// }
-
 export type MachineRunner = {
   id: Symbol
   events: TypedEventEmitter<MachineRunnerEventMap>
@@ -157,7 +141,6 @@ export const createMachineRunnerInternal = <Payload>(
 
             if (d.caughtUp) {
               // the SDK translates an OffsetMap response into MsgType.events with caughtUp=true
-              console.log('Caught uppppppppppppppppppppp')
               events.emit('debug.caughtUp')
               events.emit('log', 'Caught up')
               events.emit('change')
