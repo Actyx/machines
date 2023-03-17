@@ -38,14 +38,14 @@ export const PassengerID = Event.design('PassengerID').withPayload<{ id: string 
 
 export const Arrived = Event.design('Arrived').withPayload<{ taxiID: string }>()
 
-export const Started = Event.design('Arrived').withPayload<{}>()
+export const Started = Event.design('Arrived').withoutPayload()
 
 export const Path = Event.design('Path').withPayload<{
   lat: number
   lon: number
 }>()
 
-export const Finished = Event.design('Path').withPayload<{}>()
+export const Finished = Event.design('Path').withoutPayload()
 
 export const Cancelled = Event.design('Path').withPayload<{ reason: string }>()
 
@@ -165,7 +165,7 @@ InitialT.react([Requested], FirstBidT, (context, [{ pickup, destination }]) =>
   }),
 )
 
-FirstBidT.react([Bid, BidderID], AuctionT, (context, []) => AuctionT.make({ ...context.self }))
+FirstBidT.react([Bid, BidderID], AuctionT, (context) => AuctionT.make({ ...context.self }))
 
 AuctionT.react([Bid, BidderID], AuctionT, (context, [bid]) => {
   if (bid.price === 14) throw Error('Der Clown')
