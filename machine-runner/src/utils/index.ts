@@ -1,3 +1,3 @@
-export const NOP = () => {
+export const NOP = (..._: unknown[]) => {
   // do nothing
 }

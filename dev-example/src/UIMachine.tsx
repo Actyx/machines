@@ -1,5 +1,4 @@
-import { MachineRunner, State, StateOpaque } from '@actyx/machine-runner'
-import { StateFactory } from '@actyx/machine-runner/lib/design/state.js'
+import { MachineRunner } from '@actyx/machine-runner'
 import { useEffect, useState } from 'react'
 import { AuctionP, AuctionT, FirstBidT, InitialP, InitialT, RideP, RideT } from './machines.js'
 import { PrintState } from './UIMachineCommon.js'
@@ -10,19 +9,10 @@ export const UIMachine = ({ machine, name }: { name: string; machine: MachineRun
   const [state, setState] = useState(machine.get())
 
   useEffect(() => {
-    let active = true
-
-    ;(async () => {
-      for await (const state of machine) {
-        if (!active) {
-          break
-        }
-        setState(state)
-      }
-    })()
-
+    const onChange = () => setState(machine.get())
+    machine.events.on('change', onChange)
     return () => {
-      active = false
+      machine.events.off('change', onChange)
     }
   }, [machine.id])
 
@@ -31,12 +21,6 @@ export const UIMachine = ({ machine, name }: { name: string; machine: MachineRun
     // just to demonstrate that `state.is()` works
     console.log(bids)
   }
-  type N<F> = F extends State<infer Name, any, any> ? Name : never
-  function check<F>(f: F): N<F> {
-    return undefined as any
-  }
-  // check that this is not `any`:
-  const x: 'AuctionP' = check(state.as(AuctionP))
 
   return (
     <div>

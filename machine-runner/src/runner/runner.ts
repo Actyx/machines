@@ -224,7 +224,7 @@ export const createMachineRunnerInternal = <Payload>(
       }
 
       const api = {
-        get: () => StateOpaque.make(internals),
+        get: (): StateOpaque => StateOpaque.make(internals),
         initial: () => internals.initial.data,
       }
 
@@ -273,9 +273,8 @@ export namespace StateOpaque {
     const isExpired = () =>
       factoryAtSnapshot !== internals.current.factory || stateAtSnapshot !== internals.current.data
 
-    const is: StateOpaque['is'] = (factory) => {
-      factoryAtSnapshot.mechanism === factory.mechanism
-    }
+    const is: StateOpaque['is'] = (factory) => factoryAtSnapshot.mechanism === factory.mechanism
+
     const as: StateOpaque['as'] = <
       StateName extends string,
       StatePayload,
@@ -304,6 +303,7 @@ export namespace StateOpaque {
       }
       return undefined
     }
+
     return {
       is,
       as,
@@ -322,6 +322,10 @@ export type State<
 }
 
 export namespace State {
+  export type Minim = State<string, any, CommandDefinerMap<any, any, Event.Any>>
+
+  export type NameOf<T extends State.Minim> = T extends State<infer Name, any, any> ? Name : never
+
   export type Of<T extends StateFactory.Any> = T extends StateFactory<
     any,
     any,

@@ -5,29 +5,17 @@ import { Event } from './design/event.js'
 import { Protocol } from './index.js'
 import { StateFactory } from './design/state.js'
 import { deepCopy } from './utils/object-utils.js'
+import { NOP } from './utils/index.js'
+import { NotAnyOrUnknown } from './utils/type-utils.js'
+
+// Event definitions
 
 const One = Event.design('One').withPayload<{ x: number }>()
 const Two = Event.design('Two').withPayload<{ y: number }>()
 
-const protocol = Protocol.make('testProtocol', [One, Two])
+// Protocol and States
 
-// class Initial extends State<Events> {
-//   public transitioned = false
-//   public unhandled: Events[] = []
-//   execX() {
-//     return this.events({ type: 'One', x: 42 })
-//   }
-//   onOne(one: One, two: Two) {
-//     this.transitioned = true
-//     return new Second(one.x, two.y)
-//   }
-//   handleOrphan(event: ActyxEvent<Events>): void {
-//     this.unhandled.push(event.payload)
-//   }
-//   reactions(): Reactions {
-//     return { One: { moreEvents: ['Two'], target: 'Second' } }
-//   }
-// }
+const protocol = Protocol.make('testProtocol', [One, Two])
 
 const Initial = protocol
   .designState('Initial')
@@ -37,6 +25,8 @@ const Initial = protocol
 
 const Second = protocol.designState('Second').withPayload<{ x: number; y: number }>().finish()
 
+// Reactions
+
 Initial.react([One, Two], Second, (c, [one, two]) => {
   c.self.transitioned = true
   return Second.make({
@@ -45,20 +35,7 @@ Initial.react([One, Two], Second, (c, [one, two]) => {
   })
 })
 
-// class Second extends State<Events> {
-//   public unhandled: Events[] = []
-//   constructor(public x: number, public y: number) {
-//     super()
-//   }
-//   handleOrphan(event: ActyxEvent<Events>): void {
-//     this.unhandled.push(event.payload)
-//   }
-// }
-
-type StateUtil<E> = {
-  transitioned: boolean
-  unhandled: E[]
-}
+// Mock Runner
 
 class Runner<E extends Event.Any, Payload> {
   private cb: null | ((i: EventsOrTimetravel<E>) => void) = null
@@ -237,18 +214,78 @@ describe('machine runner', () => {
     r.cancel()
     r.assertSubscribed(false)
   })
+
   it('should cancel when not empty', () => {
     const r = new Runner(Initial, { transitioned: false })
     r.feed([{ type: 'One', x: 1 }], true)
     r.cancel()
     r.assertSubscribed(false)
   })
+
   it('should cancel after time travel', () => {
     const r = new Runner(Initial, { transitioned: false })
     r.feed([{ type: 'One', x: 1 }], true)
     r.timeTravel()
     r.cancel()
     r.assertSubscribed(false)
+  })
+})
+
+describe('StateOpaque', () => {
+  describe('.is function', () => {
+    it('should match by factory and reduce type inside block', () => {
+      const r1 = new Runner(Initial, { transitioned: false })
+      const s1 = r1.machine.get()
+      expect(s1.is(Initial)).toBe(true)
+      expect(s1.is(Second)).toBe(false)
+      if (s1.is(Initial)) {
+        expect(s1.payload.transitioned).toBe(false)
+      }
+
+      const r2 = new Runner(Second, { x: 1, y: 2 })
+      const s2 = r2.machine.get()
+      expect(s2.is(Second)).toBe(true)
+      expect(s2.is(Initial)).toBe(false)
+      if (s2.is(Second)) {
+        expect(s2.payload.x).toBe(1)
+        expect(s2.payload.y).toBe(2)
+      }
+    })
+  })
+
+  describe('.as function', () => {
+    it('should produce state snapshot', () => {
+      // Initial State
+
+      const r1 = new Runner(Initial, { transitioned: false })
+      const s1 = r1.machine.get()
+
+      const snapshot1Invalid = s1.as(Second)
+      expect(snapshot1Invalid).toBeFalsy()
+
+      const snapshot1 = s1.as(Initial)
+      expect(snapshot1).toBeTruthy()
+
+      if (snapshot1) {
+        expect(snapshot1.payload.transitioned).toBe(false)
+      }
+
+      // Second State
+
+      const r2 = new Runner(Second, { x: 1, y: 2 })
+      const s2 = r2.machine.get()
+
+      const snapshot2Invalid = s2.as(Initial)
+      expect(snapshot2Invalid).toBeFalsy()
+
+      const snapshot2 = s1.as(Second)
+      expect(snapshot2).toBeTruthy()
+
+      if (snapshot2) {
+        expect(snapshot2.payload.x).toBe(1)
+        expect(snapshot2.payload.y).toBe(2)
+      }
+    })
   })
 })
 
@@ -301,5 +338,42 @@ describe('deepCopy', () => {
     expect(x.f()).toBe(5)
     v = 6
     expect(x.f()).toBe(6)
+  })
+})
+
+describe('typings', () => {
+  it("state.as should not return 'any'", () => {
+    const r = new Runner(Initial, { transitioned: false })
+    const snapshot = r.machine.get()
+    const state = snapshot.as(Initial)
+    if (state) {
+      // This will fail to compile if `as` function returns nothing other than
+      // "Initial", including if it returns any
+      const supposedStateName: NotAnyOrUnknown<State.NameOf<typeof state>> = 'Initial'
+      NOP(supposedStateName)
+    }
+
+    const transformedTypeTest = snapshot.as(Initial, (initial) => initial.payload.transitioned)
+    let supposedBooleanOrUndefined: NotAnyOrUnknown<typeof transformedTypeTest> = true as
+      | true
+      | false
+      | undefined
+
+    NOP(transformedTypeTest, supposedBooleanOrUndefined)
+    expect(true).toBe(true)
+    r.machine.destroy()
+  })
+
+  it("state.is should not return 'any'", () => {
+    const r = new Runner(Initial, { transitioned: false })
+    const snapshot = r.machine.get()
+    const snapshotTypeTest: NotAnyOrUnknown<typeof snapshot> = snapshot
+    NOP(snapshotTypeTest)
+    if (snapshot.is(Initial)) {
+      const snapshotTransparentTypeTest: NotAnyOrUnknown<typeof snapshot> = snapshot
+      NOP(snapshotTransparentTypeTest)
+    }
+    expect(true).toBe(true)
+    r.machine.destroy()
   })
 })
