@@ -27,7 +27,7 @@ const Second = protocol.designState('Second').withPayload<{ x: number; y: number
 
 // Reactions
 
-Initial.react([One, Two], Second, (c, [one, two]) => {
+Initial.react([One, Two], Second, (c, one, two) => {
   c.self.transitioned = true
   return Second.make({
     x: one.x,

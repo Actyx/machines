@@ -161,7 +161,7 @@ export namespace RunnerInternals {
         {
           self: internals.current.data.payload,
         },
-        matchingEventSequence,
+        ...matchingEventSequence,
       )
 
       const nextFactory = reaction.next

@@ -131,7 +131,7 @@ export const RideT = protocol
 
 // Designing Reactions
 
-InitialP.react([Requested, Bid, BidderID], AuctionP, (context, [requested, bid, bidderId]) => {
+InitialP.react([Requested, Bid, BidderID], AuctionP, (context, requested, bid, bidderId) => {
   const { pickup, destination } = requested
   return AuctionP.make({
     pickup,
@@ -146,18 +146,18 @@ InitialP.react([Requested, Bid, BidderID], AuctionP, (context, [requested, bid, 
   })
 })
 
-AuctionP.react([Bid, BidderID], AuctionP, (context, [bid, bidderID]) => {
+AuctionP.react([Bid, BidderID], AuctionP, (context, bid, bidderID) => {
   context.self.bids.push({ bidderID: bidderID.id, price: bid.price, time: new Date(bid.time) })
   return context.self
 })
 
-AuctionP.react([Selected, PassengerID], RideP, (context, [selected]) =>
+AuctionP.react([Selected, PassengerID], RideP, (context, selected) =>
   RideP.make({ taxiID: selected.taxiID }),
 )
 
 RideP.react([Cancelled], InitialP, () => InitialP.make())
 
-InitialT.react([Requested], FirstBidT, (context, [{ pickup, destination }]) =>
+InitialT.react([Requested], FirstBidT, (context, { pickup, destination }) =>
   FirstBidT.make({
     id: context.self.id,
     pickup,
@@ -167,12 +167,12 @@ InitialT.react([Requested], FirstBidT, (context, [{ pickup, destination }]) =>
 
 FirstBidT.react([Bid, BidderID], AuctionT, (context) => AuctionT.make({ ...context.self }))
 
-AuctionT.react([Bid, BidderID], AuctionT, (context, [bid]) => {
+AuctionT.react([Bid, BidderID], AuctionT, (context, bid) => {
   if (bid.price === 14) throw Error('Der Clown')
   return context.self
 })
 
-AuctionT.react([Selected, PassengerID], RideT, (context, [selected, passengerId]) =>
+AuctionT.react([Selected, PassengerID], RideT, (context, selected, passengerId) =>
   RideT.make({
     id: context.self.id,
     winner: selected.taxiID,

@@ -16,7 +16,7 @@ export namespace StateRaw {
 
 export type ReactionHandler<EventChain extends Event.Any[], Context, RetVal extends any> = (
   context: Context,
-  events: EventChain,
+  ...events: EventChain
 ) => RetVal
 
 export type Reaction<Context> = {
