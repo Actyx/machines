@@ -39,7 +39,7 @@ export namespace Cleanup {
       clean: (): void => {
         for (const fn of fns) {
           try {
-            return fn()
+            fn()
           } catch (error) {
             console.error('error while cleaning up a machine:', error)
           }

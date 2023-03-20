@@ -59,6 +59,13 @@ export namespace ReactionMap {
     const add: ReactionMap['add'] = (now, triggers, next, handler) => {
       const mapPerMechanism = get(now)
       const firstTrigger = triggers[0]
+
+      if (mapPerMechanism.has(firstTrigger.type)) {
+        throw new Error(
+          `${firstTrigger.type} has been registered as a reaction guard for this state.`,
+        )
+      }
+
       mapPerMechanism.set(firstTrigger.type, { eventChainTrigger: triggers, next, handler })
     }
 

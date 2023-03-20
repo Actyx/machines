@@ -1,5 +1,16 @@
 import * as utils from '../utils/type-utils.js'
 
+// Note on "Loose" aliases
+//
+// Somehow underneath the calculation written below
+// T extends [
+//       Factory<infer Key, infer Payload>,
+//       ...infer Rest,
+//     ]
+// Rest is treated as unknown[] by the type checker. MapToEvent<T extends Event.Factory.Any[]> uses Event.Factory.Any[]. The extension signature limits users and us from accidentally assigning non factories to MapToEvent, but Rest which is unknown[] cannot be assigned to Event.Factory.Any[].
+//
+// Loose in turn receives any[], which is compatible with unknown[]. That's why "loose" is required.
+
 // TODO: rethink name "Event" is an overused name and maybe a global name in TS/JS
 export type Event<Key extends string, Payload extends utils.SerializableObject> = {
   type: Key

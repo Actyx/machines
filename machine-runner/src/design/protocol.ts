@@ -17,8 +17,6 @@ export type Protocol<
     void,
     Record<never, never>
   >
-
-  internals: () => Readonly<ProtocolInternals<ProtocolName, RegisteredEventsFactoriesTuple>>
 }
 
 export namespace Protocol {
@@ -51,21 +49,13 @@ export namespace Protocol {
   >(
     protocolName: ProtocolName,
     registeredEventFactories: RegisteredEventsFactoriesTuple,
-  ) => makeProtocolDesigner(protocolName, registeredEventFactories)
-
-  const makeProtocolDesigner = <
-    ProtocolName extends string,
-    EventFactoriesTuple extends Event.Factory.NonZeroTuple,
-  >(
-    protocolName: ProtocolName,
-    registeredEvents: EventFactoriesTuple,
-  ): Protocol<ProtocolName, EventFactoriesTuple> => {
-    type Self = Protocol<ProtocolName, EventFactoriesTuple>
-    type Internals = ProtocolInternals<ProtocolName, EventFactoriesTuple>
+  ): Protocol<ProtocolName, RegisteredEventsFactoriesTuple> => {
+    type Self = Protocol<ProtocolName, RegisteredEventsFactoriesTuple>
+    type Internals = ProtocolInternals<ProtocolName, RegisteredEventsFactoriesTuple>
 
     const protocolInternal: Internals = {
       name: protocolName,
-      registeredEvents,
+      registeredEvents: registeredEventFactories,
       registeredStateNames: new Set(),
       reactionMap: ReactionMap.make(),
     }
@@ -89,12 +79,9 @@ export namespace Protocol {
       return StateMechanism.make(protocolInternal, stateName)
     }
 
-    const internals: Self['internals'] = () => protocolInternal
-
     return {
       designState,
       designEmpty,
-      internals,
     }
   }
 }
