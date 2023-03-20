@@ -31,20 +31,20 @@ export type Cleanup = ReturnType<typeof Cleanup['make']>
 
 export namespace Cleanup {
   export const make = () => {
-    const fns = new Set<Function>()
+    const fns = new Set<() => void>()
     return {
-      add: (fn: Function) => {
+      add: (fn: () => void) => {
         fns.add(fn)
       },
-      clean: (): unknown[] =>
-        Array.from(fns).map((fn) => {
+      clean: (): void => {
+        for (const fn of fns) {
           try {
             return fn()
           } catch (error) {
-            console.error(error)
-            return undefined
+            console.error('error while cleaning up a machine:', error)
           }
-        }),
+        }
+      },
     }
   }
 }

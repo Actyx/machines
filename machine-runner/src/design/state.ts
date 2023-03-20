@@ -16,7 +16,7 @@ export namespace StateRaw {
 
 export type ReactionHandler<EventChain extends Event.Any[], Context, RetVal extends any> = (
   context: Context,
-  events: EventChain,
+  ...events: EventChain
 ) => RetVal
 
 export type Reaction<Context> = {
@@ -234,7 +234,7 @@ export type StateFactory<
   Commands extends CommandDefinerMap<any, any, Event.Any[]>,
 > = {
   make: (payload: StatePayload) => StatePayload
-  symbol: () => Symbol
+  symbol: () => symbol
   readonly mechanism: StateMechanism<
     ProtocolName,
     RegisteredEventsFactoriesTuple,

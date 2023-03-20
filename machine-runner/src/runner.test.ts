@@ -27,7 +27,7 @@ const Second = protocol.designState('Second').withPayload<{ x: number; y: number
 
 // Reactions
 
-Initial.react([One, Two], Second, (c, [one, two]) => {
+Initial.react([One, Two], Second, (c, one, two) => {
   c.self.transitioned = true
   return Second.make({
     x: one.x,
@@ -311,8 +311,8 @@ describe('machine as async generator', () => {
     if (iterResult.done !== false) return
 
     const snapshot = iterResult.value
-    let typeTest: NotAnyOrUnknown<typeof snapshot> = snapshot
-    NOP(typeTest)
+    const typeTest = snapshot.as(On)
+    const typeTest2: NotAnyOrUnknown<typeof typeTest> = typeTest
 
     expect(snapshot).toBeTruthy()
     expect(snapshot.as(Off)).toBeFalsy()
@@ -476,7 +476,7 @@ describe('typings', () => {
     }
 
     const transformedTypeTest = snapshot.as(Initial, (initial) => initial.payload.transitioned)
-    let supposedBooleanOrUndefined: NotAnyOrUnknown<typeof transformedTypeTest> = true as
+    const supposedBooleanOrUndefined: NotAnyOrUnknown<typeof transformedTypeTest> = true as
       | true
       | false
       | undefined

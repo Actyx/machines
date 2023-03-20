@@ -272,8 +272,11 @@ namespace NextValueAwaiter {
   }
 }
 
-export interface StateOpaque<P = unknown> extends StateRaw<string, P> {
-  is<Payload>(factory: StateFactory<any, any, any, Payload, any>): this is StateOpaque<Payload>
+export interface StateOpaque<StateName extends string = string, Payload = unknown>
+  extends StateRaw<StateName, Payload> {
+  is<Name extends string, Payload>(
+    factory: StateFactory<any, any, Name, Payload, any>,
+  ): this is StateOpaque<Name, Payload>
 
   as<
     StateName extends string,
@@ -292,6 +295,10 @@ export interface StateOpaque<P = unknown> extends StateRaw<string, P> {
     factory: StateFactory<any, any, StateName, StatePayload, Commands>,
     then: Then,
   ): ReturnType<Then> | undefined
+
+  cast<Commands extends CommandDefinerMap<any, any, Event.Any[]>>(
+    factory: StateFactory<any, any, StateName, Payload, Commands>,
+  ): State<StateName, Payload, Commands>
 }
 
 export namespace StateOpaque {
@@ -344,9 +351,25 @@ export namespace StateOpaque {
       return undefined
     }
 
+    const cast: StateOpaque['cast'] = (factory) => ({
+      payload: stateAtSnapshot.payload,
+      type: stateAtSnapshot.type,
+      commands: convertCommandMapToCommandSignatureMap<any, unknown, Event.Any[]>(
+        factory.mechanism.commands,
+        {
+          isExpired,
+          getActualContext: () => ({
+            self: stateAndFactoryForSnapshot.data.payload,
+          }),
+          onReturn: (events) => internals.commandEmitFn?.(events),
+        },
+      ),
+    })
+
     return {
       is,
       as,
+      cast,
       payload: stateAtSnapshot.payload,
       type: stateAtSnapshot.type,
     }
