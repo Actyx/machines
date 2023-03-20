@@ -15,9 +15,8 @@ export namespace Destruction {
       destroy: (): void => {
         if (!destroyed) {
           destroyed = true
-          return cleanup.clean()
+          cleanup.clean()
         }
-        return undefined
       },
     }
   }
