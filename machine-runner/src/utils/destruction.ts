@@ -12,12 +12,11 @@ export namespace Destruction {
     return {
       addDestroyHook: cleanup.add,
       isDestroyed: (): boolean => destroyed,
-      destroy: (): undefined | unknown[] => {
+      destroy: (): void => {
         if (!destroyed) {
           destroyed = true
-          return cleanup.clean()
+          cleanup.clean()
         }
-        return undefined
       },
     }
   }
