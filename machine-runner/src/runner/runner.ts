@@ -24,7 +24,7 @@ import { ReactionHandling, RunnerInternals } from './runner-internals.js'
 import { MachineRunnerEventMap, TypedEventEmitter } from './runner-utils.js'
 
 export type MachineRunner = {
-  id: Symbol
+  id: symbol
   events: TypedEventEmitter<MachineRunnerEventMap>
   destroy: () => unknown
   isDestroyed: () => boolean

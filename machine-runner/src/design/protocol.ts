@@ -10,7 +10,13 @@ export type Protocol<
 
   designEmpty: <StateName extends string>(
     stateName: StateName,
-  ) => StateMechanism<ProtocolName, RegisteredEventsFactoriesTuple, StateName, void, {}>
+  ) => StateMechanism<
+    ProtocolName,
+    RegisteredEventsFactoriesTuple,
+    StateName,
+    void,
+    Record<never, never>
+  >
 
   internals: () => Readonly<ProtocolInternals<ProtocolName, RegisteredEventsFactoriesTuple>>
 }
@@ -35,7 +41,7 @@ export namespace Protocol {
       RegisteredEventsFactoriesTuple,
       StateName,
       StatePayload,
-      {}
+      Record<never, never>
     >
   }
 

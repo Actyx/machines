@@ -234,7 +234,7 @@ export type StateFactory<
   Commands extends CommandDefinerMap<any, any, Event.Any[]>,
 > = {
   make: (payload: StatePayload) => StatePayload
-  symbol: () => Symbol
+  symbol: () => symbol
   readonly mechanism: StateMechanism<
     ProtocolName,
     RegisteredEventsFactoriesTuple,
