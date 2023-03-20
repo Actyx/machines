@@ -20,7 +20,7 @@ export type RunnerInternals<
   Commands extends CommandDefinerMap<any, any, Event.Any[]>,
 > = {
   readonly initial: StateAndFactory<any, any, any, any, any>
-  commandEmitFn?: CommandCallback
+  commandEmitFn: CommandCallback
   queue: ActyxEvent<Event.Any>[]
   current: StateAndFactory<
     ProtocolName,
@@ -54,6 +54,7 @@ export namespace RunnerInternals {
       Commands
     >,
     payload: StatePayload,
+    commandCallback: CommandCallback,
   ) => {
     const initial: StateAndFactory<
       ProtocolName,
@@ -81,6 +82,7 @@ export namespace RunnerInternals {
         data: deepCopy(initial.data),
       },
       queue: [],
+      commandEmitFn: commandCallback,
     }
 
     return internals
@@ -193,7 +195,7 @@ export namespace RunnerInternals {
   }
 }
 
-type StateAndFactory<
+export type StateAndFactory<
   ProtocolName extends string,
   RegisteredEventsFactoriesTuple extends Event.Factory.NonZeroTuple,
   StateName extends string,
@@ -208,6 +210,10 @@ type StateAndFactory<
     Commands
   >
   data: StateRaw<any, any>
+}
+
+export namespace StateAndFactory {
+  export type Any = StateAndFactory<any, any, any, any, any>
 }
 
 export type PushEventResult = EventQueueHandling & {

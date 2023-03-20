@@ -1,7 +1,7 @@
 import * as utils from '../utils/type-utils.js'
 
 // TODO: rethink name "Event" is an overused name and maybe a global name in TS/JS
-export type Event<Key extends string, Payload extends object> = {
+export type Event<Key extends string, Payload extends utils.SerializableObject> = {
   type: Key
 } & Payload
 
@@ -21,16 +21,16 @@ export namespace Event {
   })
 
   type EventFactoryIntermediate<Key extends string> = {
-    withPayload: <Payload extends object>() => Factory<Key, Payload>
+    withPayload: <Payload extends utils.SerializableObject>() => Factory<Key, Payload>
     withoutPayload: () => Factory<Key, Record<never, never>>
   }
 
-  export type Any = Event<string, { [key: string | number | symbol]: any }>
+  export type Any = Event<string, utils.SerializableObject>
 
   export type Of<T extends Factory.Any> = T extends Factory<any, infer Payload> ? Payload : never
 
   export type NonZeroTuple = utils.NonZeroTuple<Any>
-  export type Factory<Key extends string, Payload extends object> = {
+  export type Factory<Key extends string, Payload extends utils.SerializableObject> = {
     type: Key
     make: (payload: Payload) => Event<Key, Payload>
   }

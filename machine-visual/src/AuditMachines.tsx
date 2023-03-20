@@ -214,29 +214,20 @@ export function AuditMachines({ actyx, machines }: Props) {
           recompute()
         }
 
-        const onStateChange: MachineRunner.EventListener<'audit.state'> = ({
-          events,
-          state,
-        }) => {
+        const onStateChange: MachineRunner.EventListener<'audit.state'> = ({ events, state }) => {
           states.split[machineNumber].push({ type: 'state', events, state: { ...state } })
           recompute()
         }
 
         const onDroppedEvents: MachineRunner.EventListener<'audit.dropped'> = ({
-          events,
+          event,
           state,
         }) => {
-          events.forEach((event) => {
-            states.split[machineNumber].push({ type: 'unhandled', event, state: { ...state } })
-          })
+          states.split[machineNumber].push({ type: 'unhandled', event, state: { ...state } })
           recompute()
         }
 
-        const onError: MachineRunner.EventListener<'audit.error'> = ({
-          error,
-          events,
-          state,
-        }) => {
+        const onError: MachineRunner.EventListener<'audit.error'> = ({ error, events, state }) => {
           states.split[machineNumber].push({
             type: 'error',
             events,
@@ -377,7 +368,7 @@ export function AuditMachines({ actyx, machines }: Props) {
           {machines.map(({ name, machine }, machNr) => {
             const y = 40 * machNr + 130
             const initial = machine.initial()
-            let prevState = initial
+            let prevState = initial as StateRaw.Any
             const initCB =
               machNr === se?.machNr && -1 === se?.tpIdx
                 ? undefined

@@ -11,8 +11,8 @@ export namespace Destruction {
     const cleanup = Cleanup.make()
     return {
       addDestroyHook: cleanup.add,
-      isDestroyed: () => destroyed,
-      destroy: () => {
+      isDestroyed: (): boolean => destroyed,
+      destroy: (): undefined | unknown[] => {
         if (!destroyed) {
           destroyed = true
           return cleanup.clean()

@@ -108,12 +108,7 @@ export function App() {
     }).then(setActyx)
   }, [])
 
-  return (
-    <>
-      {actyx && <AppImpl actyx={actyx} />}
-      {!actyx && <h1>loading …</h1>}
-    </>
-  )
+  return actyx ? <AppImpl actyx={actyx} /> : <h1>loading …</h1>
 }
 
 export const useMachine = (factoryFn: () => MachineRunner, deps: unknown[]) => {

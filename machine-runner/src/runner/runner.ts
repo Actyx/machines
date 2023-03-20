@@ -18,19 +18,17 @@ import {
   convertCommandMapToCommandSignatureMap,
 } from '../design/state.js'
 import { Destruction } from '../utils/destruction.js'
-import { NOP } from '../utils/index.js'
-import { DeepReadonly } from '../utils/type-utils.js'
-import { ReactionHandling, RunnerInternals } from './runner-internals.js'
-import { MachineRunnerEventMap, TypedEventEmitter } from './runner-utils.js'
+import { ReactionHandling, RunnerInternals, StateAndFactory } from './runner-internals.js'
+import { MachineEmitter, MachineRunnerEventMap } from './runner-utils.js'
 
 export type MachineRunner = {
   id: Symbol
-  events: TypedEventEmitter<MachineRunnerEventMap>
+  events: MachineEmitter
   destroy: () => unknown
   isDestroyed: () => boolean
 
   get: () => StateOpaque
-  initial: () => DeepReadonly<StateRaw.Any>
+  initial: () => StateOpaque
 } & AsyncIterable<StateOpaque> &
   AsyncIterator<StateOpaque, unknown>
 
@@ -48,23 +46,23 @@ export type PersistFn = (e: any[]) => Promise<void | Metadata[]>
 
 export const createMachineRunner = <Payload>(
   sdk: Actyx,
-  query: Tags<any>,
-  factory: StateFactory<any, any, any, Payload, any>,
-  payload: Payload,
+  tags: Tags<any>,
+  initialFactory: StateFactory<any, any, any, Payload, any>,
+  initialPayload: Payload,
 ) => {
   const subscribeMonotonicQuery = {
-    query,
+    query: tags,
     sessionId: 'dummy',
     attemptStartFrom: { from: {}, latestEventKey: EventKey.zero },
   }
 
   const persist = (e: any[]) =>
-    sdk.publish(query.apply(...e)).catch((err) => console.error('error publishing', err, ...e))
+    sdk.publish(tags.apply(...e)).catch((err) => console.error('error publishing', err, ...e))
 
   const subscribe: SubscribeFn<Event.Any> = (callback, onCompleteOrErr) =>
     sdk.subscribeMonotonic<Event.Any>(subscribeMonotonicQuery, callback, onCompleteOrErr)
 
-  return createMachineRunnerInternal(subscribe, persist, factory, payload)
+  return createMachineRunnerInternal(subscribe, persist, initialFactory, initialPayload)
 }
 
 export const createMachineRunnerInternal = <Payload>(
@@ -73,11 +71,12 @@ export const createMachineRunnerInternal = <Payload>(
   factory: StateFactory<any, any, any, Payload, any>,
   payload: Payload,
 ): MachineRunner => {
-  const internals = RunnerInternals.make(factory, payload)
+  const internals = RunnerInternals.make(factory, payload, persist)
   const destruction = Destruction.make()
 
   // Actyx Subscription management
-  const events = new EventEmitter() as TypedEventEmitter<MachineRunnerEventMap>
+  const events = new EventEmitter() as MachineEmitter
+  destruction.addDestroyHook(() => events.emit('destroyed'))
 
   let refToUnsubFunction = null as null | (() => void)
 
@@ -85,6 +84,7 @@ export const createMachineRunnerInternal = <Payload>(
     refToUnsubFunction?.()
     refToUnsubFunction = null
   }
+  destruction.addDestroyHook(unsubscribeFromActyx)
 
   const restartActyxSubscription = () => {
     unsubscribeFromActyx()
@@ -103,6 +103,7 @@ export const createMachineRunnerInternal = <Payload>(
           } else if (d.type === MsgType.events) {
             for (const event of d.events) {
               // TODO: Runtime typeguard for event
+              // https://github.com/Actyx/machines/issues/9
               events.emit('debug.eventHandlingPrevState', internals.current.data)
 
               const handlingReport = RunnerInternals.pushEvent(internals, event)
@@ -115,28 +116,28 @@ export const createMachineRunnerInternal = <Payload>(
                 nextState: internals.current.data,
               })
 
-              if (handlingReport.handling === ReactionHandling.Execute) {
-                events.emit('audit.state', {
-                  state: internals.current.data,
-                  events: handlingReport.queueSnapshotBeforeExecution,
-                })
-              }
-
-              if (handlingReport.handling === ReactionHandling.Discard) {
-                if (handlingReport.orphans.length > 0) {
-                  events.emit('audit.dropped', {
-                    state: internals.current.data,
-                    events: handlingReport.orphans,
-                  })
+              // Effects of handlingReport on emitters
+              ;(() => {
+                switch (handlingReport.handling) {
+                  case ReactionHandling.Execute:
+                    return events.emit('audit.state', {
+                      state: internals.current.data,
+                      events: handlingReport.queueSnapshotBeforeExecution,
+                    })
+                  case ReactionHandling.Discard:
+                    return handlingReport.orphans.forEach((event) => {
+                      events.emit('audit.dropped', {
+                        state: internals.current.data,
+                        event: event,
+                      })
+                    })
+                  case ReactionHandling.DiscardLast:
+                    return events.emit('audit.dropped', {
+                      state: internals.current.data,
+                      event: handlingReport.orphan,
+                    })
                 }
-              }
-
-              if (handlingReport.handling === ReactionHandling.DiscardLast) {
-                events.emit('audit.dropped', {
-                  state: internals.current.data,
-                  events: [handlingReport.orphan],
-                })
-              }
+              })()
             }
 
             if (d.caughtUp) {
@@ -164,68 +165,14 @@ export const createMachineRunnerInternal = <Payload>(
   // First run of the subscription
   restartActyxSubscription()
 
-  // Bridge events from container
-  // IMPORTANT: pipe the event via `commandEmitFn`
-  internals.commandEmitFn = (events) => persist(events)
-
   // AsyncIterator part
   // ==================
 
-  /**
-   * Object to help "awaiting" next value
-   */
-  const nextValueAwaiter = (() => {
-    let nextValue: null | StateOpaque = null
-
-    const onChange: MachineRunner.EventListener<'change'> = () => {
-      nextValue = StateOpaque.make(internals)
-    }
-    events.addListener('change', onChange)
-
-    const intoIteratorResult = (value: StateOpaque | null): IteratorResult<StateOpaque, null> => {
-      if (value === null) {
-        return { done: true, value }
-      } else {
-        return { done: false, value }
-      }
-    }
-
-    const waitForNextValue = (): Promise<IteratorResult<StateOpaque, null>> => {
-      let cancel = NOP
-      const promise = new Promise<IteratorResult<StateOpaque, null>>((resolve) => {
-        const onChange = () => resolve(intoIteratorResult(StateOpaque.make(internals)))
-        const onDestroy = () => resolve(intoIteratorResult(null))
-
-        events.addListener('change', onChange)
-        events.addListener('destroyed', onDestroy)
-        cancel = () => {
-          events.off('change', onChange)
-          events.off('destroyed', onDestroy)
-        }
-      })
-      return promise.finally(() => cancel())
-    }
-
-    return {
-      consume: (): Promise<IteratorResult<StateOpaque, null>> => {
-        if (destruction.isDestroyed()) {
-          return Promise.resolve(intoIteratorResult(null))
-        }
-
-        const returned =
-          (nextValue && Promise.resolve(intoIteratorResult(nextValue))) || waitForNextValue()
-        nextValue = null
-
-        return returned
-      },
-    }
-  })()
-
-  // IMPORTANT:
-  // Register hook when machine is killed
-  // Unsubscriptions are called
-  destruction.addDestroyHook(unsubscribeFromActyx)
-  destruction.addDestroyHook(() => events.emit('destroyed'))
+  const nextValueAwaiter = NextValueAwaiter.make({
+    events,
+    internals,
+    destruction,
+  })
 
   // Self API construction
 
@@ -237,8 +184,8 @@ export const createMachineRunnerInternal = <Payload>(
   const api = {
     id: Symbol(),
     events,
-    get: (): StateOpaque => StateOpaque.make(internals),
-    initial: (): DeepReadonly<StateRaw.Any> => internals.initial.data,
+    get: (): StateOpaque => StateOpaque.make(internals, internals.current),
+    initial: (): StateOpaque => StateOpaque.make(internals, internals.initial),
     destroy: destruction.destroy,
     isDestroyed: destruction.isDestroyed,
   }
@@ -256,6 +203,73 @@ export const createMachineRunnerInternal = <Payload>(
   }
 
   return self
+}
+
+/**
+ * Object to help "awaiting" next value
+ */
+export type NextValueAwaiter = ReturnType<typeof NextValueAwaiter['make']>
+
+namespace NextValueAwaiter {
+  export const make = ({
+    events,
+    internals,
+    destruction,
+  }: {
+    events: MachineEmitter
+    internals: RunnerInternals.Any
+    destruction: Destruction
+  }) => {
+    let nextValue: null | StateOpaque = null
+    const requestedResolveFns = new Set<(_: IteratorResult<StateOpaque, null>) => unknown>()
+
+    events.on('change', () => {
+      const newStateOpaque = StateOpaque.make(internals, internals.current)
+      if (requestedResolveFns.size > 0) {
+        Array.from(requestedResolveFns).forEach((resolve) =>
+          resolve(intoIteratorResult(newStateOpaque)),
+        )
+        requestedResolveFns.clear()
+        // If there is at least one `next` call
+        // The next `change` event will be emitted and the next value
+        // will be set as null
+        nextValue = null
+      } else {
+        nextValue = newStateOpaque
+      }
+    })
+
+    events.on('destroyed', () =>
+      Array.from(requestedResolveFns).forEach((resolve) => resolve(intoIteratorResult(null))),
+    )
+
+    const intoIteratorResult = (value: StateOpaque | null): IteratorResult<StateOpaque, null> => {
+      if (value === null) {
+        return { done: true, value }
+      } else {
+        return { done: false, value }
+      }
+    }
+
+    const waitForNextValue = (): Promise<IteratorResult<StateOpaque, null>> =>
+      new Promise<IteratorResult<StateOpaque, null>>((resolve) => requestedResolveFns.add(resolve))
+
+    return {
+      consume: (): Promise<IteratorResult<StateOpaque, null>> => {
+        if (destruction.isDestroyed()) {
+          return Promise.resolve(intoIteratorResult(null))
+        }
+
+        const returned =
+          (nextValue && Promise.resolve(intoIteratorResult(nextValue))) || waitForNextValue()
+
+        // nextValue is set as null whenever there is a `next` call from the outside
+        nextValue = null
+
+        return returned
+      },
+    }
+  }
 }
 
 export interface StateOpaque<P = unknown> extends StateRaw<string, P> {
@@ -281,12 +295,23 @@ export interface StateOpaque<P = unknown> extends StateRaw<string, P> {
 }
 
 export namespace StateOpaque {
-  export const make = (internals: RunnerInternals.Any) => {
+  export const isExpired = (
+    internals: RunnerInternals.Any,
+    stateAndFactoryForSnapshot: StateAndFactory.Any,
+  ) =>
+    stateAndFactoryForSnapshot.factory !== internals.current.factory ||
+    stateAndFactoryForSnapshot.data !== internals.current.data
+
+  export const make = (
+    internals: RunnerInternals.Any,
+    stateAndFactoryForSnapshot: StateAndFactory.Any,
+  ): StateOpaque => {
     // Capture state and factory at snapshot call-time
-    const stateAtSnapshot = internals.current.data
-    const factoryAtSnapshot = internals.current.factory as StateFactory.Any
-    const isExpired = () =>
-      factoryAtSnapshot !== internals.current.factory || stateAtSnapshot !== internals.current.data
+    const stateAtSnapshot = stateAndFactoryForSnapshot.data
+    const factoryAtSnapshot = stateAndFactoryForSnapshot.factory as StateFactory.Any
+
+    // TODO: write unit test on expiry
+    const isExpired = () => StateOpaque.isExpired(internals, stateAndFactoryForSnapshot)
 
     const is: StateOpaque['is'] = (factory) => factoryAtSnapshot.mechanism === factory.mechanism
 
@@ -308,7 +333,7 @@ export namespace StateOpaque {
             {
               isExpired,
               getActualContext: () => ({
-                self: internals.current.data.payload,
+                self: stateAndFactoryForSnapshot.data.payload,
               }),
               onReturn: (events) => internals.commandEmitFn?.(events),
             },
@@ -333,7 +358,7 @@ export type State<
   StatePayload extends any,
   Commands extends CommandDefinerMap<any, any, Event.Any[]>,
 > = StateRaw<StateName, StatePayload> & {
-  commands: ToCommandSignatureMap<Commands, any, Event.Any>
+  commands: ToCommandSignatureMap<Commands, any, Event.Any[]>
 }
 
 export namespace State {

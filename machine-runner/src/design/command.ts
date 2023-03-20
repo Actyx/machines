@@ -1,9 +1,11 @@
+import { DeepReadonly } from '../utils/type-utils.js'
+
 export type CommandContext<Self extends any> = {
   self: Self
 }
 
 export type CommandDefiner<Self extends any, Args extends any[], Retval extends any> = (
-  context: CommandContext<Self>,
+  context: CommandContext<DeepReadonly<Self>>,
   ...args: Args
 ) => Retval
 
@@ -39,10 +41,10 @@ export type ToCommandSignatureMap<
  * It is called when the command is called to make sure that it has the latest mutable property
  * in case the property turns out to be a non-reference/primitives
  */
-export type ActualContextGetter<Self> = () => Readonly<CommandContext<Self>>
+export type ActualContextGetter<Self> = () => Readonly<CommandContext<DeepReadonly<Self>>>
 
 export type ConvertCommandMapParams<Self, RetVal> = {
-  getActualContext: () => CommandContext<Self>
+  getActualContext: ActualContextGetter<Self>
   onReturn: (retval: RetVal) => unknown
   /**
    * isExpired is intended to flag if a snapshot that owns the reference to a command
@@ -58,12 +60,12 @@ export const convertCommandMapToCommandSignatureMap = <
 >(
   t: T,
   params: ConvertCommandMapParams<Self, RetVal>,
-): ToCommandSignatureMap<T, any, void> => {
+): ToCommandSignatureMap<T, any, RetVal> => {
   return Object.fromEntries(
     Object.entries(t).map(([key, definer]) => {
       return [key, convertCommandDefinerToCommandSignature(definer, params)]
     }),
-  ) as ToCommandSignatureMap<T, any, void>
+  ) as ToCommandSignatureMap<T, any, RetVal>
 }
 
 export const convertCommandDefinerToCommandSignature = <

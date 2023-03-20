@@ -86,7 +86,7 @@ class Runner<E extends Event.Any, Payload> {
     })
 
     machine.events.addListener('audit.dropped', (dropped) => {
-      this.unhandled.push(...dropped.events.map((actyxEvent) => actyxEvent.payload))
+      this.unhandled.push(dropped.event.payload)
     })
 
     this.machine = machine

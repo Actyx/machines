@@ -5,12 +5,18 @@ import { PushEventResult } from './runner-internals.js'
 import EventEmitter from 'events'
 import { EventMap } from 'typed-emitter'
 
-export type TypedEventEmitter<Events extends EventMap> = import('typed-emitter').default<Events>
+/**
+ * Imported this way because it cannot be imported via normal import ... from syntax
+ * https://github.com/andywer/typed-emitter/issues/39
+ */
+type TypedEventEmitter<Events extends EventMap> = import('typed-emitter').default<Events>
+
+export type MachineEmitter = TypedEventEmitter<MachineRunnerEventMap>
 
 export type MachineRunnerEventMap = {
   'audit.reset': (_: void) => unknown
   'audit.state': (_: { state: StateRaw.Any; events: ActyxEvent<Event.Any>[] }) => unknown
-  'audit.dropped': (_: { state: StateRaw.Any; events: ActyxEvent<Event.Any>[] }) => unknown
+  'audit.dropped': (_: { state: StateRaw.Any; event: ActyxEvent<Event.Any> }) => unknown
   'audit.error': (_: {
     state: StateRaw.Any
     events: ActyxEvent<Event.Any>[]
