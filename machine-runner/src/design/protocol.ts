@@ -1,8 +1,8 @@
-import { StateMechanism, Event, ProtocolInternals, ReactionMap } from './state.js'
+import { StateMechanism, MachineEvent, ProtocolInternals, ReactionMap } from './state.js'
 
 export type Protocol<
   ProtocolName extends string,
-  RegisteredEventsFactoriesTuple extends Event.Factory.NonZeroTuple,
+  RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
 > = {
   designState: <StateName extends string>(
     stateName: StateName,
@@ -26,12 +26,12 @@ export namespace Protocol {
     any,
     infer RegisteredEventsFactoriesTuple
   >
-    ? Event.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>
+    ? MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>
     : never
 
   export type DesignStateIntermediate<
     ProtocolName extends string,
-    RegisteredEventsFactoriesTuple extends Event.Factory.NonZeroTuple,
+    RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
     StateName extends string,
   > = {
     withPayload: <StatePayload extends any>() => StateMechanism<
@@ -45,7 +45,7 @@ export namespace Protocol {
 
   export const make = <
     ProtocolName extends string,
-    RegisteredEventsFactoriesTuple extends Event.Factory.NonZeroTuple,
+    RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
   >(
     protocolName: ProtocolName,
     registeredEventFactories: RegisteredEventsFactoriesTuple,

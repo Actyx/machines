@@ -1,6 +1,7 @@
+import { ActyxEvent } from '@actyx/sdk'
 import * as utils from '../utils/type-utils.js'
 import { CommandDefiner, CommandDefinerMap } from './command.js'
-import { Event } from './event.js'
+import { MachineEvent } from './event.js'
 
 export * from './command.js'
 export * from './event.js'
@@ -14,15 +15,16 @@ export namespace StateRaw {
   export type Any = StateRaw<string, any>
 }
 
-export type ReactionHandler<EventChain extends Event.Any[], Context, RetVal extends any> = (
-  context: Context,
-  ...events: EventChain
-) => RetVal
+export type ReactionHandler<
+  EventChain extends ActyxEvent<MachineEvent.Any>[],
+  Context,
+  RetVal extends any,
+> = (context: Context, ...events: EventChain) => RetVal
 
 export type Reaction<Context> = {
-  eventChainTrigger: Event.Factory.Any[]
+  eventChainTrigger: MachineEvent.Factory.Any[]
   next: StateFactory.Any
-  handler: ReactionHandler<Event.Any[], Context, unknown>
+  handler: ReactionHandler<ActyxEvent<MachineEvent.Any>[], Context, unknown>
 }
 
 export type ReactionContext<Self> = {
@@ -38,9 +40,9 @@ export type ReactionMap = {
   getAll: () => Map<StateMechanism.Any, ReactionMapPerMechanism<any>>
   add: (
     now: StateMechanism.Any,
-    triggers: Event.Factory.Any[],
+    triggers: MachineEvent.Factory.Any[],
     next: StateFactory.Any,
-    reaction: ReactionHandler<Event.Any[], ReactionContext<any>, unknown>,
+    reaction: ReactionHandler<ActyxEvent<MachineEvent.Any>[], ReactionContext<any>, unknown>,
   ) => void
 }
 
@@ -79,7 +81,7 @@ export namespace ReactionMap {
 
 export type ProtocolInternals<
   ProtocolName extends string,
-  RegisteredEventsFactoriesTuple extends Event.Factory.NonZeroTuple,
+  RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
 > = {
   readonly name: ProtocolName
   readonly registeredEvents: RegisteredEventsFactoriesTuple
@@ -93,10 +95,10 @@ export namespace ProtocolInternals {
 
 export type StateMechanism<
   ProtocolName extends string,
-  RegisteredEventsFactoriesTuple extends Event.Factory.NonZeroTuple,
+  RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
   StateName extends string,
   StatePayload extends any,
-  Commands extends CommandDefinerMap<any, any, Event.Any[]>,
+  Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
 > = {
   readonly protocol: ProtocolInternals<ProtocolName, RegisteredEventsFactoriesTuple>
   readonly name: StateName
@@ -105,7 +107,7 @@ export type StateMechanism<
   readonly command: <
     CommandName extends string,
     AcceptedEventFactories extends utils.NonZeroTuple<
-      Event.Factory.Reduce<RegisteredEventsFactoriesTuple>
+      MachineEvent.Factory.Reduce<RegisteredEventsFactoriesTuple>
     >,
     CommandArgs extends any[],
   >(
@@ -114,7 +116,7 @@ export type StateMechanism<
     handler: CommandDefiner<
       StatePayload,
       CommandArgs,
-      Event.Factory.MapToPayload<AcceptedEventFactories>
+      MachineEvent.Factory.MapToPayload<AcceptedEventFactories>
     >,
   ) => StateMechanism<
     ProtocolName,
@@ -125,7 +127,7 @@ export type StateMechanism<
       [key in CommandName]: CommandDefiner<
         StatePayload,
         CommandArgs,
-        Event.Factory.MapToPayload<AcceptedEventFactories>
+        MachineEvent.Factory.MapToPayload<AcceptedEventFactories>
       >
     }
   >
@@ -143,10 +145,10 @@ export namespace StateMechanism {
   export type Any = StateMechanism<any, any, any, any, any>
   export const make = <
     ProtocolName extends string,
-    RegisteredEventsFactoriesTuple extends Event.Factory.NonZeroTuple,
+    RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
     StateName extends string,
     StatePayload extends any,
-    Commands extends CommandDefinerMap<any, any, Event.Any[]>,
+    Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
   >(
     protocol: ProtocolInternals<ProtocolName, RegisteredEventsFactoriesTuple>,
     stateName: StateName,
@@ -235,10 +237,10 @@ export type StateFactoryFromMechanism<T extends StateMechanism.Any> = T extends 
 
 export type StateFactory<
   ProtocolName extends string,
-  RegisteredEventsFactoriesTuple extends Event.Factory.NonZeroTuple,
+  RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
   StateName extends string,
   StatePayload extends any,
-  Commands extends CommandDefinerMap<any, any, Event.Any[]>,
+  Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
 > = {
   make: (payload: StatePayload) => StatePayload
   symbol: () => symbol
@@ -252,14 +254,14 @@ export type StateFactory<
 
   react: <
     EventFactoriesChain extends utils.NonZeroTuple<
-      Event.Factory.Reduce<RegisteredEventsFactoriesTuple>
+      MachineEvent.Factory.Reduce<RegisteredEventsFactoriesTuple>
     >,
     NextPayload extends any,
   >(
     eventChainTrigger: EventFactoriesChain,
     nextFactory: StateFactory<ProtocolName, RegisteredEventsFactoriesTuple, any, NextPayload, any>,
     handler: ReactionHandler<
-      Event.Factory.MapToEvent<EventFactoriesChain>,
+      MachineEvent.Factory.MapToActyxEvent<EventFactoriesChain>,
       ReactionContext<StatePayload>,
       NextPayload
     >,
@@ -269,10 +271,10 @@ export type StateFactory<
 export namespace StateFactory {
   export type Minim = StateFactory<
     any,
-    Event.Factory.NonZeroTuple,
+    MachineEvent.Factory.NonZeroTuple,
     string,
     any[],
-    CommandDefinerMap<any, any, Event.Any[]>
+    CommandDefinerMap<any, any, MachineEvent.Any[]>
   >
   export type Any = StateFactory<any, any, any, any, any>
 
@@ -288,10 +290,10 @@ export namespace StateFactory {
 
   export const fromMechanism = <
     ProtocolName extends string,
-    RegisteredEventsFactoriesTuple extends Event.Factory.NonZeroTuple,
+    RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
     StateName extends string,
     StatePayload extends any,
-    Commands extends CommandDefinerMap<any, any, Event.Any[]>,
+    Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
   >(
     mechanism: StateMechanism<
       ProtocolName,
@@ -311,7 +313,7 @@ export namespace StateFactory {
     const factorySymbol = Symbol(mechanism.name)
     const react: Self['react'] = (eventChainTrigger, nextFactory, handler) => {
       // TODO: remove "as any", fix issue with suspicious typing error:
-      // Type 'Any[]' is not assignable to type 'LooseMapToEvent<EventFactoriesChain>'
+      // Type 'Any[]' is not assignable to type 'LooseMapToActyxEvent<EventFactoriesChain>'
       mechanism.protocol.reactionMap.add(mechanism, eventChainTrigger, nextFactory, handler as any)
     }
 

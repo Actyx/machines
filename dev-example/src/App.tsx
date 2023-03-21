@@ -70,7 +70,7 @@ export const useMachineDebug = (machine: MachineRunner, label: string) => {
       mechanism,
       nextState,
     }) =>
-      console.log(label, 'event handling', handlingReport.handling, {
+      console.log(label, 'event handling', {
         event,
         factory,
         handlingReport,
@@ -78,21 +78,21 @@ export const useMachineDebug = (machine: MachineRunner, label: string) => {
         nextState: utils.deepCopy(nextState),
       })
 
-    const onCaughtUp: MachineRunner.EventListener<'debug.caughtUp'> = () =>
+    const onChange: MachineRunner.EventListener<'change'> = () =>
       console.log(label, 'state after caughtUp', utils.deepCopy(machine.get()))
 
     const onAuditState: MachineRunner.EventListener<'audit.state'> = (x) =>
       console.log(label, 'state change to ', utils.deepCopy(x.state))
 
-    machine.events.addListener('debug.eventHandlingPrevState', onPrevState)
-    machine.events.addListener('debug.eventHandling', onDebug)
-    machine.events.addListener('debug.caughtUp', onCaughtUp)
-    machine.events.addListener('audit.state', onAuditState)
+    machine.events.on('debug.eventHandlingPrevState', onPrevState)
+    machine.events.on('debug.eventHandling', onDebug)
+    machine.events.on('change', onChange)
+    machine.events.on('audit.state', onAuditState)
 
     return () => {
       machine.events.off('debug.eventHandlingPrevState', onPrevState)
       machine.events.off('debug.eventHandling', onDebug)
-      machine.events.off('debug.caughtUp', onCaughtUp)
+      machine.events.off('change', onChange)
       machine.events.off('audit.state', onAuditState)
     }
   }, [machine])

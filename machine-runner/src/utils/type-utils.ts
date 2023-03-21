@@ -8,7 +8,7 @@ export type ExtendsThenTransform<A, B, T = true, F = false> = A extends B ? T : 
 
 export type NotAnyOrUnknown<T> = ExtendsThenTransform<any, T, never, T>
 
-type SerializablePrimitive = number | string | boolean | null
+type SerializablePrimitive = number | string | boolean | null | undefined
 
 export type SerializableObject = {
   [_: string]: SerializablePrimitive | SerializablePrimitive[] | SerializableObject

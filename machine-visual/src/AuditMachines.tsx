@@ -1,4 +1,4 @@
-import { MachineRunner, State, StateRaw, Event } from '@actyx/machine-runner'
+import { MachineRunner, StateRaw } from '@actyx/machine-runner'
 import { Actyx, ActyxEvent } from '@actyx/sdk'
 import { Fragment, useEffect, useState } from 'react'
 import { Stage, Layer, Circle, Line, Label, Tag, Text, Rect } from 'react-konva'

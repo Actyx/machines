@@ -1,3 +1,4 @@
+import { ActyxEvent } from '@actyx/sdk'
 import * as utils from '../utils/type-utils.js'
 
 // Note on "Loose" aliases
@@ -12,11 +13,11 @@ import * as utils from '../utils/type-utils.js'
 // Loose in turn receives any[], which is compatible with unknown[]. That's why "loose" is required.
 
 // TODO: rethink name "Event" is an overused name and maybe a global name in TS/JS
-export type Event<Key extends string, Payload extends utils.SerializableObject> = {
+export type MachineEvent<Key extends string, Payload extends utils.SerializableObject> = {
   type: Key
 } & Payload
 
-export namespace Event {
+export namespace MachineEvent {
   export const design = <Key extends string>(key: Key): EventFactoryIntermediate<Key> => ({
     withPayload: () => ({
       type: key,
@@ -36,20 +37,24 @@ export namespace Event {
     withoutPayload: () => Factory<Key, Record<never, never>>
   }
 
-  export type Any = Event<string, utils.SerializableObject>
+  export type Any = MachineEvent<string, any>
 
   export type Of<T extends Factory.Any> = T extends Factory<any, infer Payload> ? Payload : never
 
   export type NonZeroTuple = utils.NonZeroTuple<Any>
+
   export type Factory<Key extends string, Payload extends utils.SerializableObject> = {
     type: Key
-    make: (payload: Payload) => Event<Key, Payload>
+    make: (payload: Payload) => MachineEvent<Key, Payload>
   }
 
   export namespace Payload {
-    export type Of<T extends Event.Any | Factory.Any> = T extends Event<any, infer Payload>
+    export type Of<T extends MachineEvent.Any | Factory.Any> = T extends MachineEvent<
+      any,
+      infer Payload
+    >
       ? Payload
-      : T extends Event.Factory<string, infer Payload>
+      : T extends MachineEvent.Factory<string, infer Payload>
       ? Payload
       : never
   }
@@ -59,42 +64,57 @@ export namespace Event {
 
     export type NonZeroTuple = utils.NonZeroTuple<Factory.Any>
 
-    export type Of<T extends Event.Any> = T extends Event<any, infer Payload> ? Payload : never
+    export type Of<T extends MachineEvent.Any> = T extends MachineEvent<any, infer Payload>
+      ? Payload
+      : never
 
     // =====
-    type LooseMapToEvent<T extends any[]> = T extends [
+    type LooseMapToActyxEvent<T, ACC extends ActyxEvent<MachineEvent.Any>[] = []> = T extends [
       Factory<infer Key, infer Payload>,
       ...infer Rest,
     ]
-      ? [Event<Key, Payload>, ...LooseMapToEvent<Rest>]
-      : []
+      ? LooseMapToActyxEvent<Rest, [...ACC, ActyxEvent<MachineEvent<Key, Payload>>]>
+      : ACC
 
-    export type MapToEvent<T extends Event.Factory.Any[]> = LooseMapToEvent<T>
+    export type MapToActyxEvent<T extends MachineEvent.Factory.Any[]> = LooseMapToActyxEvent<T>
 
     // =====
-    type LooseMapToPayload<T extends any[]> = T extends [
+    type LooseMapToEvent<T, ACC extends MachineEvent.Any[] = []> = T extends [
       Factory<infer Key, infer Payload>,
       ...infer Rest,
     ]
-      ? [Payload, ...LooseMapToPayload<Rest>]
-      : []
+      ? LooseMapToEvent<Rest, [...ACC, MachineEvent<Key, Payload>]>
+      : ACC
+
+    export type MapToEvent<T extends MachineEvent.Factory.Any[]> = LooseMapToEvent<T>
+
+    // =====
+    type LooseMapToPayload<T, ACC extends utils.SerializableObject[] = []> = T extends [
+      Factory<infer Key, infer Payload>,
+      ...infer Rest,
+    ]
+      ? LooseMapToPayload<Rest, [...ACC, Payload]>
+      : ACC
 
     export type MapToPayload<T extends Factory.Any[]> = LooseMapToPayload<T>
 
     // =====
-    type LooseReduce<T extends any[]> = T extends [Factory<infer Key, infer Payload>, ...infer Rest]
-      ? Factory<Key, Payload> | LooseReduce<Rest>
-      : never
+    type LooseReduce<T, UNION extends MachineEvent.Factory.Any = never> = T extends [
+      Factory<infer Key, infer Payload>,
+      ...infer Rest,
+    ]
+      ? LooseReduce<Rest, UNION | Factory<Key, Payload>>
+      : UNION
 
     export type Reduce<T extends Factory.Any[]> = LooseReduce<T>
 
     // =====
-    type LooseReduceToEvent<T extends any[]> = T extends [
+    type LooseReduceToEvent<T, UNION extends MachineEvent.Any = never> = T extends [
       Factory<infer Key, infer Payload>,
       ...infer Rest,
     ]
-      ? Event<Key, Payload> | LooseReduceToEvent<Rest>
-      : never
+      ? LooseReduceToEvent<Rest, UNION | MachineEvent<Key, Payload>>
+      : UNION
 
     export type ReduceToEvent<T extends Factory.Any[]> = LooseReduceToEvent<T>
   }

@@ -1,5 +1,5 @@
 import { Tag } from '@actyx/sdk'
-import { Event, Protocol } from '@actyx/machine-runner'
+import { MachineEvent, Protocol } from '@actyx/machine-runner'
 
 /**
  * Actyx pub-sub is based on topics selected by tagging (which supports
@@ -16,40 +16,40 @@ export type BidData = {
 
 // Events
 
-export const Requested = Event.design('Requested').withPayload<{
+export const Requested = MachineEvent.design('Requested').withPayload<{
   pickup: string
   destination: string
 }>()
 
-export const Bid = Event.design('Bid').withPayload<{
+export const Bid = MachineEvent.design('Bid').withPayload<{
   price: number
   time: string
 }>()
 
-export const BidderID = Event.design('BidderID').withPayload<{
+export const BidderID = MachineEvent.design('BidderID').withPayload<{
   id: string
 }>()
 
-export const Selected = Event.design('Selected').withPayload<{
+export const Selected = MachineEvent.design('Selected').withPayload<{
   taxiID: string
 }>()
 
-export const PassengerID = Event.design('PassengerID').withPayload<{ id: string }>()
+export const PassengerID = MachineEvent.design('PassengerID').withPayload<{ id: string }>()
 
-export const Arrived = Event.design('Arrived').withPayload<{ taxiID: string }>()
+export const Arrived = MachineEvent.design('Arrived').withPayload<{ taxiID: string }>()
 
-export const Started = Event.design('Arrived').withoutPayload()
+export const Started = MachineEvent.design('Arrived').withoutPayload()
 
-export const Path = Event.design('Path').withPayload<{
+export const Path = MachineEvent.design('Path').withPayload<{
   lat: number
   lon: number
 }>()
 
-export const Finished = Event.design('Path').withoutPayload()
+export const Finished = MachineEvent.design('Path').withoutPayload()
 
-export const Cancelled = Event.design('Path').withPayload<{ reason: string }>()
+export const Cancelled = MachineEvent.design('Path').withPayload<{ reason: string }>()
 
-export const Receipt = Event.design('Path').withPayload<{ amount: number }>()
+export const Receipt = MachineEvent.design('Path').withPayload<{ amount: number }>()
 
 export const protocol = Protocol.make('taxiRide', [
   Requested,
@@ -132,32 +132,36 @@ export const RideT = protocol
 // Designing Reactions
 
 InitialP.react([Requested, Bid, BidderID], AuctionP, (context, requested, bid, bidderId) => {
-  const { pickup, destination } = requested
+  const { pickup, destination } = requested.payload
   return AuctionP.make({
     pickup,
     destination,
     bids: [
       {
-        bidderID: bidderId.id,
-        price: bid.price,
-        time: new Date(bid.time),
+        bidderID: bidderId.payload.id,
+        price: bid.payload.price,
+        time: new Date(bid.payload.time),
       },
     ],
   })
 })
 
 AuctionP.react([Bid, BidderID], AuctionP, (context, bid, bidderID) => {
-  context.self.bids.push({ bidderID: bidderID.id, price: bid.price, time: new Date(bid.time) })
+  context.self.bids.push({
+    bidderID: bidderID.payload.id,
+    price: bid.payload.price,
+    time: new Date(bid.payload.time),
+  })
   return context.self
 })
 
 AuctionP.react([Selected, PassengerID], RideP, (context, selected) =>
-  RideP.make({ taxiID: selected.taxiID }),
+  RideP.make({ taxiID: selected.payload.taxiID }),
 )
 
 RideP.react([Cancelled], InitialP, () => InitialP.make())
 
-InitialT.react([Requested], FirstBidT, (context, { pickup, destination }) =>
+InitialT.react([Requested], FirstBidT, (context, { payload: { pickup, destination } }) =>
   FirstBidT.make({
     id: context.self.id,
     pickup,
@@ -168,15 +172,15 @@ InitialT.react([Requested], FirstBidT, (context, { pickup, destination }) =>
 FirstBidT.react([Bid, BidderID], AuctionT, (context) => AuctionT.make({ ...context.self }))
 
 AuctionT.react([Bid, BidderID], AuctionT, (context, bid) => {
-  if (bid.price === 14) throw Error('Der Clown')
+  if (bid.payload.price === 14) throw Error('Der Clown')
   return context.self
 })
 
 AuctionT.react([Selected, PassengerID], RideT, (context, selected, passengerId) =>
   RideT.make({
     id: context.self.id,
-    winner: selected.taxiID,
-    passenger: passengerId.id,
+    winner: selected.payload.taxiID,
+    passenger: passengerId.payload.id,
   }),
 )
 

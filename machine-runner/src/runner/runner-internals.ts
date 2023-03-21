@@ -1,7 +1,7 @@
 import { ActyxEvent } from '@actyx/sdk'
 import { deepCopy } from '../utils/object-utils.js'
 import { CommandDefinerMap } from '../design/command.js'
-import { Event } from '../design/event.js'
+import { MachineEvent } from '../design/event.js'
 import {
   Reaction,
   ReactionContext,
@@ -10,18 +10,20 @@ import {
   StateFactory,
 } from '../design/state.js'
 
-type CommandCallback = (_: Event.Any[]) => unknown
+type CommandCallback<F extends MachineEvent.Factory.NonZeroTuple> = (
+  _: MachineEvent.Factory.ReduceToEvent<F>[],
+) => unknown
 
 export type RunnerInternals<
   ProtocolName extends string,
-  RegisteredEventsFactoriesTuple extends Event.Factory.NonZeroTuple,
+  RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
   StateName extends string,
   StatePayload extends any,
-  Commands extends CommandDefinerMap<any, any, Event.Any[]>,
+  Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
 > = {
-  readonly initial: StateAndFactory<any, any, any, any, any>
-  commandEmitFn: CommandCallback
-  queue: ActyxEvent<Event.Any>[]
+  readonly initial: StateAndFactory<ProtocolName, RegisteredEventsFactoriesTuple, any, any, any>
+  commandEmitFn: CommandCallback<RegisteredEventsFactoriesTuple>
+  queue: ActyxEvent<MachineEvent.Any>[]
   current: StateAndFactory<
     ProtocolName,
     RegisteredEventsFactoriesTuple,
@@ -34,17 +36,12 @@ export type RunnerInternals<
 export namespace RunnerInternals {
   export type Any = RunnerInternals<any, any, any, any, any>
 
-  type ReactionMatchResult = {
-    reaction: Reaction<ReactionContext<any>>
-    queue: ActyxEvent<Event.Any>[]
-  }
-
   export const make = <
     ProtocolName extends string,
-    RegisteredEventsFactoriesTuple extends Event.Factory.NonZeroTuple,
+    RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
     StateName extends string,
     StatePayload extends any,
-    Commands extends CommandDefinerMap<any, any, Event.Any[]>,
+    Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
   >(
     factory: StateFactory<
       ProtocolName,
@@ -54,7 +51,7 @@ export namespace RunnerInternals {
       Commands
     >,
     payload: StatePayload,
-    commandCallback: CommandCallback,
+    commandCallback: CommandCallback<RegisteredEventsFactoriesTuple>,
   ) => {
     const initial: StateAndFactory<
       ProtocolName,
@@ -76,9 +73,9 @@ export namespace RunnerInternals {
       StatePayload,
       Commands
     > = {
-      initial: initial,
+      initial,
       current: {
-        factory: initial.factory,
+        factory,
         data: deepCopy(initial.data),
       },
       queue: [],
@@ -88,45 +85,30 @@ export namespace RunnerInternals {
     return internals
   }
 
-  const determineEventQueueHandling = <Self>(
+  const shouldEventBeEnqueued = <Self>(
     reactions: ReactionMapPerMechanism<Self>,
-    queue: ActyxEvent<Event.Any>[],
-  ): EventQueueHandling & {
-    reactionMatchResults?: ReactionMatchResult[]
-  } => {
-    const firstEvent = queue.at(0)
-    if (!firstEvent) {
-      return {
-        handling: ReactionHandling.InvalidQueueEmpty,
+    queue: ReadonlyArray<ActyxEvent<MachineEvent.Any>>,
+    newEvent: ActyxEvent<MachineEvent.Any>,
+  ):
+    | {
+        shouldQueue: false
       }
-    }
-
+    | {
+        shouldQueue: true
+        matchingReaction: Reaction<ReactionContext<Self>>
+      } => {
+    const nextIndex = queue.length
+    const firstEvent = queue.at(0) || newEvent
     const matchingReaction = reactions.get(firstEvent.payload.type)
 
-    if (!matchingReaction) {
-      return { handling: ReactionHandling.Discard, orphans: [...queue] }
-    }
+    if (!matchingReaction) return { shouldQueue: false }
 
-    const lastEventIndex = queue.length - 1
-    const lastEvent = queue[lastEventIndex]
-
-    if (lastEvent.payload.type !== matchingReaction.eventChainTrigger[lastEventIndex]?.type) {
-      return {
-        handling: ReactionHandling.DiscardLast,
-        orphan: lastEvent,
-      }
-    }
-
-    if (queue.length === matchingReaction.eventChainTrigger.length) {
-      return {
-        handling: ReactionHandling.Execute,
-        matching: [...queue].map((actyxEvent) => actyxEvent.payload),
-        reaction: matchingReaction,
-      }
-    }
+    if (newEvent.payload.type !== matchingReaction.eventChainTrigger[nextIndex]?.type)
+      return { shouldQueue: false }
 
     return {
-      handling: ReactionHandling.Queue,
+      shouldQueue: true,
+      matchingReaction,
     }
   }
 
@@ -136,71 +118,72 @@ export namespace RunnerInternals {
       factory: initial.factory,
       data: deepCopy(initial.data),
     }
-    internals.queue = []
+    internals.queue.length = 0
   }
 
   export const pushEvent = <StatePayload extends any>(
     internals: RunnerInternals.Any,
-    event: ActyxEvent<Event.Any>,
-  ) => {
-    internals.queue.push(event)
-
-    const queueSnapshotBeforeExecution = [...internals.queue]
-
+    event: ActyxEvent<MachineEvent.Any>,
+  ): PushEventResult => {
     const mechanism = internals.current.factory.mechanism
     const protocol = mechanism.protocol
     const reactions = protocol.reactionMap.get(mechanism)
 
-    const handlingResult = determineEventQueueHandling<StatePayload>(reactions, internals.queue)
+    const queueDeterminationResult = shouldEventBeEnqueued<StatePayload>(
+      reactions,
+      internals.queue,
+      event,
+    )
 
-    if (handlingResult.handling === ReactionHandling.Execute) {
-      const reaction = handlingResult.reaction
-      const matchingEventSequence = handlingResult.matching
+    if (!queueDeterminationResult.shouldQueue) {
+      return { executionHappened: false, discardable: event }
+    } else {
+      internals.queue.push(event)
 
-      // internals.queue are mutated here
-      // .splice mutates
-      const nextPayload = reaction.handler(
-        {
-          self: internals.current.data.payload,
-        },
-        ...matchingEventSequence,
-      )
+      const matchingReaction = queueDeterminationResult.matchingReaction
 
-      const nextFactory = reaction.next
+      if (matchingReaction.eventChainTrigger.length !== internals.queue.length) {
+        return { executionHappened: false }
+      } else {
+        const nextFactory = matchingReaction.next
 
-      internals.current = {
-        data: {
-          type: nextFactory.mechanism.name,
-          payload: nextPayload,
-        },
-        factory: reaction.next,
+        // Internals.queue needs to be emptied
+        // but the event queue that's being executed
+        // is required for audit
+        // Swapping instead of copying + emptying
+        const triggeringEvents = internals.queue
+        internals.queue = []
+
+        const nextPayload = matchingReaction.handler(
+          {
+            self: internals.current.data.payload,
+          },
+          ...triggeringEvents,
+        )
+
+        internals.current = {
+          data: {
+            type: nextFactory.mechanism.name,
+            payload: nextPayload,
+          },
+          factory: matchingReaction.next,
+        }
+
+        return {
+          executionHappened: true,
+          triggeringEvents,
+        }
       }
-
-      internals.queue = []
-    } else if (handlingResult.handling === ReactionHandling.Queue) {
-      // do nothing, item has been pushed
-    } else if (handlingResult.handling === ReactionHandling.Discard) {
-      internals.queue = []
-    } else if (handlingResult.handling === ReactionHandling.DiscardLast) {
-      internals.queue.pop()
-    } else if (handlingResult.handling === ReactionHandling.InvalidQueueEmpty) {
-      // impossible to happen because `internal.queue.push(event)` above but who knows?
-      // TODO: implement anyway
-    }
-
-    return {
-      ...handlingResult,
-      queueSnapshotBeforeExecution,
     }
   }
 }
 
 export type StateAndFactory<
   ProtocolName extends string,
-  RegisteredEventsFactoriesTuple extends Event.Factory.NonZeroTuple,
+  RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
   StateName extends string,
   StatePayload extends any,
-  Commands extends CommandDefinerMap<any, any, Event.Any[]>,
+  Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
 > = {
   factory: StateFactory<
     ProtocolName,
@@ -216,41 +199,12 @@ export namespace StateAndFactory {
   export type Any = StateAndFactory<any, any, any, any, any>
 }
 
-export type PushEventResult = EventQueueHandling & {
-  queueSnapshotBeforeExecution: ActyxEvent<Event.Any>[]
-}
-
-export type EventQueueHandling =
+export type PushEventResult =
   | {
-      handling: ReactionHandling.Execute
-      reaction: Reaction<ReactionContext<any>>
-      matching: Event.Any[]
+      executionHappened: false
+      discardable?: ActyxEvent<MachineEvent.Any>
     }
   | {
-      handling: ReactionHandling.DiscardLast
-      orphan: ActyxEvent<Event.Any>
+      executionHappened: true
+      triggeringEvents: ActyxEvent<MachineEvent.Any>[]
     }
-  | {
-      handling: ReactionHandling.Discard
-      orphans: ActyxEvent<Event.Any>[]
-    }
-  | {
-      handling: ReactionHandling.Queue | ReactionHandling.InvalidQueueEmpty
-    }
-
-export namespace ReactionHandling {
-  export type Queue = typeof Queue
-  export const Queue: unique symbol = Symbol('Queue')
-
-  export type DiscardLast = typeof DiscardLast
-  export const DiscardLast: unique symbol = Symbol('DiscardLast')
-
-  export type Discard = typeof Discard
-  export const Discard: unique symbol = Symbol('Discard')
-
-  export type Execute = typeof Execute
-  export const Execute: unique symbol = Symbol('Execute')
-
-  export type InvalidQueueEmpty = typeof InvalidQueueEmpty
-  export const InvalidQueueEmpty: unique symbol = Symbol('InvalidQueueEmpty')
-}

@@ -1,7 +1,7 @@
 import { EventsOrTimetravel, MsgType, OnCompleteOrErr } from '@actyx/sdk'
 import { describe, expect, it } from '@jest/globals'
-import { createMachineRunnerInternal, State, StateOpaque } from './runner/runner.js'
-import { Event } from './design/event.js'
+import { createMachineRunnerInternal, State, StateOpaque, SubscribeFn } from './runner/runner.js'
+import { MachineEvent } from './design/event.js'
 import { Protocol } from './index.js'
 import { StateFactory } from './design/state.js'
 import { deepCopy } from './utils/object-utils.js'
@@ -10,8 +10,8 @@ import { NotAnyOrUnknown } from './utils/type-utils.js'
 
 // Event definitions
 
-const One = Event.design('One').withPayload<{ x: number }>()
-const Two = Event.design('Two').withPayload<{ y: number }>()
+const One = MachineEvent.design('One').withPayload<{ x: number }>()
+const Two = MachineEvent.design('Two').withPayload<{ y: number }>()
 
 // Protocol and States
 
@@ -30,34 +30,38 @@ const Second = protocol.designState('Second').withPayload<{ x: number; y: number
 Initial.react([One, Two], Second, (c, one, two) => {
   c.self.transitioned = true
   return Second.make({
-    x: one.x,
-    y: two.y,
+    x: one.payload.x,
+    y: two.payload.y,
   })
 })
 
 // Mock Runner
 
-class Runner<E extends Event.Any, Payload> {
-  private cb: null | ((i: EventsOrTimetravel<E>) => void) = null
+class Runner<
+  RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
+  Payload,
+  E extends MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>,
+> {
+  private cb: null | ((data: EventsOrTimetravel<E>) => Promise<void>) = null
   private err: null | OnCompleteOrErr = null
   private persisted: E[] = []
   private cancelCB
-  private unhandled: Event.Any[] = []
+  private unhandled: MachineEvent.Any[] = []
   private caughtUpHistory: StateOpaque[] = []
-  private stateChangeHistory: { state: StateOpaque; unhandled: Event.Any[] }[] = []
+  private stateChangeHistory: { state: StateOpaque; unhandled: MachineEvent.Any[] }[] = []
   public machine
 
-  constructor(factory: StateFactory<any, any, any, Payload, any>, payload: Payload) {
+  constructor(
+    factory: StateFactory<any, RegisteredEventsFactoriesTuple, any, Payload, any>,
+    payload: Payload,
+  ) {
     this.cancelCB = () => {
       if (this.cb === null) throw new Error('not subscribed')
       this.cb = null
       this.err = null
     }
 
-    const subscribe = (
-      cb0: (i: EventsOrTimetravel<E>) => Promise<void>,
-      err0?: OnCompleteOrErr,
-    ) => {
+    const subscribe: SubscribeFn<RegisteredEventsFactoriesTuple> = (cb0, err0) => {
       if (this.cb !== null) throw new Error('already subscribed')
       this.cb = cb0
       this.err = err0 || null
@@ -81,7 +85,7 @@ class Runner<E extends Event.Any, Payload> {
       this.unhandled = []
     })
 
-    machine.events.addListener('debug.caughtUp', () => {
+    machine.events.addListener('change', () => {
       this.caughtUpHistory.unshift(machine.get())
     })
 
@@ -132,7 +136,10 @@ class Runner<E extends Event.Any, Payload> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   assertLastStateChange<Factory extends StateFactory<any, any, any, any, any>>(
     factory: Factory,
-    assertStateFurther?: (params: { snapshot: State.Of<Factory>; unhandled: Event.Any[] }) => void,
+    assertStateFurther?: (params: {
+      snapshot: State.Of<Factory>
+      unhandled: MachineEvent.Any[]
+    }) => void,
   ) {
     const last = this.stateChangeHistory.at(0)
     expect(last).toBeTruthy()
@@ -271,7 +278,7 @@ describe('machine runner', () => {
 })
 
 describe('machine as async generator', () => {
-  const Toggle = Event.design('Toggle').withoutPayload()
+  const Toggle = MachineEvent.design('Toggle').withoutPayload()
 
   const protocol = Protocol.make('switch', [Toggle])
 

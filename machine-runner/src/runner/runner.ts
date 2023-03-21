@@ -10,7 +10,7 @@ import {
 } from '@actyx/sdk'
 import EventEmitter from 'events'
 import {
-  Event,
+  MachineEvent,
   StateRaw,
   StateFactory,
   CommandDefinerMap,
@@ -18,7 +18,7 @@ import {
   convertCommandMapToCommandSignatureMap,
 } from '../design/state.js'
 import { Destruction } from '../utils/destruction.js'
-import { ReactionHandling, RunnerInternals, StateAndFactory } from './runner-internals.js'
+import { RunnerInternals, StateAndFactory } from './runner-internals.js'
 import { MachineEmitter, MachineRunnerEventMap } from './runner-utils.js'
 
 export type MachineRunner = {
@@ -37,17 +37,25 @@ export namespace MachineRunner {
   export type EventListener<Key extends keyof AllEventMap> = AllEventMap[Key]
 }
 
-export type SubscribeFn<E> = (
-  callback: (data: EventsOrTimetravel<E>) => Promise<void>,
-  onCompleteOrErr?: OnCompleteOrErr,
-) => CancelSubscription
+export type SubscribeFn<RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple> =
+  (
+    callback: (
+      data: EventsOrTimetravel<MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>>,
+    ) => Promise<void>,
+    onCompleteOrErr?: OnCompleteOrErr,
+  ) => CancelSubscription
 
-export type PersistFn = (e: any[]) => Promise<void | Metadata[]>
+export type PersistFn<RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple> = (
+  events: MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>[],
+) => Promise<void | Metadata[]>
 
-export const createMachineRunner = <Payload>(
+export const createMachineRunner = <
+  RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
+  Payload,
+>(
   sdk: Actyx,
   tags: Tags<any>,
-  initialFactory: StateFactory<any, any, any, Payload, any>,
+  initialFactory: StateFactory<any, RegisteredEventsFactoriesTuple, any, Payload, any>,
   initialPayload: Payload,
 ) => {
   const subscribeMonotonicQuery = {
@@ -59,16 +67,23 @@ export const createMachineRunner = <Payload>(
   const persist = (e: any[]) =>
     sdk.publish(tags.apply(...e)).catch((err) => console.error('error publishing', err, ...e))
 
-  const subscribe: SubscribeFn<Event.Any> = (callback, onCompleteOrErr) =>
-    sdk.subscribeMonotonic<Event.Any>(subscribeMonotonicQuery, callback, onCompleteOrErr)
+  const subscribe: SubscribeFn<RegisteredEventsFactoriesTuple> = (callback, onCompleteOrErr) =>
+    sdk.subscribeMonotonic<MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>>(
+      subscribeMonotonicQuery,
+      callback,
+      onCompleteOrErr,
+    )
 
   return createMachineRunnerInternal(subscribe, persist, initialFactory, initialPayload)
 }
 
-export const createMachineRunnerInternal = <Payload>(
-  subscribe: SubscribeFn<Event.Any>,
-  persist: PersistFn,
-  factory: StateFactory<any, any, any, Payload, any>,
+export const createMachineRunnerInternal = <
+  RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
+  Payload,
+>(
+  subscribe: SubscribeFn<RegisteredEventsFactoriesTuple>,
+  persist: PersistFn<RegisteredEventsFactoriesTuple>,
+  factory: StateFactory<any, RegisteredEventsFactoriesTuple, any, Payload, any>,
   payload: Payload,
 ): MachineRunner => {
   const internals = RunnerInternals.make(factory, payload, persist)
@@ -106,11 +121,11 @@ export const createMachineRunnerInternal = <Payload>(
               // https://github.com/Actyx/machines/issues/9
               events.emit('debug.eventHandlingPrevState', internals.current.data)
 
-              const handlingReport = RunnerInternals.pushEvent(internals, event)
+              const pushEventResult = RunnerInternals.pushEvent(internals, event)
 
               events.emit('debug.eventHandling', {
                 event,
-                handlingReport,
+                handlingReport: pushEventResult,
                 mechanism: internals.current.factory.mechanism,
                 factory: internals.current.factory,
                 nextState: internals.current.data,
@@ -118,31 +133,24 @@ export const createMachineRunnerInternal = <Payload>(
 
               // Effects of handlingReport on emitters
               ;(() => {
-                switch (handlingReport.handling) {
-                  case ReactionHandling.Execute:
-                    return events.emit('audit.state', {
-                      state: internals.current.data,
-                      events: handlingReport.queueSnapshotBeforeExecution,
-                    })
-                  case ReactionHandling.Discard:
-                    return handlingReport.orphans.forEach((event) => {
-                      events.emit('audit.dropped', {
-                        state: internals.current.data,
-                        event: event,
-                      })
-                    })
-                  case ReactionHandling.DiscardLast:
-                    return events.emit('audit.dropped', {
-                      state: internals.current.data,
-                      event: handlingReport.orphan,
-                    })
+                if (pushEventResult.executionHappened) {
+                  events.emit('audit.state', {
+                    state: internals.current.data,
+                    events: pushEventResult.triggeringEvents,
+                  })
+                }
+
+                if (!pushEventResult.executionHappened && pushEventResult.discardable) {
+                  events.emit('audit.dropped', {
+                    state: internals.current.data,
+                    event: pushEventResult.discardable,
+                  })
                 }
               })()
             }
 
             if (d.caughtUp) {
               // the SDK translates an OffsetMap response into MsgType.events with caughtUp=true
-              events.emit('debug.caughtUp')
               events.emit('log', 'Caught up')
               events.emit('change')
             }
@@ -281,7 +289,7 @@ export interface StateOpaque<StateName extends string = string, Payload = unknow
   as<
     StateName extends string,
     StatePayload extends any,
-    Commands extends CommandDefinerMap<any, any, Event.Any[]>,
+    Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
   >(
     factory: StateFactory<any, any, StateName, StatePayload, Commands>,
   ): State<StateName, StatePayload, Commands> | undefined
@@ -289,14 +297,14 @@ export interface StateOpaque<StateName extends string = string, Payload = unknow
   as<
     StateName extends string,
     StatePayload extends any,
-    Commands extends CommandDefinerMap<any, any, Event.Any[]>,
+    Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
     Then extends (arg: State<StateName, StatePayload, Commands>) => any,
   >(
     factory: StateFactory<any, any, StateName, StatePayload, Commands>,
     then: Then,
   ): ReturnType<Then> | undefined
 
-  cast<Commands extends CommandDefinerMap<any, any, Event.Any[]>>(
+  cast<Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>>(
     factory: StateFactory<any, any, StateName, Payload, Commands>,
   ): State<StateName, Payload, Commands>
 }
@@ -325,7 +333,7 @@ export namespace StateOpaque {
     const as: StateOpaque['as'] = <
       StateName extends string,
       StatePayload,
-      Commands extends CommandDefinerMap<any, any, Event.Any[]>,
+      Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
     >(
       factory: StateFactory<any, any, StateName, StatePayload, Commands>,
       then?: any,
@@ -335,7 +343,7 @@ export namespace StateOpaque {
         const snapshot = {
           payload: stateAtSnapshot.payload,
           type: stateAtSnapshot.type,
-          commands: convertCommandMapToCommandSignatureMap<any, unknown, Event.Any[]>(
+          commands: convertCommandMapToCommandSignatureMap<any, unknown, MachineEvent.Any[]>(
             mechanism.commands,
             {
               isExpired,
@@ -354,7 +362,7 @@ export namespace StateOpaque {
     const cast: StateOpaque['cast'] = (factory) => ({
       payload: stateAtSnapshot.payload,
       type: stateAtSnapshot.type,
-      commands: convertCommandMapToCommandSignatureMap<any, unknown, Event.Any[]>(
+      commands: convertCommandMapToCommandSignatureMap<any, unknown, MachineEvent.Any[]>(
         factory.mechanism.commands,
         {
           isExpired,
@@ -379,13 +387,13 @@ export namespace StateOpaque {
 export type State<
   StateName extends string,
   StatePayload extends any,
-  Commands extends CommandDefinerMap<any, any, Event.Any[]>,
+  Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
 > = StateRaw<StateName, StatePayload> & {
-  commands: ToCommandSignatureMap<Commands, any, Event.Any[]>
+  commands: ToCommandSignatureMap<Commands, any, MachineEvent.Any[]>
 }
 
 export namespace State {
-  export type Minim = State<string, any, CommandDefinerMap<any, any, Event.Any>>
+  export type Minim = State<string, any, CommandDefinerMap<any, any, MachineEvent.Any>>
 
   export type NameOf<T extends State.Minim> = T extends State<infer Name, any, any> ? Name : never
 
