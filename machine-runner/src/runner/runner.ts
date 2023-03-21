@@ -18,8 +18,9 @@ import {
   convertCommandMapToCommandSignatureMap,
 } from '../design/state.js'
 import { Destruction } from '../utils/destruction.js'
+import { NOP } from '../utils/index.js'
 import { RunnerInternals, StateAndFactory } from './runner-internals.js'
-import { MachineEmitter, MachineRunnerEventMap } from './runner-utils.js'
+import { MachineEmitter, MachineEmitterEventMap } from './runner-utils.js'
 
 export type MachineRunner = {
   id: Symbol
@@ -29,11 +30,12 @@ export type MachineRunner = {
 
   get: () => StateOpaque
   initial: () => StateOpaque
-} & AsyncIterable<StateOpaque> &
-  AsyncIterator<StateOpaque, unknown>
+
+  noAutoDestroy: () => MachineRunnerIterableIterator
+} & MachineRunnerIterableIterator
 
 export namespace MachineRunner {
-  type AllEventMap = MachineRunnerEventMap
+  type AllEventMap = MachineEmitterEventMap
   export type EventListener<Key extends keyof AllEventMap> = AllEventMap[Key]
 }
 
@@ -152,7 +154,7 @@ export const createMachineRunnerInternal = <
             if (d.caughtUp) {
               // the SDK translates an OffsetMap response into MsgType.events with caughtUp=true
               events.emit('log', 'Caught up')
-              events.emit('change')
+              events.emit('change', StateOpaque.make(internals, internals.current))
             }
           }
         } catch (error) {
@@ -176,41 +178,87 @@ export const createMachineRunnerInternal = <
   // AsyncIterator part
   // ==================
 
-  const nextValueAwaiter = NextValueAwaiter.make({
-    events,
-    internals,
-    destruction,
-  })
-
   // Self API construction
 
-  const onThrowOrReturn = async (): Promise<IteratorResult<StateOpaque, null>> => {
-    destruction.destroy()
-    return { done: true, value: null }
-  }
+  const getSnapshot = (): StateOpaque => StateOpaque.make(internals, internals.current)
 
   const api = {
     id: Symbol(),
     events,
-    get: (): StateOpaque => StateOpaque.make(internals, internals.current),
+    get: getSnapshot,
     initial: (): StateOpaque => StateOpaque.make(internals, internals.initial),
     destroy: destruction.destroy,
     isDestroyed: destruction.isDestroyed,
+    noAutoDestroy: () =>
+      MachineRunnerIterableIterator.make({
+        events,
+        getSnapshot,
+      }),
   }
 
-  const iterator: AsyncIterableIterator<StateOpaque> = {
-    next: (): Promise<IteratorResult<StateOpaque>> => nextValueAwaiter.consume(),
-    return: onThrowOrReturn,
-    throw: onThrowOrReturn,
-    [Symbol.asyncIterator]: (): AsyncIterableIterator<StateOpaque> => iterator,
-  }
+  const defaultIterator: MachineRunnerIterableIterator = MachineRunnerIterableIterator.make({
+    events,
+    getSnapshot,
+    inheritedDestruction: destruction,
+  })
 
-  const self: AsyncIterableIterator<StateOpaque> & typeof api = {
+  const self: MachineRunner = {
     ...api,
-    ...iterator,
+    ...defaultIterator,
   }
 
   return self
+}
+
+export type MachineRunnerIterableIterator = AsyncIterable<StateOpaque> &
+  AsyncIterableIterator<StateOpaque> &
+  AsyncIterator<StateOpaque, null>
+
+namespace MachineRunnerIterableIterator {
+  export const make = ({
+    events,
+    getSnapshot,
+    inheritedDestruction: inheritedDestruction,
+  }: {
+    events: MachineEmitter
+    getSnapshot: () => StateOpaque
+    inheritedDestruction?: Destruction
+  }): MachineRunnerIterableIterator => {
+    const destruction =
+      inheritedDestruction ||
+      (() => {
+        const destruction = Destruction.make()
+
+        // Destruction iis
+        const onDestroy = () => {
+          destruction.destroy()
+          events.off('destroyed', onDestroy)
+        }
+        events.on('destroyed', onDestroy)
+
+        return destruction
+      })()
+
+    const nextValueAwaiter = NextValueAwaiter.make({
+      events,
+      getSnapshot,
+      destruction,
+    })
+
+    const onThrowOrReturn = async (): Promise<IteratorResult<StateOpaque, null>> => {
+      destruction.destroy()
+      return nextValueAwaiter.consume()
+    }
+
+    const iterator: AsyncIterableIterator<StateOpaque> = {
+      next: (): Promise<IteratorResult<StateOpaque>> => nextValueAwaiter.consume(),
+      return: onThrowOrReturn,
+      throw: onThrowOrReturn,
+      [Symbol.asyncIterator]: (): AsyncIterableIterator<StateOpaque> => iterator,
+    }
+
+    return iterator
+  }
 }
 
 /**
@@ -221,63 +269,70 @@ export type NextValueAwaiter = ReturnType<typeof NextValueAwaiter['make']>
 namespace NextValueAwaiter {
   export const make = ({
     events,
-    internals,
+    getSnapshot,
     destruction,
   }: {
     events: MachineEmitter
-    internals: RunnerInternals.Any
+    getSnapshot: () => StateOpaque
     destruction: Destruction
   }) => {
-    let nextValue: null | StateOpaque = null
-    const requestedResolveFns = new Set<(_: IteratorResult<StateOpaque, null>) => unknown>()
+    let store: null | StateOpaque | RequestedPromisePair = null
 
-    events.on('change', () => {
-      const newStateOpaque = StateOpaque.make(internals, internals.current)
-      if (requestedResolveFns.size > 0) {
-        Array.from(requestedResolveFns).forEach((resolve) =>
-          resolve(intoIteratorResult(newStateOpaque)),
-        )
-        requestedResolveFns.clear()
-        // If there is at least one `next` call
-        // The next `change` event will be emitted and the next value
-        // will be set as null
-        nextValue = null
+    const onChange: MachineEmitterEventMap['change'] = (state) => {
+      if (destruction.isDestroyed()) return
+
+      if (Array.isArray(store)) {
+        store[1](intoIteratorResult(state))
+        store = null
       } else {
-        nextValue = newStateOpaque
+        store = state
+      }
+    }
+
+    events.on('change', onChange)
+
+    destruction.addDestroyHook(() => {
+      events.off('change', onChange)
+      if (Array.isArray(store)) {
+        store[1](Done)
+        store = null
       }
     })
 
-    events.on('destroyed', () =>
-      Array.from(requestedResolveFns).forEach((resolve) => resolve(intoIteratorResult(null))),
-    )
-
-    const intoIteratorResult = (value: StateOpaque | null): IteratorResult<StateOpaque, null> => {
-      if (value === null) {
-        return { done: true, value }
-      } else {
-        return { done: false, value }
-      }
-    }
-
-    const waitForNextValue = (): Promise<IteratorResult<StateOpaque, null>> =>
-      new Promise<IteratorResult<StateOpaque, null>>((resolve) => requestedResolveFns.add(resolve))
-
     return {
       consume: (): Promise<IteratorResult<StateOpaque, null>> => {
-        if (destruction.isDestroyed()) {
-          return Promise.resolve(intoIteratorResult(null))
+        if (destruction.isDestroyed()) return Promise.resolve(Done)
+
+        if (store && !Array.isArray(store)) {
+          const retVal = Promise.resolve(intoIteratorResult(store))
+          store = null
+          return retVal
+        } else {
+          const promisePair = store || createPromisePair()
+          store = promisePair
+          return promisePair[0].then((x) => x)
         }
-
-        const returned =
-          (nextValue && Promise.resolve(intoIteratorResult(nextValue))) || waitForNextValue()
-
-        // nextValue is set as null whenever there is a `next` call from the outside
-        nextValue = null
-
-        return returned
       },
     }
   }
+
+  type RequestedPromisePair = [
+    Promise<IteratorResult<StateOpaque, null>>,
+    (_: IteratorResult<StateOpaque, null>) => unknown,
+  ]
+
+  const createPromisePair = (): RequestedPromisePair => {
+    const pair: RequestedPromisePair = [Promise.resolve(Done), NOP]
+    pair[0] = new Promise<IteratorResult<StateOpaque, null>>((resolve) => (pair[1] = resolve))
+    return pair
+  }
+
+  const intoIteratorResult = (value: StateOpaque): IteratorResult<StateOpaque, null> => ({
+    done: false,
+    value,
+  })
+
+  export const Done: IteratorResult<StateOpaque, null> = { done: true, value: null }
 }
 
 export interface StateOpaque<StateName extends string = string, Payload = unknown>

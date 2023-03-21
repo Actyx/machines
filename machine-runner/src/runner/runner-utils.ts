@@ -4,6 +4,7 @@ import { MachineEvent } from '../design/event.js'
 import { PushEventResult } from './runner-internals.js'
 import EventEmitter from 'events'
 import { EventMap } from 'typed-emitter'
+import { StateOpaque } from './runner.js'
 
 /**
  * Imported this way because it cannot be imported via normal import ... from syntax
@@ -11,9 +12,9 @@ import { EventMap } from 'typed-emitter'
  */
 type TypedEventEmitter<Events extends EventMap> = import('typed-emitter').default<Events>
 
-export type MachineEmitter = TypedEventEmitter<MachineRunnerEventMap>
+export type MachineEmitter = TypedEventEmitter<MachineEmitterEventMap>
 
-export type MachineRunnerEventMap = {
+export type MachineEmitterEventMap = {
   'audit.reset': (_: void) => unknown
   'audit.state': (_: { state: StateRaw.Any; events: ActyxEvent<MachineEvent.Any>[] }) => unknown
   'audit.dropped': (_: { state: StateRaw.Any; event: ActyxEvent<MachineEvent.Any> }) => unknown
@@ -30,10 +31,10 @@ export type MachineRunnerEventMap = {
     factory: StateFactory.Any
     nextState: unknown
   }) => unknown
-  change: (_: void) => unknown
+  change: (_: StateOpaque) => unknown
   destroyed: (_: void) => unknown
   log: (_: string) => unknown
 }
 
 export const createEventEmittersForMachineRunner = () =>
-  new EventEmitter() as TypedEventEmitter<MachineRunnerEventMap>
+  new EventEmitter() as TypedEventEmitter<MachineEmitterEventMap>

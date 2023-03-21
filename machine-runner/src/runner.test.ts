@@ -320,6 +320,7 @@ describe('machine as async generator', () => {
     const snapshot = iterResult.value
     const typeTest = snapshot.as(On)
     const typeTest2: NotAnyOrUnknown<typeof typeTest> = typeTest
+    NOP(typeTest2)
 
     expect(snapshot).toBeTruthy()
     expect(snapshot.as(Off)).toBeFalsy()
@@ -334,10 +335,16 @@ describe('machine as async generator', () => {
     const promise1 = machine.next()
     const promise2 = machine.next()
 
-    r1.feed([], true)
-    await promise1
-    await promise2
-    expect(true).toBe(true)
+    r1.feed([Toggle.make({})], true)
+    const res1 = await promise1
+    const res2 = await promise2
+
+    const val1 = (!res1.done && res1.value) || null
+    const val2 = (!res2.done && res2.value) || null
+    expect(val1).toBeTruthy()
+    expect(val2).toBeTruthy()
+    expect(val1?.as(Off)).toBeTruthy()
+    expect(val2?.as(Off)).toBeTruthy()
 
     machine.destroy()
   })
@@ -354,6 +361,74 @@ describe('machine as async generator', () => {
       r1.feed([], true)
     }
     expect(r1.machine.isDestroyed()).toBe(true)
+  })
+
+  describe('non-destroying cloned async generator', () => {
+    it('should generate the same snapshot as parent', async () => {
+      const r = new Runner(On, { toggleCount: 0 })
+      const machine = r.machine
+      const cloned = machine.noAutoDestroy()
+
+      r.feed([{ type: 'Toggle' }], true)
+
+      const mres1 = await machine.next()
+      const cres1 = await cloned.next()
+      const mval1 = (!mres1.done && mres1.value) || null
+      const cval1 = (!cres1.done && cres1.value) || null
+
+      expect(mval1?.as(Off)).toBeTruthy()
+      expect(cval1?.as(Off)).toBeTruthy()
+
+      r.feed([{ type: 'Toggle' }], true)
+
+      const mres2 = await machine.next()
+      const cres2 = await cloned.next()
+      const mval2 = (!mres2.done && mres2.value) || null
+      const cval2 = (!cres2.done && cres2.value) || null
+
+      expect(mval2?.as(On)).toBeTruthy()
+      expect(cval2?.as(On)).toBeTruthy()
+    })
+
+    it("should not affect parent's destroyed status", async () => {
+      const r = new Runner(On, { toggleCount: 0 })
+      const machine = r.machine
+      const cloned = machine.noAutoDestroy()
+
+      r.feed([{ type: 'Toggle' }], true)
+      const mres1 = await machine.next()
+      const cres1 = await cloned.next()
+      expect(mres1.done).toBeFalsy()
+      expect(cres1.done).toBeFalsy()
+
+      r.feed([{ type: 'Toggle' }], true)
+
+      // attempt to kill
+      cloned.return?.()
+      cloned.throw?.()
+
+      const mres2 = await machine.next()
+      const cres2 = await cloned.next()
+
+      expect(mres2.done).toBeFalsy()
+      expect(cres2.done).toBeTruthy()
+    })
+
+    it('should be destroyed when parent is destroyed', async () => {
+      const r = new Runner(On, { toggleCount: 0 })
+      const machine = r.machine
+      const cloned = machine.noAutoDestroy()
+
+      r.feed([{ type: 'Toggle' }], true)
+
+      machine.destroy()
+
+      const mres1 = await machine.next()
+      const cres1 = await cloned.next()
+
+      expect(mres1.done).toBeTruthy()
+      expect(cres1.done).toBeTruthy()
+    })
   })
 })
 
