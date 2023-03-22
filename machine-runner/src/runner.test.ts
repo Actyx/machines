@@ -20,7 +20,19 @@ const protocol = Protocol.make('testProtocol', [One, Two])
 const Initial = protocol
   .designState('Initial')
   .withPayload<{ transitioned: boolean }>()
-  .command('X', [One], () => [One.make({ x: 42 })])
+  .command(
+    'X',
+    [One],
+    // Types below are used for type tests
+    (
+      context,
+      _supposedBoolean: boolean,
+      _supposedNumber: number,
+      _supposedString: string,
+      _supposedObject: { specificField: 'literal-a' },
+      _supposedSymbol: symbol,
+    ) => [One.make({ x: 42 })],
+  )
   .finish()
 
 const Second = protocol.designState('Second').withPayload<{ x: number; y: number }>().finish()
@@ -363,6 +375,55 @@ describe('machine as async generator', () => {
     expect(r1.machine.isDestroyed()).toBe(true)
   })
 
+  describe('peek', () => {
+    it('should not consume nextqueue', async () => {
+      const r1 = new Runner(On, { toggleCount: 0 })
+      const machine = r1.machine
+
+      r1.feed([], true)
+
+      const peekResult = await machine.peek()
+      expect(peekResult).toBeTruthy()
+
+      const nextResult = await machine.next()
+      expect(nextResult.done).toBe(peekResult.done)
+      expect(nextResult.value).toBe(peekResult.value)
+    })
+
+    it('should be resolved together with next regardless of order', async () => {
+      const r1 = new Runner(On, { toggleCount: 0 })
+      const machine = r1.machine
+
+      await (async () => {
+        // Peek first
+        const peekPromise = machine.peek()
+        const nextPromise = machine.next()
+
+        r1.feed([], true)
+
+        const peekResult = await peekPromise
+        const nextResult = await nextPromise
+
+        expect(nextResult.done).toBe(peekResult.done)
+        expect(nextResult.value).toBe(peekResult.value)
+      })()
+
+      await (async () => {
+        // Next first
+        const nextPromise = machine.next()
+        const peekPromise = machine.peek()
+
+        r1.feed([], true)
+
+        const peekResult = await peekPromise
+        const nextResult = await nextPromise
+
+        expect(nextResult.done).toBe(peekResult.done)
+        expect(nextResult.value).toBe(peekResult.value)
+      })()
+    })
+  })
+
   describe('non-destroying cloned async generator', () => {
     it('should generate the same snapshot as parent', async () => {
       const r = new Runner(On, { toggleCount: 0 })
@@ -439,6 +500,7 @@ describe('StateOpaque', () => {
       const s1 = r1.machine.get()
       expect(s1.is(Initial)).toBe(true)
       expect(s1.is(Second)).toBe(false)
+
       if (s1.is(Initial)) {
         expect(s1.payload.transitioned).toBe(false)
       }
@@ -555,6 +617,17 @@ describe('typings', () => {
       // "Initial", including if it returns any
       const supposedStateName: NotAnyOrUnknown<State.NameOf<typeof state>> = 'Initial'
       NOP(supposedStateName)
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const xTypeTest: NotAnyOrUnknown<typeof state.commands.X> = undefined as any
+      const paramsOfXTypeTest: NotAnyOrUnknown<Parameters<typeof state.commands.X>> = [
+        true,
+        1,
+        '',
+        { specificField: 'literal-a' },
+        Symbol(),
+      ]
+      NOP(xTypeTest, paramsOfXTypeTest)
     }
 
     const transformedTypeTest = snapshot.as(Initial, (initial) => initial.payload.transitioned)
@@ -568,15 +641,36 @@ describe('typings', () => {
     r.machine.destroy()
   })
 
-  it("state.is should not return 'any'", () => {
+  it("state.is should not return 'any' and should narrow cast", () => {
     const r = new Runner(Initial, { transitioned: false })
     const snapshot = r.machine.get()
     const snapshotTypeTest: NotAnyOrUnknown<typeof snapshot> = snapshot
     NOP(snapshotTypeTest)
+
     if (snapshot.is(Initial)) {
       const snapshotTransparentTypeTest: NotAnyOrUnknown<typeof snapshot> = snapshot
       NOP(snapshotTransparentTypeTest)
+
+      const someBool: NotAnyOrUnknown<typeof snapshot.payload.transitioned> = true as boolean
+      NOP(someBool)
+
+      // Test snapshot.as(typeof OtherThan<Initial>)
+      type ExpectedFactory = Parameters<typeof snapshot.cast>[0]
+      type SecondIsNotExpected = typeof Second extends ExpectedFactory ? false : true
+      type InitialIsExpected = typeof Initial extends ExpectedFactory ? true : false
+      const testSecondIsExpected: SecondIsNotExpected = true as const
+      const testInitialIsExpected: InitialIsExpected = true as const
+      NOP(testSecondIsExpected, testInitialIsExpected)
     }
+
+    snapshot.as(Initial)
+    snapshot.as(Second)
+
+    // type ExpectedFactory = Parameters<typeof snapshot.as>[0]
+    // const testSecondIsExpected: ExpectedFactory = Second
+    // const testInitialIsExpected: ExpectedFactory = Initial
+    // NOP(testSecondIsExpected, testInitialIsExpected)
+
     expect(true).toBe(true)
     r.machine.destroy()
   })

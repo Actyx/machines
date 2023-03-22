@@ -1,35 +1,48 @@
 import { DeepReadonly } from '../utils/type-utils.js'
 
-export type CommandContext<Self extends any> = {
+/**
+ * DO NOT CHANGE `any` usage in this file!
+ * TypeScript's behavior towards extends `any` is completely different
+ * than `object`. `any` here tells TypeScript that whatever passed here
+ * is an important type that needs to be accounted for in compilation.
+ *
+ * Changing some of them to unknown or object will cause
+ */
+
+export type CommandContext<Self> = {
   self: Self
 }
 
-export type CommandDefiner<Self extends any, Args extends any[], Retval extends any> = (
+export type CommandDefiner<Self, Args extends unknown[], Retval> = (
   context: CommandContext<DeepReadonly<Self>>,
   ...args: Args
 ) => Retval
 
 export type CommandDefinerMap<
-  Dictionary extends { [key in keyof Dictionary]: CommandDefiner<any, Args, RetVal> },
-  Args extends any[],
-  RetVal extends any,
+  Dictionary extends { [key in keyof Dictionary]: CommandDefiner<unknown, Args, RetVal> },
+  Args extends unknown[],
+  RetVal,
 > = {
   [key in keyof Dictionary]: Dictionary[key]
 }
 
-export type CommandSignature<Args extends any[]> = (...args: Args) => void
+export type CommandSignature<Args extends unknown[]> = (...args: Args) => void
 
-export type CommandSignatureMap<Dictionary extends { [key: string]: CommandSignature<any> }> = {
-  [key in keyof Dictionary]: Dictionary[key]
-}
+export type CommandSignatureMap<Dictionary extends { [key: string]: CommandSignature<unknown[]> }> =
+  {
+    [key in keyof Dictionary]: Dictionary[key]
+  }
 
 // TODO: unit test,
+
 export type ToCommandSignatureMap<
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   Dictionary extends CommandDefinerMap<any, Args, RetVal>,
-  Args extends any[],
-  RetVal extends any,
+  Args extends unknown[],
+  RetVal,
 > = {
-  [key in keyof Dictionary]: Dictionary[key] extends CommandDefiner<any, infer Args, infer Retval>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  [key in keyof Dictionary]: Dictionary[key] extends CommandDefiner<any, infer Args, any>
     ? CommandSignature<Args>
     : never
 }
@@ -54,25 +67,21 @@ export type ConvertCommandMapParams<Self, RetVal> = {
 }
 
 export const convertCommandMapToCommandSignatureMap = <
-  T extends CommandDefinerMap<any, any, RetVal>,
-  Self extends any,
-  RetVal extends any,
+  T extends CommandDefinerMap<any, unknown[], RetVal>,
+  Self,
+  RetVal,
 >(
   t: T,
   params: ConvertCommandMapParams<Self, RetVal>,
-): ToCommandSignatureMap<T, any, RetVal> => {
+): ToCommandSignatureMap<T, unknown[], RetVal> => {
   return Object.fromEntries(
     Object.entries(t).map(([key, definer]) => {
       return [key, convertCommandDefinerToCommandSignature(definer, params)]
     }),
-  ) as ToCommandSignatureMap<T, any, RetVal>
+  ) as ToCommandSignatureMap<T, unknown[], RetVal>
 }
 
-export const convertCommandDefinerToCommandSignature = <
-  Self extends any,
-  Args extends any[],
-  RetVal extends any,
->(
+export const convertCommandDefinerToCommandSignature = <Self, Args extends unknown[], RetVal>(
   definer: CommandDefiner<Self, Args, RetVal>,
   { getActualContext, onReturn, isExpired }: ConvertCommandMapParams<Self, RetVal>,
 ): CommandSignature<Args> => {
@@ -84,8 +93,4 @@ export const convertCommandDefinerToCommandSignature = <
     const returnedValue = definer(getActualContext(), ...args)
     onReturn(returnedValue)
   }
-}
-
-export type CommandMapPrototype<Dictionary extends { [key: string]: any }> = {
-  [key in keyof Dictionary]: Dictionary[key]
 }

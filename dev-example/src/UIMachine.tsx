@@ -19,6 +19,9 @@ export const UIMachine = ({ machine, name }: { name: string; machine: MachineRun
   if (state.is(AuctionP)) {
     const { bids } = state.payload
     // just to demonstrate that `state.is()` works
+
+    // inside this block the type below will fail
+    // state.cast(AuctionT)
     console.log(bids)
   }
 

@@ -79,14 +79,14 @@ export namespace MachineEvent {
     export type MapToActyxEvent<T extends MachineEvent.Factory.Any[]> = LooseMapToActyxEvent<T>
 
     // =====
-    type LooseMapToEvent<T, ACC extends MachineEvent.Any[] = []> = T extends [
+    type LooseMapToMachineEvent<T, ACC extends MachineEvent.Any[] = []> = T extends [
       Factory<infer Key, infer Payload>,
       ...infer Rest,
     ]
-      ? LooseMapToEvent<Rest, [...ACC, MachineEvent<Key, Payload>]>
+      ? LooseMapToMachineEvent<Rest, [...ACC, MachineEvent<Key, Payload>]>
       : ACC
 
-    export type MapToEvent<T extends MachineEvent.Factory.Any[]> = LooseMapToEvent<T>
+    export type MapToMachineEvent<T extends MachineEvent.Factory.Any[]> = LooseMapToMachineEvent<T>
 
     // =====
     type LooseMapToPayload<T, ACC extends utils.SerializableObject[] = []> = T extends [

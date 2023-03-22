@@ -8,7 +8,8 @@
   "scripts": {
     "build": "tsc",
     "clean": "rimraf ./lib",
-    "test": "jest"
+    "test": "jest",
+    "lint": "npx eslint src/**/*.ts"
   },
   "keywords": [
     "local-first"

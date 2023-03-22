@@ -23,7 +23,7 @@ import { RunnerInternals, StateAndFactory } from './runner-internals.js'
 import { MachineEmitter, MachineEmitterEventMap } from './runner-utils.js'
 
 export type MachineRunner = {
-  id: Symbol
+  id: symbol
   events: MachineEmitter
   destroy: () => unknown
   isDestroyed: () => boolean
@@ -56,7 +56,7 @@ export const createMachineRunner = <
   Payload,
 >(
   sdk: Actyx,
-  tags: Tags<any>,
+  tags: Tags<MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>>,
   initialFactory: StateFactory<any, RegisteredEventsFactoriesTuple, any, Payload, any>,
   initialPayload: Payload,
 ) => {
@@ -66,7 +66,7 @@ export const createMachineRunner = <
     attemptStartFrom: { from: {}, latestEventKey: EventKey.zero },
   }
 
-  const persist = (e: any[]) =>
+  const persist: PersistFn<RegisteredEventsFactoriesTuple> = (e) =>
     sdk.publish(tags.apply(...e)).catch((err) => console.error('error publishing', err, ...e))
 
   const subscribe: SubscribeFn<RegisteredEventsFactoriesTuple> = (callback, onCompleteOrErr) =>
@@ -192,13 +192,11 @@ export const createMachineRunnerInternal = <
     noAutoDestroy: () =>
       MachineRunnerIterableIterator.make({
         events,
-        getSnapshot,
       }),
   }
 
   const defaultIterator: MachineRunnerIterableIterator = MachineRunnerIterableIterator.make({
     events,
-    getSnapshot,
     inheritedDestruction: destruction,
   })
 
@@ -212,16 +210,16 @@ export const createMachineRunnerInternal = <
 
 export type MachineRunnerIterableIterator = AsyncIterable<StateOpaque> &
   AsyncIterableIterator<StateOpaque> &
-  AsyncIterator<StateOpaque, null>
+  AsyncIterator<StateOpaque, null> & {
+    peek: () => Promise<IteratorResult<StateOpaque, null>>
+  }
 
 namespace MachineRunnerIterableIterator {
   export const make = ({
     events,
-    getSnapshot,
     inheritedDestruction: inheritedDestruction,
   }: {
     events: MachineEmitter
-    getSnapshot: () => StateOpaque
     inheritedDestruction?: Destruction
   }): MachineRunnerIterableIterator => {
     const destruction =
@@ -241,7 +239,6 @@ namespace MachineRunnerIterableIterator {
 
     const nextValueAwaiter = NextValueAwaiter.make({
       events,
-      getSnapshot,
       destruction,
     })
 
@@ -250,7 +247,8 @@ namespace MachineRunnerIterableIterator {
       return nextValueAwaiter.consume()
     }
 
-    const iterator: AsyncIterableIterator<StateOpaque> = {
+    const iterator: MachineRunnerIterableIterator = {
+      peek: (): Promise<IteratorResult<StateOpaque>> => nextValueAwaiter.peek(),
       next: (): Promise<IteratorResult<StateOpaque>> => nextValueAwaiter.consume(),
       return: onThrowOrReturn,
       throw: onThrowOrReturn,
@@ -269,11 +267,9 @@ export type NextValueAwaiter = ReturnType<typeof NextValueAwaiter['make']>
 namespace NextValueAwaiter {
   export const make = ({
     events,
-    getSnapshot,
     destruction,
   }: {
     events: MachineEmitter
-    getSnapshot: () => StateOpaque
     destruction: Destruction
   }) => {
     let store: null | StateOpaque | RequestedPromisePair = null
@@ -310,7 +306,20 @@ namespace NextValueAwaiter {
         } else {
           const promisePair = store || createPromisePair()
           store = promisePair
-          return promisePair[0].then((x) => x)
+          return promisePair[0]
+        }
+      },
+
+      peek: (): Promise<IteratorResult<StateOpaque, null>> => {
+        if (destruction.isDestroyed()) return Promise.resolve(Done)
+
+        if (store && !Array.isArray(store)) {
+          const retVal = Promise.resolve(intoIteratorResult(store))
+          return retVal
+        } else {
+          const promisePair = store || createPromisePair()
+          store = promisePair
+          return promisePair[0]
         }
       },
     }
@@ -441,7 +450,7 @@ export namespace StateOpaque {
 
 export type State<
   StateName extends string,
-  StatePayload extends any,
+  StatePayload,
   Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
 > = StateRaw<StateName, StatePayload> & {
   commands: ToCommandSignatureMap<Commands, any, MachineEvent.Any[]>

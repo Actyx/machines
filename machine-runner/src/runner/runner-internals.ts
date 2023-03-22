@@ -18,7 +18,7 @@ export type RunnerInternals<
   ProtocolName extends string,
   RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
   StateName extends string,
-  StatePayload extends any,
+  StatePayload,
   Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
 > = {
   readonly initial: StateAndFactory<ProtocolName, RegisteredEventsFactoriesTuple, any, any, any>
@@ -121,7 +121,7 @@ export namespace RunnerInternals {
     internals.queue.length = 0
   }
 
-  export const pushEvent = <StatePayload extends any>(
+  export const pushEvent = <StatePayload>(
     internals: RunnerInternals.Any,
     event: ActyxEvent<MachineEvent.Any>,
   ): PushEventResult => {
@@ -166,7 +166,7 @@ export namespace RunnerInternals {
             type: nextFactory.mechanism.name,
             payload: nextPayload,
           },
-          factory: matchingReaction.next,
+          factory: nextFactory,
         }
 
         return {

@@ -6,20 +6,19 @@ import { MachineEvent } from './event.js'
 export * from './command.js'
 export * from './event.js'
 
-export type StateRaw<Name extends string, Payload extends any> = {
+export type StateRaw<Name extends string, Payload> = {
   type: Name
   payload: Payload
 }
 
 export namespace StateRaw {
-  export type Any = StateRaw<string, any>
+  export type Any = StateRaw<string, unknown>
 }
 
-export type ReactionHandler<
-  EventChain extends ActyxEvent<MachineEvent.Any>[],
-  Context,
-  RetVal extends any,
-> = (context: Context, ...events: EventChain) => RetVal
+export type ReactionHandler<EventChain extends ActyxEvent<MachineEvent.Any>[], Context, RetVal> = (
+  context: Context,
+  ...events: EventChain
+) => RetVal
 
 export type Reaction<Context> = {
   eventChainTrigger: MachineEvent.Factory.Any[]
@@ -34,7 +33,7 @@ export type ReactionContext<Self> = {
 export type ReactionMapPerMechanism<Payload> = Map<string, Reaction<ReactionContext<Payload>>>
 
 export type ReactionMap = {
-  get: <Payload extends any>(
+  get: <Payload>(
     mechanism: StateMechanism<any, any, any, Payload, any>,
   ) => ReactionMapPerMechanism<Payload>
   getAll: () => Map<StateMechanism.Any, ReactionMapPerMechanism<any>>
@@ -90,15 +89,15 @@ export type ProtocolInternals<
 }
 
 export namespace ProtocolInternals {
-  export type Any = ProtocolInternals<any, any>
+  export type Any = ProtocolInternals<string, any>
 }
 
 export type StateMechanism<
   ProtocolName extends string,
   RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
   StateName extends string,
-  StatePayload extends any,
-  Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
+  StatePayload,
+  Commands extends CommandDefinerMap<object, unknown[], MachineEvent.Any[]>,
 > = {
   readonly protocol: ProtocolInternals<ProtocolName, RegisteredEventsFactoriesTuple>
   readonly name: StateName
@@ -109,7 +108,7 @@ export type StateMechanism<
     AcceptedEventFactories extends utils.NonZeroTuple<
       MachineEvent.Factory.Reduce<RegisteredEventsFactoriesTuple>
     >,
-    CommandArgs extends any[],
+    CommandArgs extends unknown[],
   >(
     name: CommandName,
     events: AcceptedEventFactories,
@@ -147,7 +146,7 @@ export namespace StateMechanism {
     ProtocolName extends string,
     RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
     StateName extends string,
-    StatePayload extends any,
+    StatePayload,
     Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
   >(
     protocol: ProtocolInternals<ProtocolName, RegisteredEventsFactoriesTuple>,
@@ -239,7 +238,7 @@ export type StateFactory<
   ProtocolName extends string,
   RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
   StateName extends string,
-  StatePayload extends any,
+  StatePayload,
   Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
 > = {
   make: (payload: StatePayload) => StatePayload
@@ -256,7 +255,7 @@ export type StateFactory<
     EventFactoriesChain extends utils.NonZeroTuple<
       MachineEvent.Factory.Reduce<RegisteredEventsFactoriesTuple>
     >,
-    NextPayload extends any,
+    NextPayload,
   >(
     eventChainTrigger: EventFactoriesChain,
     nextFactory: StateFactory<ProtocolName, RegisteredEventsFactoriesTuple, any, NextPayload, any>,
@@ -292,7 +291,7 @@ export namespace StateFactory {
     ProtocolName extends string,
     RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
     StateName extends string,
-    StatePayload extends any,
+    StatePayload,
     Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
   >(
     mechanism: StateMechanism<
