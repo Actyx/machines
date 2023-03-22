@@ -322,7 +322,7 @@ namespace NextValueAwaiter {
   ]
 
   const createPromisePair = (): RequestedPromisePair => {
-    const pair: RequestedPromisePair = [Promise.resolve(Done), NOP]
+    const pair: RequestedPromisePair = [undefined as any, NOP]
     pair[0] = new Promise<IteratorResult<StateOpaque, null>>((resolve) => (pair[1] = resolve))
     return pair
   }
