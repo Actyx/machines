@@ -8,6 +8,12 @@ import { deepCopy } from './utils/object-utils.js'
 import { NOP } from './utils/index.js'
 import { NotAnyOrUnknown } from './utils/type-utils.js'
 
+class Unreachable extends Error {
+  constructor() {
+    super('should be unreachable')
+  }
+}
+
 // Event definitions
 
 const One = MachineEvent.design('One').withPayload<{ x: number }>()
@@ -159,8 +165,7 @@ class Runner<
     }) => void,
   ) {
     const last = this.stateChangeHistory.at(0)
-    expect(last).toBeTruthy()
-    if (!last) return
+    if (!last) throw new Unreachable()
 
     const { state, unhandled } = last
 
@@ -177,8 +182,7 @@ class Runner<
     assertStateFurther?: (params: { snapshot: State.Of<Factory> }) => void,
   ) {
     const state = this.caughtUpHistory.at(0)
-    expect(state).toBeTruthy()
-    if (!state) return
+    if (!state) throw new Unreachable()
 
     const snapshot = state.as(factory) as State.Of<Factory> | void
     expect(snapshot).toBeTruthy()
@@ -331,8 +335,7 @@ describe('machine as async generator', () => {
 
     expect(after.getTime() - before.getTime()).toBeGreaterThanOrEqual(TIMEOUT)
 
-    expect(iterResult.done).toBe(false)
-    if (iterResult.done !== false) return
+    if (iterResult.done !== false) throw new Unreachable()
 
     const snapshot = iterResult.value
     const typeTest = snapshot.as(On)
@@ -505,8 +508,7 @@ describe('StateOpaque', () => {
     r1.feed([], false)
 
     const asInitial = r1.machine.get()?.as(Initial)
-    expect(asInitial).toBeTruthy()
-    if (!asInitial) return
+    if (!asInitial) throw new Unreachable()
 
     expect(asInitial.commands).toBe(undefined)
   })
@@ -517,8 +519,7 @@ describe('StateOpaque', () => {
     r1.feed([One.make({ x: 1 })], true)
 
     const asInitial = r1.machine.get()?.as(Initial)
-    expect(asInitial).toBeTruthy()
-    if (!asInitial) return
+    if (!asInitial) throw new Unreachable()
 
     expect(asInitial.commands).toBe(undefined)
   })
@@ -528,8 +529,7 @@ describe('StateOpaque', () => {
     r1.feed([], true)
 
     const stateBeforeExpiry = r1.machine.get()?.as(Initial)
-    expect(stateBeforeExpiry).toBeTruthy()
-    if (!stateBeforeExpiry) return
+    if (!stateBeforeExpiry) throw new Unreachable()
 
     r1.assertPersisted()
 
@@ -541,15 +541,15 @@ describe('StateOpaque', () => {
     r1.assertPersisted()
 
     const stateAfterExpiry = r1.machine.get()?.as(Second)
-    expect(stateAfterExpiry).toBeTruthy()
-    if (!stateAfterExpiry) return
+    if (!stateAfterExpiry) throw new Unreachable()
 
     expect(stateAfterExpiry.commands).toBeTruthy()
+    const commands = stateAfterExpiry.commands
     // run command here
-    if (!stateAfterExpiry.commands) return
+    if (!commands) throw new Unreachable()
 
     // should persist Two.make({ y: 2 })
-    stateAfterExpiry.commands?.Y()
+    commands?.Y()
 
     r1.assertPersisted(Two.make({ y: 2 }))
   })
@@ -577,27 +577,25 @@ describe('StateOpaque', () => {
       const s1 = r1.machine.get()
       expect(true).toBe(true)
 
-      if (s1) {
-        expect(s1.is(Initial)).toBe(true)
-        expect(s1.is(Second)).toBe(false)
+      if (!s1) throw new Unreachable()
 
-        if (s1.is(Initial)) {
-          expect(s1.payload.transitioned).toBe(false)
-        }
-      }
+      expect(s1.is(Initial)).toBe(true)
+      expect(s1.is(Second)).toBe(false)
+
+      if (!s1.is(Initial)) throw new Unreachable()
+      expect(s1.payload.transitioned).toBe(false)
 
       const r2 = new Runner(Second, { x: 1, y: 2 })
       r2.feed([], true)
       const s2 = r2.machine.get()
 
-      if (s2) {
-        expect(s2.is(Second)).toBe(true)
-        expect(s2.is(Initial)).toBe(false)
-        if (s2.is(Second)) {
-          expect(s2.payload.x).toBe(1)
-          expect(s2.payload.y).toBe(2)
-        }
-      }
+      if (!s2) throw new Unreachable()
+      expect(s2.is(Second)).toBe(true)
+      expect(s2.is(Initial)).toBe(false)
+
+      if (!s2.is(Second)) throw new Unreachable()
+      expect(s2.payload.x).toBe(1)
+      expect(s2.payload.y).toBe(2)
     })
   })
 
@@ -611,16 +609,16 @@ describe('StateOpaque', () => {
         r.feed([], true)
         const state = r.machine.get()
 
-        if (state) {
-          const snapshot1Invalid = state.as(Second)
-          expect(snapshot1Invalid).toBeFalsy()
+        if (!state) throw new Unreachable()
 
-          const snapshot1 = state.as(Initial)
-          expect(snapshot1).toBeTruthy()
+        const snapshot1Invalid = state.as(Second)
+        expect(snapshot1Invalid).toBeFalsy()
 
-          if (snapshot1) {
-            expect(snapshot1.payload.transitioned).toBe(false)
-          }
+        const snapshot1 = state.as(Initial)
+        expect(snapshot1).toBeTruthy()
+
+        if (snapshot1) {
+          expect(snapshot1.payload.transitioned).toBe(false)
         }
       })()
 
@@ -632,17 +630,16 @@ describe('StateOpaque', () => {
 
         const state = r.machine.get()
 
-        if (state) {
-          const snapshot2Invalid = state.as(Initial)
-          expect(snapshot2Invalid).toBeFalsy()
+        if (!state) throw new Unreachable()
+        const snapshot2Invalid = state.as(Initial)
+        expect(snapshot2Invalid).toBeFalsy()
 
-          const stateAsSecond = state.as(Second)
-          expect(stateAsSecond).toBeTruthy()
+        const stateAsSecond = state.as(Second)
+        expect(stateAsSecond).toBeTruthy()
 
-          if (stateAsSecond) {
-            expect(stateAsSecond.payload.x).toBe(1)
-            expect(stateAsSecond.payload.y).toBe(2)
-          }
+        if (stateAsSecond) {
+          expect(stateAsSecond.payload.x).toBe(1)
+          expect(stateAsSecond.payload.y).toBe(2)
         }
       })()
     })
@@ -706,6 +703,7 @@ describe('typings', () => {
     const r = new Runner(Initial, { transitioned: false })
     const snapshot = r.machine.get()
     if (!snapshot) return
+
     const state = snapshot.as(Initial)
     if (!state) return
 

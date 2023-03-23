@@ -24,7 +24,7 @@ export const UIInitialP = ({ state: state }: { state: State.Of<typeof InitialP> 
         type="button"
         disabled={!buttonEnabled}
         onClick={() =>
-          state.commands.request({
+          state.commands?.request({
             pickup,
             destination,
           })
@@ -62,7 +62,7 @@ export const UIAuctionP = ({ state: state }: { state: State.Of<typeof AuctionP> 
         disabled={selection === null}
         onClick={() => {
           if (selection !== null) {
-            state.commands.select(selection.bidderID)
+            state.commands?.select(selection.bidderID)
           }
         }}
       >
@@ -77,7 +77,7 @@ export const UIRideP = ({ state: state }: { state: State.Of<typeof RideP> }) => 
     <div>
       <button
         onClick={() => {
-          state.commands.cancel()
+          state.commands?.cancel()
         }}
       >
         Cancel Ride

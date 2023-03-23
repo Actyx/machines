@@ -30,7 +30,7 @@ export const UIFirstBidT = ({ state: state }: { state: State.Of<typeof FirstBidT
         type="button"
         onClick={() => {
           if (price !== null) {
-            state.commands.bid({
+            state.commands?.bid({
               price: price,
               time: new Date(),
             })
@@ -67,7 +67,7 @@ export const UIAuctionT = ({ state: state }: { state: State.Of<typeof AuctionT> 
         type="button"
         onClick={() => {
           if (price !== null) {
-            state.commands.bid({
+            state.commands?.bid({
               price: price,
               time: new Date(),
             })
