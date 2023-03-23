@@ -524,7 +524,7 @@ describe('StateOpaque', () => {
     expect(asInitial.commands).toBe(undefined)
   })
 
-  it('should not be able to issue command when expired', () => {
+  it('should not ignore issued commands when expired', () => {
     const r1 = new Runner(Initial, { transitioned: false })
     r1.feed([], true)
 
@@ -575,7 +575,6 @@ describe('StateOpaque', () => {
       r1.feed([], true)
 
       const s1 = r1.machine.get()
-      expect(true).toBe(true)
 
       if (!s1) throw new Unreachable()
 
@@ -698,6 +697,11 @@ describe('deepCopy', () => {
   })
 })
 
+/**
+ * In this particular test group, bad-good assertions are not required.
+ * This blocks only tests types by making type assignments.
+ * Bad type definitions are expected to fail the compilation
+ */
 describe('typings', () => {
   it("state.as should not return 'any'", () => {
     const r = new Runner(Initial, { transitioned: false })
@@ -732,7 +736,6 @@ describe('typings', () => {
       | undefined
 
     NOP(transformedTypeTest, supposedBooleanOrUndefined)
-    expect(true).toBe(true)
     r.machine.destroy()
   })
 
@@ -763,12 +766,6 @@ describe('typings', () => {
     snapshot.as(Initial)
     snapshot.as(Second)
 
-    // type ExpectedFactory = Parameters<typeof snapshot.as>[0]
-    // const testSecondIsExpected: ExpectedFactory = Second
-    // const testInitialIsExpected: ExpectedFactory = Initial
-    // NOP(testSecondIsExpected, testInitialIsExpected)
-
-    expect(true).toBe(true)
     r.machine.destroy()
   })
 })
