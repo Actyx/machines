@@ -67,7 +67,7 @@ export const protocol = Protocol.make('taxiRide', [
 
 // TODO: fix ergonomic
 // Protocol.EventsOf<typeof protocol> is not convenient
-export const TaxiTag = Tag<Protocol.EventsOf<typeof protocol>>('taxi')
+export const TaxiTag = protocol.tag('taxi')
 
 // States
 

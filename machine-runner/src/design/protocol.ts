@@ -1,3 +1,4 @@
+import { Tag } from '@actyx/sdk'
 import { StateMechanism, MachineEvent, ProtocolInternals, ReactionMap } from './state.js'
 
 export type Protocol<
@@ -17,6 +18,13 @@ export type Protocol<
     void,
     Record<never, never>
   >
+
+  tag: (
+    rawTagString: string,
+    extractId?:
+      | ((e: MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>) => string)
+      | undefined,
+  ) => Tag<MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>>
 }
 
 export namespace Protocol {
@@ -79,9 +87,12 @@ export namespace Protocol {
       return StateMechanism.make(protocolInternal, stateName)
     }
 
+    const tag: Self['tag'] = Tag
+
     return {
       designState,
       designEmpty,
+      tag,
     }
   }
 }
