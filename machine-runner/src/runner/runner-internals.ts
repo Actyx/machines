@@ -21,6 +21,8 @@ export type RunnerInternals<
   StatePayload,
   Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
 > = {
+  caughtUpFirstTime: boolean
+  caughtUp: boolean
   readonly initial: StateAndFactory<ProtocolName, RegisteredEventsFactoriesTuple, any, any, any>
   commandEmitFn: CommandCallback<RegisteredEventsFactoriesTuple>
   queue: ActyxEvent<MachineEvent.Any>[]
@@ -80,6 +82,8 @@ export namespace RunnerInternals {
       },
       queue: [],
       commandEmitFn: commandCallback,
+      caughtUp: false,
+      caughtUpFirstTime: false,
     }
 
     return internals
@@ -119,6 +123,8 @@ export namespace RunnerInternals {
       data: deepCopy(initial.data),
     }
     internals.queue.length = 0
+    internals.caughtUp = false
+    internals.caughtUpFirstTime = false
   }
 
   export const pushEvent = <StatePayload>(

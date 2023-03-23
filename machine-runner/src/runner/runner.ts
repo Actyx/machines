@@ -28,7 +28,7 @@ export type MachineRunner = {
   destroy: () => unknown
   isDestroyed: () => boolean
 
-  get: () => StateOpaque
+  get: () => StateOpaque | null
   initial: () => StateOpaque
 
   noAutoDestroy: () => MachineRunnerIterableIterator
@@ -118,6 +118,10 @@ export const createMachineRunnerInternal = <
 
             restartActyxSubscription()
           } else if (d.type === MsgType.events) {
+            //
+
+            internals.caughtUp = false
+
             for (const event of d.events) {
               // TODO: Runtime typeguard for event
               // https://github.com/Actyx/machines/issues/9
@@ -136,10 +140,12 @@ export const createMachineRunnerInternal = <
               // Effects of handlingReport on emitters
               ;(() => {
                 if (pushEventResult.executionHappened) {
-                  events.emit('audit.state', {
-                    state: internals.current.data,
-                    events: pushEventResult.triggeringEvents,
-                  })
+                  if (events.listenerCount('audit.state') > 0) {
+                    events.emit('audit.state', {
+                      state: StateOpaque.make(internals, internals.current),
+                      events: pushEventResult.triggeringEvents,
+                    })
+                  }
                 }
 
                 if (!pushEventResult.executionHappened && pushEventResult.discardable) {
@@ -155,6 +161,8 @@ export const createMachineRunnerInternal = <
               // the SDK translates an OffsetMap response into MsgType.events with caughtUp=true
               events.emit('log', 'Caught up')
               events.emit('change', StateOpaque.make(internals, internals.current))
+              internals.caughtUp = true
+              internals.caughtUpFirstTime = true
             }
           }
         } catch (error) {
@@ -180,7 +188,8 @@ export const createMachineRunnerInternal = <
 
   // Self API construction
 
-  const getSnapshot = (): StateOpaque => StateOpaque.make(internals, internals.current)
+  const getSnapshot = (): StateOpaque | null =>
+    internals.caughtUpFirstTime ? StateOpaque.make(internals, internals.current) : null
 
   const api = {
     id: Symbol(),
@@ -385,9 +394,14 @@ export namespace StateOpaque {
     internals: RunnerInternals.Any,
     stateAndFactoryForSnapshot: StateAndFactory.Any,
   ): StateOpaque => {
-    // Capture state and factory at snapshot call-time
+    // Captured data at snapshot call-time
     const stateAtSnapshot = stateAndFactoryForSnapshot.data
     const factoryAtSnapshot = stateAndFactoryForSnapshot.factory as StateFactory.Any
+    const caughtUpAtSnapshot = internals.caughtUp
+    const caughtUpFirstTimeAtSnapshot = internals.caughtUpFirstTime
+    const queueLengthAtSnapshot = internals.queue.length
+    const commandEnabledAtSnapshot =
+      caughtUpAtSnapshot && caughtUpFirstTimeAtSnapshot && queueLengthAtSnapshot === 0
 
     // TODO: write unit test on expiry
     const isExpired = () => StateOpaque.isExpired(internals, stateAndFactoryForSnapshot)
@@ -404,19 +418,24 @@ export namespace StateOpaque {
     ) => {
       if (factoryAtSnapshot.mechanism === factory.mechanism) {
         const mechanism = factory.mechanism
+
+        const commands = commandEnabledAtSnapshot
+          ? convertCommandMapToCommandSignatureMap<any, unknown, MachineEvent.Any[]>(
+              mechanism.commands,
+              {
+                isExpired,
+                getActualContext: () => ({
+                  self: stateAndFactoryForSnapshot.data.payload,
+                }),
+                onReturn: (events) => internals.commandEmitFn?.(events),
+              },
+            )
+          : undefined
+
         const snapshot = {
           payload: stateAtSnapshot.payload,
           type: stateAtSnapshot.type,
-          commands: convertCommandMapToCommandSignatureMap<any, unknown, MachineEvent.Any[]>(
-            mechanism.commands,
-            {
-              isExpired,
-              getActualContext: () => ({
-                self: stateAndFactoryForSnapshot.data.payload,
-              }),
-              onReturn: (events) => internals.commandEmitFn?.(events),
-            },
-          ),
+          commands,
         }
         return then ? then(snapshot) : snapshot
       }
@@ -453,7 +472,7 @@ export type State<
   StatePayload,
   Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
 > = StateRaw<StateName, StatePayload> & {
-  commands: ToCommandSignatureMap<Commands, any, MachineEvent.Any[]>
+  commands?: ToCommandSignatureMap<Commands, any, MachineEvent.Any[]>
 }
 
 export namespace State {

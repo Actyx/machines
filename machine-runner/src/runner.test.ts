@@ -1,9 +1,9 @@
-import { EventsOrTimetravel, MsgType, OnCompleteOrErr } from '@actyx/sdk'
+import { EventsOrTimetravel, MsgType, OnCompleteOrErr, SnapshotStore } from '@actyx/sdk'
 import { describe, expect, it } from '@jest/globals'
 import { createMachineRunnerInternal, State, StateOpaque, SubscribeFn } from './runner/runner.js'
 import { MachineEvent } from './design/event.js'
 import { Protocol } from './index.js'
-import { StateFactory } from './design/state.js'
+import { StateFactory, StateRaw } from './design/state.js'
 import { deepCopy } from './utils/object-utils.js'
 import { NOP } from './utils/index.js'
 import { NotAnyOrUnknown } from './utils/type-utils.js'
@@ -35,7 +35,11 @@ const Initial = protocol
   )
   .finish()
 
-const Second = protocol.designState('Second').withPayload<{ x: number; y: number }>().finish()
+const Second = protocol
+  .designState('Second')
+  .withPayload<{ x: number; y: number }>()
+  .command('Y', [Two], () => [Two.make({ y: 2 })])
+  .finish()
 
 // Reactions
 
@@ -89,16 +93,17 @@ class Runner<
       payload,
     )
 
-    machine.events.addListener('audit.state', () => {
+    machine.events.addListener('audit.state', ({ state }) => {
+      if (!state) return
       this.stateChangeHistory.unshift({
-        state: machine.get(),
+        state,
         unhandled: this.unhandled,
       })
       this.unhandled = []
     })
 
-    machine.events.addListener('change', () => {
-      this.caughtUpHistory.unshift(machine.get())
+    machine.events.addListener('change', (snapshot) => {
+      this.caughtUpHistory.unshift(snapshot)
     })
 
     machine.events.addListener('audit.dropped', (dropped) => {
@@ -494,24 +499,104 @@ describe('machine as async generator', () => {
 })
 
 describe('StateOpaque', () => {
+  it("should not have command when it hasn't caught up at snapshot-time", () => {
+    const r1 = new Runner(Initial, { transitioned: false })
+    r1.feed([], true)
+    r1.feed([], false)
+
+    const asInitial = r1.machine.get()?.as(Initial)
+    expect(asInitial).toBeTruthy()
+    if (!asInitial) return
+
+    expect(asInitial.commands).toBe(undefined)
+  })
+
+  it("should not have command when its queue isn't zero at snapshot-time", () => {
+    const r1 = new Runner(Initial, { transitioned: false })
+    r1.feed([], true)
+    r1.feed([One.make({ x: 1 })], true)
+
+    const asInitial = r1.machine.get()?.as(Initial)
+    expect(asInitial).toBeTruthy()
+    if (!asInitial) return
+
+    expect(asInitial.commands).toBe(undefined)
+  })
+
+  it('should not be able to issue command when expired', () => {
+    const r1 = new Runner(Initial, { transitioned: false })
+    r1.feed([], true)
+
+    const stateBeforeExpiry = r1.machine.get()?.as(Initial)
+    expect(stateBeforeExpiry).toBeTruthy()
+    if (!stateBeforeExpiry) return
+
+    r1.assertPersisted()
+
+    // Expire here by transforming it
+    r1.feed([One.make({ x: 1 }), Two.make({ y: 1 })], true)
+
+    expect(stateBeforeExpiry.commands).toBeTruthy()
+    // Persisted should be 0
+    r1.assertPersisted()
+
+    const stateAfterExpiry = r1.machine.get()?.as(Second)
+    expect(stateAfterExpiry).toBeTruthy()
+    if (!stateAfterExpiry) return
+
+    expect(stateAfterExpiry.commands).toBeTruthy()
+    // run command here
+    if (!stateAfterExpiry.commands) return
+
+    // should persist Two.make({ y: 2 })
+    stateAfterExpiry.commands?.Y()
+
+    r1.assertPersisted(Two.make({ y: 2 }))
+  })
+
+  describe('.get function', () => {
+    it('should return null beforee encountering caughtUp for the first time', () => {
+      const r1 = new Runner(Initial, { transitioned: false })
+
+      expect(r1.machine.get()).toBe(null)
+      r1.feed([], false)
+      expect(r1.machine.get()).toBe(null)
+      r1.feed([], true)
+      expect(r1.machine.get()).toBeTruthy()
+      r1.feed([], false)
+      expect(r1.machine.get()).toBeTruthy()
+    })
+  })
+
   describe('.is function', () => {
     it('should match by factory and reduce type inside block', () => {
       const r1 = new Runner(Initial, { transitioned: false })
-      const s1 = r1.machine.get()
-      expect(s1.is(Initial)).toBe(true)
-      expect(s1.is(Second)).toBe(false)
 
-      if (s1.is(Initial)) {
-        expect(s1.payload.transitioned).toBe(false)
+      r1.feed([], true)
+
+      const s1 = r1.machine.get()
+      expect(true).toBe(true)
+
+      if (s1) {
+        expect(s1.is(Initial)).toBe(true)
+        expect(s1.is(Second)).toBe(false)
+
+        if (s1.is(Initial)) {
+          expect(s1.payload.transitioned).toBe(false)
+        }
       }
 
       const r2 = new Runner(Second, { x: 1, y: 2 })
+      r2.feed([], true)
       const s2 = r2.machine.get()
-      expect(s2.is(Second)).toBe(true)
-      expect(s2.is(Initial)).toBe(false)
-      if (s2.is(Second)) {
-        expect(s2.payload.x).toBe(1)
-        expect(s2.payload.y).toBe(2)
+
+      if (s2) {
+        expect(s2.is(Second)).toBe(true)
+        expect(s2.is(Initial)).toBe(false)
+        if (s2.is(Second)) {
+          expect(s2.payload.x).toBe(1)
+          expect(s2.payload.y).toBe(2)
+        }
       }
     })
   })
@@ -522,33 +607,42 @@ describe('StateOpaque', () => {
 
       ;(() => {
         const r = new Runner(Initial, { transitioned: false })
-        const s = r.machine.get()
 
-        const snapshot1Invalid = s.as(Second)
-        expect(snapshot1Invalid).toBeFalsy()
+        r.feed([], true)
+        const state = r.machine.get()
 
-        const snapshot1 = s.as(Initial)
-        expect(snapshot1).toBeTruthy()
+        if (state) {
+          const snapshot1Invalid = state.as(Second)
+          expect(snapshot1Invalid).toBeFalsy()
 
-        if (snapshot1) {
-          expect(snapshot1.payload.transitioned).toBe(false)
+          const snapshot1 = state.as(Initial)
+          expect(snapshot1).toBeTruthy()
+
+          if (snapshot1) {
+            expect(snapshot1.payload.transitioned).toBe(false)
+          }
         }
       })()
 
       // Second State
       ;(() => {
         const r = new Runner(Second, { x: 1, y: 2 })
-        const s = r.machine.get()
 
-        const snapshot2Invalid = s.as(Initial)
-        expect(snapshot2Invalid).toBeFalsy()
+        r.feed([], true)
 
-        const snapshot2 = s.as(Second)
-        expect(snapshot2).toBeTruthy()
+        const state = r.machine.get()
 
-        if (snapshot2) {
-          expect(snapshot2.payload.x).toBe(1)
-          expect(snapshot2.payload.y).toBe(2)
+        if (state) {
+          const snapshot2Invalid = state.as(Initial)
+          expect(snapshot2Invalid).toBeFalsy()
+
+          const stateAsSecond = state.as(Second)
+          expect(stateAsSecond).toBeTruthy()
+
+          if (stateAsSecond) {
+            expect(stateAsSecond.payload.x).toBe(1)
+            expect(stateAsSecond.payload.y).toBe(2)
+          }
         }
       })()
     })
@@ -611,24 +705,27 @@ describe('typings', () => {
   it("state.as should not return 'any'", () => {
     const r = new Runner(Initial, { transitioned: false })
     const snapshot = r.machine.get()
+    if (!snapshot) return
     const state = snapshot.as(Initial)
-    if (state) {
-      // This will fail to compile if `as` function returns nothing other than
-      // "Initial", including if it returns any
-      const supposedStateName: NotAnyOrUnknown<State.NameOf<typeof state>> = 'Initial'
-      NOP(supposedStateName)
+    if (!state) return
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const xTypeTest: NotAnyOrUnknown<typeof state.commands.X> = undefined as any
-      const paramsOfXTypeTest: NotAnyOrUnknown<Parameters<typeof state.commands.X>> = [
-        true,
-        1,
-        '',
-        { specificField: 'literal-a' },
-        Symbol(),
-      ]
-      NOP(xTypeTest, paramsOfXTypeTest)
-    }
+    const commands = state.commands
+    if (!commands) return
+    // This will fail to compile if `as` function returns nothing other than
+    // "Initial", including if it returns any
+    const supposedStateName: NotAnyOrUnknown<State.NameOf<typeof state>> = 'Initial'
+    NOP(supposedStateName)
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const xTypeTest: NotAnyOrUnknown<typeof commands.X> = undefined as any
+    const paramsOfXTypeTest: NotAnyOrUnknown<Parameters<typeof commands.X>> = [
+      true,
+      1,
+      '',
+      { specificField: 'literal-a' },
+      Symbol(),
+    ]
+    NOP(xTypeTest, paramsOfXTypeTest)
 
     const transformedTypeTest = snapshot.as(Initial, (initial) => initial.payload.transitioned)
     const supposedBooleanOrUndefined: NotAnyOrUnknown<typeof transformedTypeTest> = true as
@@ -646,6 +743,8 @@ describe('typings', () => {
     const snapshot = r.machine.get()
     const snapshotTypeTest: NotAnyOrUnknown<typeof snapshot> = snapshot
     NOP(snapshotTypeTest)
+
+    if (!snapshot) return
 
     if (snapshot.is(Initial)) {
       const snapshotTransparentTypeTest: NotAnyOrUnknown<typeof snapshot> = snapshot
