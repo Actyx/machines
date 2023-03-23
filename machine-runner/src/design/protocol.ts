@@ -20,7 +20,7 @@ export type Protocol<
   >
 
   tag: (
-    rawTagString: string,
+    rawTagString?: string,
     extractId?:
       | ((e: MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>) => string)
       | undefined,
@@ -87,7 +87,7 @@ export namespace Protocol {
       return StateMechanism.make(protocolInternal, stateName)
     }
 
-    const tag: Self['tag'] = Tag
+    const tag: Self['tag'] = (name = protocolName, extractId) => Tag(name, extractId)
 
     return {
       designState,
