@@ -368,9 +368,11 @@ export interface StateOpaque<StateName extends string = string, Payload = unknow
     then: Then,
   ): ReturnType<Then> | undefined
 
-  cast<Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>>(
-    factory: StateFactory<any, any, StateName, Payload, Commands>,
-  ): State<StateName, Payload, Commands>
+  cast<Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>>(): State<
+    StateName,
+    Payload,
+    Commands
+  >
 }
 
 export namespace StateOpaque {
@@ -423,11 +425,11 @@ export namespace StateOpaque {
       return undefined
     }
 
-    const cast: StateOpaque['cast'] = (factory) => ({
+    const cast: StateOpaque['cast'] = () => ({
       payload: stateAtSnapshot.payload,
       type: stateAtSnapshot.type,
       commands: convertCommandMapToCommandSignatureMap<any, unknown, MachineEvent.Any[]>(
-        factory.mechanism.commands,
+        factoryAtSnapshot.mechanism,
         {
           isExpired,
           getActualContext: () => ({

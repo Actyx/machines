@@ -648,19 +648,9 @@ describe('typings', () => {
     NOP(snapshotTypeTest)
 
     if (snapshot.is(Initial)) {
-      const snapshotTransparentTypeTest: NotAnyOrUnknown<typeof snapshot> = snapshot
-      NOP(snapshotTransparentTypeTest)
-
-      const someBool: NotAnyOrUnknown<typeof snapshot.payload.transitioned> = true as boolean
-      NOP(someBool)
-
-      // Test snapshot.as(typeof OtherThan<Initial>)
-      type ExpectedFactory = Parameters<typeof snapshot.cast>[0]
-      type SecondIsNotExpected = typeof Second extends ExpectedFactory ? false : true
-      type InitialIsExpected = typeof Initial extends ExpectedFactory ? true : false
-      const testSecondIsExpected: SecondIsNotExpected = true as const
-      const testInitialIsExpected: InitialIsExpected = true as const
-      NOP(testSecondIsExpected, testInitialIsExpected)
+      const state = snapshot.cast()
+      const typetest: NotAnyOrUnknown<typeof state> = state
+      NOP(typetest)
     }
 
     snapshot.as(Initial)
