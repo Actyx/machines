@@ -67,7 +67,7 @@ export type ConvertCommandMapParams<Self, RetVal> = {
 }
 
 export const convertCommandMapToCommandSignatureMap = <
-  T extends CommandDefinerMap<any, unknown[], RetVal>,
+  T extends CommandDefinerMap<object, unknown[], RetVal>,
   Self,
   RetVal,
 >(
