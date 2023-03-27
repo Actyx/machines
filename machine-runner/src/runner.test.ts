@@ -516,12 +516,26 @@ describe('StateOpaque', () => {
     })
   })
 
+  describe('.cast function', () => {
+    it('should produce state snapshot after is', () => {
+      const r = new Runner(Initial, { transitioned: false })
+      r.feed([], true)
+      const s = r.machine.get()
+
+      if (!s.is(Initial)) throw new Error() // TODO: replace with unreachable after merge with get: null | Opaque
+      const snapshot = s.cast()
+      expect(snapshot.commands.X).toBeTruthy()
+    })
+  })
+
   describe('.as function', () => {
     it('should produce state snapshot', () => {
       // Initial State
 
       ;(() => {
         const r = new Runner(Initial, { transitioned: false })
+        r.feed([], true)
+
         const s = r.machine.get()
 
         const snapshot1Invalid = s.as(Second)
@@ -531,6 +545,7 @@ describe('StateOpaque', () => {
         expect(snapshot1).toBeTruthy()
 
         if (snapshot1) {
+          expect(snapshot1.commands.X).toBeTruthy()
           expect(snapshot1.payload.transitioned).toBe(false)
         }
       })()
@@ -538,6 +553,8 @@ describe('StateOpaque', () => {
       // Second State
       ;(() => {
         const r = new Runner(Second, { x: 1, y: 2 })
+        r.feed([], true)
+
         const s = r.machine.get()
 
         const snapshot2Invalid = s.as(Initial)
@@ -648,19 +665,10 @@ describe('typings', () => {
     NOP(snapshotTypeTest)
 
     if (snapshot.is(Initial)) {
-      const snapshotTransparentTypeTest: NotAnyOrUnknown<typeof snapshot> = snapshot
-      NOP(snapshotTransparentTypeTest)
-
-      const someBool: NotAnyOrUnknown<typeof snapshot.payload.transitioned> = true as boolean
-      NOP(someBool)
-
-      // Test snapshot.as(typeof OtherThan<Initial>)
-      type ExpectedFactory = Parameters<typeof snapshot.cast>[0]
-      type SecondIsNotExpected = typeof Second extends ExpectedFactory ? false : true
-      type InitialIsExpected = typeof Initial extends ExpectedFactory ? true : false
-      const testSecondIsExpected: SecondIsNotExpected = true as const
-      const testInitialIsExpected: InitialIsExpected = true as const
-      NOP(testSecondIsExpected, testInitialIsExpected)
+      const state = snapshot.cast()
+      const typetest: NotAnyOrUnknown<typeof state> = state
+      const typetestCommands: NotAnyOrUnknown<typeof state['commands']['X']> = NOP
+      NOP(typetest, typetestCommands)
     }
 
     snapshot.as(Initial)
