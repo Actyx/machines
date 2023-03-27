@@ -36,7 +36,7 @@
     "@rjsf/utils": "^5.1.0",
     "@rjsf/validator-ajv8": "^5.1.0",
     "react-konva": "^18.2.5",
-    "konva": "git://github.com/Kelerchian/konva.git#ada-fix-esm-typescript-make-importable"
+    "konva": "^8.4.3"
   },
   "peerDependencies": {
     "react": "^18.2.0"
