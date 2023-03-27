@@ -353,11 +353,18 @@ namespace NextValueAwaiter {
   export const Done: IteratorResult<StateOpaque, null> = { done: true, value: null }
 }
 
-export interface StateOpaque<StateName extends string = string, Payload = unknown>
-  extends StateRaw<StateName, Payload> {
-  is<Name extends string, Payload>(
-    factory: StateFactory<any, any, Name, Payload, any>,
-  ): this is StateOpaque<Name, Payload>
+export interface StateOpaque<
+  StateName extends string = string,
+  Payload = unknown,
+  Commands extends CommandDefinerMap<object, any, MachineEvent.Any[]> = object,
+> extends StateRaw<StateName, Payload> {
+  is<
+    Name extends string,
+    Payload,
+    Commands extends CommandDefinerMap<object, any, MachineEvent.Any[]> = object,
+  >(
+    factory: StateFactory<any, any, Name, Payload, Commands>,
+  ): this is StateOpaque<Name, Payload, Commands>
 
   as<
     StateName extends string,
@@ -377,9 +384,7 @@ export interface StateOpaque<StateName extends string = string, Payload = unknow
     then: Then,
   ): ReturnType<Then> | undefined
 
-  cast<Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>>(
-    factory: StateFactory<any, any, StateName, Payload, Commands>,
-  ): State<StateName, Payload, Commands>
+  cast(): State<StateName, Payload, Commands>
 }
 
 export namespace StateOpaque {
@@ -442,11 +447,11 @@ export namespace StateOpaque {
       return undefined
     }
 
-    const cast: StateOpaque['cast'] = (factory) => ({
+    const cast: StateOpaque['cast'] = () => ({
       payload: stateAtSnapshot.payload,
       type: stateAtSnapshot.type,
       commands: convertCommandMapToCommandSignatureMap<any, unknown, MachineEvent.Any[]>(
-        factory.mechanism.commands,
+        factoryAtSnapshot.mechanism.commands,
         {
           isExpired,
           getActualContext: () => ({

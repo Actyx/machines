@@ -30,27 +30,13 @@ export const UIMachine = ({ machine, name }: { name: string; machine: MachineRun
       {state && (
         <>
           <PrintState state={state} />
-          {state.as(InitialP, (state) => (
-            <UIInitialP state={state} />
-          ))}
-          {state.as(AuctionP, (state) => (
-            <UIAuctionP state={state} />
-          ))}
-          {state.as(RideP, (state) => (
-            <UIRideP state={state} />
-          ))}
-          {state.as(InitialT, (state) => (
-            <UIInitialT state={state} />
-          ))}
-          {state.as(FirstBidT, (state) => (
-            <UIFirstBidT state={state} />
-          ))}
-          {state.as(AuctionT, (state) => (
-            <UIAuctionT state={state} />
-          ))}
-          {state.as(RideT, (state) => (
-            <UIRideT state={state} />
-          ))}
+          {state.is(InitialP) && <UIInitialP state={state.cast()} />}
+          {state.is(AuctionP) && <UIAuctionP state={state.cast()} />}
+          {state.is(RideP) && <UIRideP state={state.cast()} />}
+          {state.is(InitialT) && <UIInitialT state={state.cast()} />}
+          {state.is(FirstBidT) && <UIFirstBidT state={state.cast()} />}
+          {state.is(AuctionT) && <UIAuctionT state={state.cast()} />}
+          {state.is(RideT) && <UIRideT state={state.cast()} />}
         </>
       )}
     </div>
