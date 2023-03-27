@@ -350,12 +350,12 @@ export interface StateOpaque<
   Commands extends CommandDefinerMap<object, any, MachineEvent.Any[]> = object,
 > extends StateRaw<StateName, Payload> {
   is<
-    Name extends string,
-    Payload,
-    Commands extends CommandDefinerMap<object, any, MachineEvent.Any[]> = object,
+    DeductStateName extends string,
+    DeductPayload,
+    DeductCommands extends CommandDefinerMap<object, any, MachineEvent.Any[]> = object,
   >(
-    factory: StateFactory<any, any, Name, Payload, Commands>,
-  ): this is StateOpaque<Name, Payload, Commands>
+    factory: StateFactory<any, any, DeductStateName, DeductPayload, DeductCommands>,
+  ): this is StateOpaque<DeductStateName, DeductPayload, DeductCommands>
 
   as<
     StateName extends string,
