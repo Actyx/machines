@@ -1,4 +1,4 @@
-import { ActyxEvent } from '@actyx/sdk'
+import { ActyxEvent, Metadata } from '@actyx/sdk'
 import { deepCopy } from '../utils/object-utils.js'
 import { CommandDefinerMap } from '../design/command.js'
 import { MachineEvent } from '../design/event.js'
@@ -10,9 +10,12 @@ import {
   StateFactory,
 } from '../design/state.js'
 
+export const CommandFiredAfterLocked: unique symbol = Symbol()
+type CommandFiredAfterLocked = typeof CommandFiredAfterLocked
+
 type CommandCallback<F extends MachineEvent.Factory.NonZeroTuple> = (
   _: MachineEvent.Factory.ReduceToEvent<F>[],
-) => unknown
+) => Promise<CommandFiredAfterLocked | Metadata[]>
 
 export type RunnerInternals<
   ProtocolName extends string,
@@ -33,6 +36,17 @@ export type RunnerInternals<
     StatePayload,
     Commands
   >
+
+  // TODO: document how it behaves
+  commandLock: null | CommandIssuanceStatus
+}
+
+export const UnknownEventID: unique symbol = Symbol()
+export type UnknownEventID = typeof UnknownEventID
+export type CommandIssuanceStatus = {
+  // TODO: document null = no event issued
+  issuedEventIds: (string | UnknownEventID)[]
+  incomingEventIds: Set<string>
 }
 
 export namespace RunnerInternals {
@@ -84,6 +98,7 @@ export namespace RunnerInternals {
       commandEmitFn: commandCallback,
       caughtUp: false,
       caughtUpFirstTime: false,
+      commandLock: null,
     }
 
     return internals
@@ -125,6 +140,7 @@ export namespace RunnerInternals {
     internals.queue.length = 0
     internals.caughtUp = false
     internals.caughtUpFirstTime = false
+    internals.commandLock = null
   }
 
   export const pushEvent = <StatePayload>(
@@ -174,6 +190,8 @@ export namespace RunnerInternals {
           },
           factory: nextFactory,
         }
+
+        internals.commandLock = null
 
         return {
           executionHappened: true,

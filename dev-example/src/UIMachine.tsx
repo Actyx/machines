@@ -1,4 +1,5 @@
 import { MachineRunner } from '@actyx/machine-runner'
+import { MachineEmitterEventMap } from '@actyx/machine-runner/lib/runner/runner-utils.js'
 import { useEffect, useState } from 'react'
 import { AuctionP, AuctionT, FirstBidT, InitialP, InitialT, RideP, RideT } from './machines.js'
 import { PrintState } from './UIMachineCommon.js'
@@ -9,7 +10,7 @@ export const UIMachine = ({ machine, name }: { name: string; machine: MachineRun
   const [state, setState] = useState(machine.get())
 
   useEffect(() => {
-    const onChange = () => setState(machine.get())
+    const onChange: MachineEmitterEventMap['change'] = (state) => setState(state)
     machine.events.on('change', onChange)
     return () => {
       machine.events.off('change', onChange)

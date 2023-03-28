@@ -94,6 +94,17 @@ class Runner<
       subscribe,
       async (events) => {
         this.persisted.push(...events)
+        return events.map((_) => ({
+          isLocalEvent: true,
+          tags: [],
+          timestampMicros: 0,
+          timestampAsDate: () => new Date(),
+          lamport: 1,
+          eventId: 'id1',
+          appId: 'test',
+          stream: 'stream1',
+          offset: 3,
+        }))
       },
       factory,
       payload,
