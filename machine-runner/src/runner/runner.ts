@@ -485,7 +485,7 @@ export namespace StateOpaque {
                 getActualContext: () => ({
                   self: stateAndFactoryForSnapshot.data.payload,
                 }),
-                onReturn: (events) => internals.commandEmitFn?.(events),
+                onReturn: (events) => internals.commandEmitFn(events),
               },
             )
           : undefined
@@ -510,7 +510,7 @@ export namespace StateOpaque {
               getActualContext: () => ({
                 self: stateAndFactoryForSnapshot.data.payload,
               }),
-              onReturn: (events) => internals.commandEmitFn?.(events),
+              onReturn: (events) => internals.commandEmitFn(events),
             },
           )
         : undefined

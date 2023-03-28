@@ -26,7 +26,7 @@ export type CommandDefinerMap<
   [key in keyof Dictionary]: Dictionary[key]
 }
 
-export type CommandSignature<Args extends unknown[]> = (...args: Args) => void
+export type CommandSignature<Args extends unknown[]> = (...args: Args) => Promise<unknown>
 
 export type CommandSignatureMap<Dictionary extends { [key: string]: CommandSignature<unknown[]> }> =
   {
@@ -58,7 +58,7 @@ export type ActualContextGetter<Self> = () => Readonly<CommandContext<DeepReadon
 
 export type ConvertCommandMapParams<Self, RetVal> = {
   getActualContext: ActualContextGetter<Self>
-  onReturn: (retval: RetVal) => unknown
+  onReturn: (retval: RetVal) => Promise<unknown>
   /**
    * isExpired is intended to flag if a snapshot that owns the reference to a command
    * is not up to date with the state container's state.
@@ -91,6 +91,6 @@ export const convertCommandDefinerToCommandSignature = <Self, Args extends unkno
       console.error('Command has expired')
     }
     const returnedValue = definer(getActualContext(), ...args)
-    onReturn(returnedValue)
+    return onReturn(returnedValue)
   }
 }
