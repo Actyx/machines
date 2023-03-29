@@ -19,7 +19,12 @@ import {
 } from '../design/state.js'
 import { Destruction } from '../utils/destruction.js'
 import { NOP } from '../utils/index.js'
-import { CommandFiredAfterLocked, RunnerInternals, StateAndFactory } from './runner-internals.js'
+import {
+  CommandCallback,
+  CommandFiredAfterLocked,
+  RunnerInternals,
+  StateAndFactory,
+} from './runner-internals.js'
 import { MachineEmitter, MachineEmitterEventMap } from './runner-utils.js'
 
 export type MachineRunner = {
@@ -97,8 +102,6 @@ export const createMachineRunnerInternal = <
 
     internals.commandLock = currentCommandLock
 
-    const isActual = () => currentCommandLock === internals.commandLock
-
     const persistResult = persist(events)
 
     persistResult.catch((err) => {
@@ -106,7 +109,10 @@ export const createMachineRunnerInternal = <
         'log',
         `error publishing ${err} ${events.map((e) => JSON.stringify(e)).join(', ')}`,
       )
-      if (!isActual()) return
+      /**
+       * Guards against cases where command's events couldn't be persisted but state has changed
+       */
+      if (currentCommandLock !== internals.commandLock) return
       internals.commandLock = null
       emitter.emit('change', StateOpaque.make(internals, internals.current))
     })
@@ -456,57 +462,26 @@ export namespace StateOpaque {
       then?: any,
     ) => {
       if (factoryAtSnapshot.mechanism === factory.mechanism) {
-        const mechanism = factory.mechanism
-
-        const commands = commandEnabledAtSnapshot
-          ? convertCommandMapToCommandSignatureMap<any, unknown, MachineEvent.Any[]>(
-              mechanism.commands,
-              {
-                isExpired,
-                getActualContext: () => ({
-                  self: stateAndFactoryForSnapshot.data.payload,
-                }),
-                onReturn: async (events) => {
-                  await internals.commandEmitFn(events)
-                },
-              },
-            )
-          : undefined
-
-        const snapshot = {
-          payload: stateAtSnapshot.payload,
-          type: stateAtSnapshot.type,
-          commands,
-        }
+        const snapshot = State.makeForSnapshot({
+          factory: factoryAtSnapshot,
+          commandEmitFn: internals.commandEmitFn,
+          isExpired,
+          commandEnabledAtSnapshot,
+          stateAtSnapshot,
+        })
         return then ? then(snapshot) : snapshot
       }
       return undefined
     }
 
-    const cast: StateOpaque['cast'] = () => {
-      const mechanism = factoryAtSnapshot.mechanism
-      const commands = commandEnabledAtSnapshot
-        ? convertCommandMapToCommandSignatureMap<any, unknown, MachineEvent.Any[]>(
-            mechanism.commands,
-            {
-              isExpired,
-              getActualContext: () => ({
-                self: stateAndFactoryForSnapshot.data.payload,
-              }),
-              onReturn: async (events) => {
-                await internals.commandEmitFn(events)
-              },
-            },
-          )
-        : undefined
-
-      const snapshot = {
-        payload: stateAtSnapshot.payload,
-        type: stateAtSnapshot.type,
-        commands,
-      }
-      return snapshot
-    }
+    const cast: StateOpaque['cast'] = () =>
+      State.makeForSnapshot({
+        factory: factoryAtSnapshot,
+        commandEmitFn: internals.commandEmitFn,
+        isExpired,
+        commandEnabledAtSnapshot,
+        stateAtSnapshot,
+      })
 
     return {
       is,
@@ -540,4 +515,46 @@ export namespace State {
   >
     ? State<StateName, StatePayload, Commands>
     : never
+
+  export const makeForSnapshot = <
+    RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
+    StateName extends string,
+    StatePayload extends any,
+    Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
+  >({
+    factory,
+    isExpired,
+    commandEnabledAtSnapshot,
+    commandEmitFn,
+    stateAtSnapshot,
+  }: {
+    factory: StateFactory<any, RegisteredEventsFactoriesTuple, StateName, StatePayload, Commands>
+    isExpired: () => boolean
+    commandEnabledAtSnapshot: boolean
+    commandEmitFn: CommandCallback<RegisteredEventsFactoriesTuple>
+    stateAtSnapshot: StateRaw<StateName, StatePayload>
+  }) => {
+    const mechanism = factory.mechanism
+    const commands = commandEnabledAtSnapshot
+      ? convertCommandMapToCommandSignatureMap<any, StatePayload, MachineEvent.Any[]>(
+          mechanism.commands,
+          {
+            isExpired,
+            getActualContext: () => ({
+              self: stateAtSnapshot.payload,
+            }),
+            onReturn: async (events) => {
+              await commandEmitFn(events)
+            },
+          },
+        )
+      : undefined
+
+    const snapshot = {
+      payload: stateAtSnapshot.payload,
+      type: stateAtSnapshot.payload,
+      commands,
+    }
+    return snapshot
+  }
 }

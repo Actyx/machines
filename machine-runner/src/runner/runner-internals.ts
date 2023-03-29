@@ -13,7 +13,7 @@ import {
 export const CommandFiredAfterLocked: unique symbol = Symbol()
 type CommandFiredAfterLocked = typeof CommandFiredAfterLocked
 
-type CommandCallback<F extends MachineEvent.Factory.NonZeroTuple> = (
+export type CommandCallback<F extends MachineEvent.Factory.NonZeroTuple> = (
   _: MachineEvent.Factory.ReduceToEvent<F>[],
 ) => Promise<CommandFiredAfterLocked | Metadata[]>
 
