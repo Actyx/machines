@@ -19,7 +19,12 @@ import {
 } from '../design/state.js'
 import { Destruction } from '../utils/destruction.js'
 import { NOP } from '../utils/index.js'
-import { RunnerInternals, StateAndFactory } from './runner-internals.js'
+import {
+  CommandCallback,
+  CommandFiredAfterLocked,
+  RunnerInternals,
+  StateAndFactory,
+} from './runner-internals.js'
 import { MachineEmitter, MachineEmitterEventMap } from './runner-utils.js'
 
 export type MachineRunner = {
@@ -28,7 +33,7 @@ export type MachineRunner = {
   destroy: () => unknown
   isDestroyed: () => boolean
 
-  get: () => StateOpaque
+  get: () => StateOpaque | null
   initial: () => StateOpaque
 
   noAutoDestroy: () => MachineRunnerIterableIterator
@@ -49,7 +54,7 @@ export type SubscribeFn<RegisteredEventsFactoriesTuple extends MachineEvent.Fact
 
 export type PersistFn<RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple> = (
   events: MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>[],
-) => Promise<void | Metadata[]>
+) => Promise<Metadata[]>
 
 export const createMachineRunner = <
   RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
@@ -66,8 +71,7 @@ export const createMachineRunner = <
     attemptStartFrom: { from: {}, latestEventKey: EventKey.zero },
   }
 
-  const persist: PersistFn<RegisteredEventsFactoriesTuple> = (e) =>
-    sdk.publish(tags.apply(...e)).catch((err) => console.error('error publishing', err, ...e))
+  const persist: PersistFn<RegisteredEventsFactoriesTuple> = (e) => sdk.publish(tags.apply(...e))
 
   const subscribe: SubscribeFn<RegisteredEventsFactoriesTuple> = (callback, onCompleteOrErr) =>
     sdk.subscribeMonotonic<MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>>(
@@ -88,12 +92,40 @@ export const createMachineRunnerInternal = <
   factory: StateFactory<any, RegisteredEventsFactoriesTuple, any, Payload, any>,
   payload: Payload,
 ): MachineRunner => {
-  const internals = RunnerInternals.make(factory, payload, persist)
+  const internals = RunnerInternals.make(factory, payload, (events) => {
+    if (internals.commandLock) {
+      console.error('Command issued after locked')
+      return Promise.resolve(CommandFiredAfterLocked)
+    }
+
+    const currentCommandLock = Symbol()
+
+    internals.commandLock = currentCommandLock
+
+    const persistResult = persist(events)
+
+    persistResult.catch((err) => {
+      emitter.emit(
+        'log',
+        `error publishing ${err} ${events.map((e) => JSON.stringify(e)).join(', ')}`,
+      )
+      /**
+       * Guards against cases where command's events couldn't be persisted but state has changed
+       */
+      if (currentCommandLock !== internals.commandLock) return
+      internals.commandLock = null
+      emitter.emit('change', StateOpaque.make(internals, internals.current))
+    })
+
+    emitter.emit('change', StateOpaque.make(internals, internals.current))
+    return persistResult
+  })
+
   const destruction = Destruction.make()
 
   // Actyx Subscription management
-  const events = new EventEmitter() as MachineEmitter
-  destruction.addDestroyHook(() => events.emit('destroyed'))
+  const emitter = new EventEmitter() as MachineEmitter
+  destruction.addDestroyHook(() => emitter.emit('destroyed'))
 
   let refToUnsubFunction = null as null | (() => void)
 
@@ -112,20 +144,24 @@ export const createMachineRunnerInternal = <
       async (d) => {
         try {
           if (d.type === MsgType.timetravel) {
-            events.emit('log', 'Time travel')
+            emitter.emit('log', 'Time travel')
             RunnerInternals.reset(internals)
-            events.emit('audit.reset')
+            emitter.emit('audit.reset')
 
             restartActyxSubscription()
           } else if (d.type === MsgType.events) {
+            //
+
+            internals.caughtUp = false
+
             for (const event of d.events) {
               // TODO: Runtime typeguard for event
               // https://github.com/Actyx/machines/issues/9
-              events.emit('debug.eventHandlingPrevState', internals.current.data)
+              emitter.emit('debug.eventHandlingPrevState', internals.current.data)
 
               const pushEventResult = RunnerInternals.pushEvent(internals, event)
 
-              events.emit('debug.eventHandling', {
+              emitter.emit('debug.eventHandling', {
                 event,
                 handlingReport: pushEventResult,
                 mechanism: internals.current.factory.mechanism,
@@ -136,14 +172,16 @@ export const createMachineRunnerInternal = <
               // Effects of handlingReport on emitters
               ;(() => {
                 if (pushEventResult.executionHappened) {
-                  events.emit('audit.state', {
-                    state: internals.current.data,
-                    events: pushEventResult.triggeringEvents,
-                  })
+                  if (emitter.listenerCount('audit.state') > 0) {
+                    emitter.emit('audit.state', {
+                      state: StateOpaque.make(internals, internals.current),
+                      events: pushEventResult.triggeringEvents,
+                    })
+                  }
                 }
 
                 if (!pushEventResult.executionHappened && pushEventResult.discardable) {
-                  events.emit('audit.dropped', {
+                  emitter.emit('audit.dropped', {
                     state: internals.current.data,
                     event: pushEventResult.discardable,
                   })
@@ -153,8 +191,10 @@ export const createMachineRunnerInternal = <
 
             if (d.caughtUp) {
               // the SDK translates an OffsetMap response into MsgType.events with caughtUp=true
-              events.emit('log', 'Caught up')
-              events.emit('change', StateOpaque.make(internals, internals.current))
+              internals.caughtUp = true
+              internals.caughtUpFirstTime = true
+              emitter.emit('log', 'Caught up')
+              emitter.emit('change', StateOpaque.make(internals, internals.current))
             }
           }
         } catch (error) {
@@ -162,12 +202,13 @@ export const createMachineRunnerInternal = <
         }
       },
       (err) => {
-        events.emit('log', 'Restarting in 1sec due to error')
         RunnerInternals.reset(internals)
-        events.emit('audit.reset')
+        emitter.emit('audit.reset')
+        emitter.emit('change', StateOpaque.make(internals, internals.current))
 
+        emitter.emit('log', 'Restarting in 1sec due to error')
         unsubscribeFromActyx()
-        setTimeout(() => restartActyxSubscription, 1000)
+        setTimeout(() => restartActyxSubscription, 10000)
       },
     )
   }
@@ -180,23 +221,24 @@ export const createMachineRunnerInternal = <
 
   // Self API construction
 
-  const getSnapshot = (): StateOpaque => StateOpaque.make(internals, internals.current)
+  const getSnapshot = (): StateOpaque | null =>
+    internals.caughtUpFirstTime ? StateOpaque.make(internals, internals.current) : null
 
   const api = {
     id: Symbol(),
-    events,
+    events: emitter,
     get: getSnapshot,
     initial: (): StateOpaque => StateOpaque.make(internals, internals.initial),
     destroy: destruction.destroy,
     isDestroyed: destruction.isDestroyed,
     noAutoDestroy: () =>
       MachineRunnerIterableIterator.make({
-        events,
+        events: emitter,
       }),
   }
 
   const defaultIterator: MachineRunnerIterableIterator = MachineRunnerIterableIterator.make({
-    events,
+    events: emitter,
     inheritedDestruction: destruction,
   })
 
@@ -386,13 +428,25 @@ export namespace StateOpaque {
     stateAndFactoryForSnapshot.factory !== internals.current.factory ||
     stateAndFactoryForSnapshot.data !== internals.current.data
 
+  export const isCommandLocked = (internals: RunnerInternals.Any): boolean =>
+    !!internals.commandLock
+
   export const make = (
     internals: RunnerInternals.Any,
     stateAndFactoryForSnapshot: StateAndFactory.Any,
   ): StateOpaque => {
-    // Capture state and factory at snapshot call-time
+    // Captured data at snapshot call-time
+    const commandLockAtSnapshot = internals.commandLock
     const stateAtSnapshot = stateAndFactoryForSnapshot.data
     const factoryAtSnapshot = stateAndFactoryForSnapshot.factory as StateFactory.Any
+    const caughtUpAtSnapshot = internals.caughtUp
+    const caughtUpFirstTimeAtSnapshot = internals.caughtUpFirstTime
+    const queueLengthAtSnapshot = internals.queue.length
+    const commandEnabledAtSnapshot =
+      !commandLockAtSnapshot &&
+      caughtUpAtSnapshot &&
+      caughtUpFirstTimeAtSnapshot &&
+      queueLengthAtSnapshot === 0
 
     // TODO: write unit test on expiry
     const isExpired = () => StateOpaque.isExpired(internals, stateAndFactoryForSnapshot)
@@ -408,40 +462,26 @@ export namespace StateOpaque {
       then?: any,
     ) => {
       if (factoryAtSnapshot.mechanism === factory.mechanism) {
-        const mechanism = factory.mechanism
-        const snapshot = {
-          payload: stateAtSnapshot.payload,
-          type: stateAtSnapshot.type,
-          commands: convertCommandMapToCommandSignatureMap<any, unknown, MachineEvent.Any[]>(
-            mechanism.commands,
-            {
-              isExpired,
-              getActualContext: () => ({
-                self: stateAndFactoryForSnapshot.data.payload,
-              }),
-              onReturn: (events) => internals.commandEmitFn?.(events),
-            },
-          ),
-        }
+        const snapshot = State.makeForSnapshot({
+          factory: factoryAtSnapshot,
+          commandEmitFn: internals.commandEmitFn,
+          isExpired,
+          commandEnabledAtSnapshot,
+          stateAtSnapshot,
+        })
         return then ? then(snapshot) : snapshot
       }
       return undefined
     }
 
-    const cast: StateOpaque['cast'] = () => ({
-      payload: stateAtSnapshot.payload,
-      type: stateAtSnapshot.type,
-      commands: convertCommandMapToCommandSignatureMap<any, unknown, MachineEvent.Any[]>(
-        factoryAtSnapshot.mechanism.commands,
-        {
-          isExpired,
-          getActualContext: () => ({
-            self: stateAndFactoryForSnapshot.data.payload,
-          }),
-          onReturn: (events) => internals.commandEmitFn?.(events),
-        },
-      ),
-    })
+    const cast: StateOpaque['cast'] = () =>
+      State.makeForSnapshot({
+        factory: factoryAtSnapshot,
+        commandEmitFn: internals.commandEmitFn,
+        isExpired,
+        commandEnabledAtSnapshot,
+        stateAtSnapshot,
+      })
 
     return {
       is,
@@ -458,7 +498,7 @@ export type State<
   StatePayload,
   Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
 > = StateRaw<StateName, StatePayload> & {
-  commands: ToCommandSignatureMap<Commands, any, MachineEvent.Any[]>
+  commands?: ToCommandSignatureMap<Commands, any, MachineEvent.Any[]>
 }
 
 export namespace State {
@@ -475,4 +515,46 @@ export namespace State {
   >
     ? State<StateName, StatePayload, Commands>
     : never
+
+  export const makeForSnapshot = <
+    RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
+    StateName extends string,
+    StatePayload extends any,
+    Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
+  >({
+    factory,
+    isExpired,
+    commandEnabledAtSnapshot,
+    commandEmitFn,
+    stateAtSnapshot,
+  }: {
+    factory: StateFactory<any, RegisteredEventsFactoriesTuple, StateName, StatePayload, Commands>
+    isExpired: () => boolean
+    commandEnabledAtSnapshot: boolean
+    commandEmitFn: CommandCallback<RegisteredEventsFactoriesTuple>
+    stateAtSnapshot: StateRaw<StateName, StatePayload>
+  }) => {
+    const mechanism = factory.mechanism
+    const commands = commandEnabledAtSnapshot
+      ? convertCommandMapToCommandSignatureMap<any, StatePayload, MachineEvent.Any[]>(
+          mechanism.commands,
+          {
+            isExpired,
+            getActualContext: () => ({
+              self: stateAtSnapshot.payload,
+            }),
+            onReturn: async (events) => {
+              await commandEmitFn(events)
+            },
+          },
+        )
+      : undefined
+
+    const snapshot = {
+      payload: stateAtSnapshot.payload,
+      type: stateAtSnapshot.payload,
+      commands,
+    }
+    return snapshot
+  }
 }

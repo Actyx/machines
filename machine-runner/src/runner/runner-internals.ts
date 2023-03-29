@@ -1,4 +1,4 @@
-import { ActyxEvent } from '@actyx/sdk'
+import { ActyxEvent, Metadata } from '@actyx/sdk'
 import { deepCopy } from '../utils/object-utils.js'
 import { CommandDefinerMap } from '../design/command.js'
 import { MachineEvent } from '../design/event.js'
@@ -10,9 +10,12 @@ import {
   StateFactory,
 } from '../design/state.js'
 
-type CommandCallback<F extends MachineEvent.Factory.NonZeroTuple> = (
+export const CommandFiredAfterLocked: unique symbol = Symbol()
+type CommandFiredAfterLocked = typeof CommandFiredAfterLocked
+
+export type CommandCallback<F extends MachineEvent.Factory.NonZeroTuple> = (
   _: MachineEvent.Factory.ReduceToEvent<F>[],
-) => unknown
+) => Promise<CommandFiredAfterLocked | Metadata[]>
 
 export type RunnerInternals<
   ProtocolName extends string,
@@ -21,6 +24,8 @@ export type RunnerInternals<
   StatePayload,
   Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
 > = {
+  caughtUpFirstTime: boolean
+  caughtUp: boolean
   readonly initial: StateAndFactory<ProtocolName, RegisteredEventsFactoriesTuple, any, any, any>
   commandEmitFn: CommandCallback<RegisteredEventsFactoriesTuple>
   queue: ActyxEvent<MachineEvent.Any>[]
@@ -31,6 +36,9 @@ export type RunnerInternals<
     StatePayload,
     Commands
   >
+
+  // TODO: document how it behaves
+  commandLock: null | symbol
 }
 
 export namespace RunnerInternals {
@@ -80,6 +88,9 @@ export namespace RunnerInternals {
       },
       queue: [],
       commandEmitFn: commandCallback,
+      caughtUp: false,
+      caughtUpFirstTime: false,
+      commandLock: null,
     }
 
     return internals
@@ -119,6 +130,9 @@ export namespace RunnerInternals {
       data: deepCopy(initial.data),
     }
     internals.queue.length = 0
+    internals.caughtUp = false
+    internals.caughtUpFirstTime = false
+    internals.commandLock = null
   }
 
   export const pushEvent = <StatePayload>(
@@ -168,6 +182,8 @@ export namespace RunnerInternals {
           },
           factory: nextFactory,
         }
+
+        internals.commandLock = null
 
         return {
           executionHappened: true,

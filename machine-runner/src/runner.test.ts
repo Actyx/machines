@@ -1,4 +1,4 @@
-import { EventsOrTimetravel, MsgType, OnCompleteOrErr } from '@actyx/sdk'
+import { EventsOrTimetravel, Metadata, MsgType, OnCompleteOrErr } from '@actyx/sdk'
 import { describe, expect, it } from '@jest/globals'
 import { createMachineRunnerInternal, State, StateOpaque, SubscribeFn } from './runner/runner.js'
 import { MachineEvent } from './design/event.js'
@@ -7,6 +7,12 @@ import { StateFactory } from './design/state.js'
 import { deepCopy } from './utils/object-utils.js'
 import { NOP } from './utils/index.js'
 import { NotAnyOrUnknown } from './utils/type-utils.js'
+
+class Unreachable extends Error {
+  constructor() {
+    super('should be unreachable')
+  }
+}
 
 // Event definitions
 
@@ -17,6 +23,7 @@ const Two = MachineEvent.design('Two').withPayload<{ y: number }>()
 
 const protocol = Protocol.make('testProtocol', [One, Two])
 
+const XCommandParam = [true, 1, '', { specificField: 'literal-a' }, Symbol()] as const
 const Initial = protocol
   .designState('Initial')
   .withPayload<{ transitioned: boolean }>()
@@ -35,7 +42,11 @@ const Initial = protocol
   )
   .finish()
 
-const Second = protocol.designState('Second').withPayload<{ x: number; y: number }>().finish()
+const Second = protocol
+  .designState('Second')
+  .withPayload<{ x: number; y: number }>()
+  .command('Y', [Two], () => [Two.make({ y: 2 })])
+  .finish()
 
 // Reactions
 
@@ -49,6 +60,8 @@ Initial.react([One, Two], Second, (c, one, two) => {
 
 // Mock Runner
 
+type CommandPromisePair = [Promise<Metadata[]>, { resolve: () => void; reject: () => void }]
+
 class Runner<
   RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
   Payload,
@@ -61,6 +74,13 @@ class Runner<
   private unhandled: MachineEvent.Any[] = []
   private caughtUpHistory: StateOpaque[] = []
   private stateChangeHistory: { state: StateOpaque; unhandled: MachineEvent.Any[] }[] = []
+  private commandsDelay: {
+    isDelaying: boolean
+    delayedCommands: CommandPromisePair[]
+  } = {
+    isDelaying: false,
+    delayedCommands: [],
+  }
   public machine
 
   constructor(
@@ -84,21 +104,29 @@ class Runner<
       subscribe,
       async (events) => {
         this.persisted.push(...events)
+        const commandPromisePair = this.createDelayedCommandPair(events)
+        if (this.commandsDelay.isDelaying) {
+          this.commandsDelay.delayedCommands.push(commandPromisePair)
+        } else {
+          commandPromisePair[1].resolve()
+        }
+        return commandPromisePair[0]
       },
       factory,
       payload,
     )
 
-    machine.events.addListener('audit.state', () => {
+    machine.events.addListener('audit.state', ({ state }) => {
+      if (!state) return
       this.stateChangeHistory.unshift({
-        state: machine.get(),
+        state,
         unhandled: this.unhandled,
       })
       this.unhandled = []
     })
 
-    machine.events.addListener('change', () => {
-      this.caughtUpHistory.unshift(machine.get())
+    machine.events.addListener('change', (snapshot) => {
+      this.caughtUpHistory.unshift(snapshot)
     })
 
     machine.events.addListener('audit.dropped', (dropped) => {
@@ -111,23 +139,64 @@ class Runner<
   resetStateChangeHistory = () => (this.stateChangeHistory = [])
   resetCaughtUpHistory = () => (this.caughtUpHistory = [])
 
+  private mockMeta() {
+    return {
+      isLocalEvent: true,
+      tags: [],
+      timestampMicros: 0,
+      timestampAsDate: () => new Date(),
+      lamport: 1,
+      eventId: 'id1',
+      appId: 'test',
+      stream: 'stream1',
+      offset: 3,
+    }
+  }
+
+  private createDelayedCommandPair(events: E[]): CommandPromisePair {
+    const pair: CommandPromisePair = [undefined as any, undefined as any]
+    pair[0] = new Promise<void>((resolve, reject) => {
+      pair[1] = {
+        resolve,
+        reject,
+      }
+    }).then(() => {
+      this.feed(events, true)
+      return events.map((_) => this.mockMeta())
+    })
+
+    return pair
+  }
+
+  async toggleCommandDelay(
+    delayControl: { delaying: true } | { delaying: false; rejectAll?: boolean },
+  ): Promise<void> {
+    this.commandsDelay.isDelaying = delayControl.delaying
+
+    if (delayControl.delaying) return
+
+    await Promise.all(
+      this.commandsDelay.delayedCommands.map(([promise, control]) => {
+        if (delayControl.rejectAll) {
+          control.reject()
+        } else {
+          control.resolve()
+        }
+        // eslint-disable-next-line @typescript-eslint/no-empty-function
+        return promise.catch(() => {})
+      }),
+    )
+
+    this.commandsDelay.delayedCommands = []
+  }
+
   feed(ev: E[], caughtUp: boolean) {
     if (this.cb === null) throw new Error('not subscribed')
     return this.cb({
       type: MsgType.events,
       caughtUp,
       events: ev.map((payload) => ({
-        meta: {
-          isLocalEvent: true,
-          tags: [],
-          timestampMicros: 0,
-          timestampAsDate: () => new Date(),
-          lamport: 1,
-          eventId: 'id1',
-          appId: 'test',
-          stream: 'stream1',
-          offset: 3,
-        },
+        meta: this.mockMeta(),
         payload,
       })),
     })
@@ -154,8 +223,7 @@ class Runner<
     }) => void,
   ) {
     const last = this.stateChangeHistory.at(0)
-    expect(last).toBeTruthy()
-    if (!last) return
+    if (!last) throw new Unreachable()
 
     const { state, unhandled } = last
 
@@ -172,8 +240,7 @@ class Runner<
     assertStateFurther?: (params: { snapshot: State.Of<Factory> }) => void,
   ) {
     const state = this.caughtUpHistory.at(0)
-    expect(state).toBeTruthy()
-    if (!state) return
+    if (!state) throw new Unreachable()
 
     const snapshot = state.as(factory) as State.Of<Factory> | void
     expect(snapshot).toBeTruthy()
@@ -326,8 +393,7 @@ describe('machine as async generator', () => {
 
     expect(after.getTime() - before.getTime()).toBeGreaterThanOrEqual(TIMEOUT)
 
-    expect(iterResult.done).toBe(false)
-    if (iterResult.done !== false) return
+    if (iterResult.done !== false) throw new Unreachable()
 
     const snapshot = iterResult.value
     const typeTest = snapshot.as(On)
@@ -494,25 +560,184 @@ describe('machine as async generator', () => {
 })
 
 describe('StateOpaque', () => {
+  describe('Commands', () => {
+    it("should be undefined when StateOpaque hasn't caught up at snapshot-time", () => {
+      const r1 = new Runner(Initial, { transitioned: false })
+      r1.feed([], true)
+      r1.feed([], false)
+
+      const asInitial = r1.machine.get()?.as(Initial)
+      if (!asInitial) throw new Unreachable()
+
+      expect(asInitial.commands).toBe(undefined)
+    })
+
+    it("should be undefined when StateOpaque's queue isn't zero at snapshot-time", () => {
+      const r1 = new Runner(Initial, { transitioned: false })
+      r1.feed([], true)
+      r1.feed([One.make({ x: 1 })], true)
+
+      const asInitial = r1.machine.get()?.as(Initial)
+      if (!asInitial) throw new Unreachable()
+
+      expect(asInitial.commands).toBe(undefined)
+    })
+
+    it('should be ignored when expired', () => {
+      const r1 = new Runner(Initial, { transitioned: false })
+      r1.feed([], true)
+
+      const stateBeforeExpiry = r1.machine.get()?.as(Initial)
+      if (!stateBeforeExpiry) throw new Unreachable()
+
+      r1.assertPersisted()
+
+      // Expire here by transforming it
+      r1.feed([One.make({ x: 1 }), Two.make({ y: 1 })], true)
+
+      expect(stateBeforeExpiry.commands).toBeTruthy()
+      // Persisted should be 0
+      r1.assertPersisted()
+
+      const stateAfterExpiry = r1.machine.get()?.as(Second)
+      if (!stateAfterExpiry) throw new Unreachable()
+
+      expect(stateAfterExpiry.commands).toBeTruthy()
+      const commands = stateAfterExpiry.commands
+      // run command here
+      if (!commands) throw new Unreachable()
+
+      // should persist Two.make({ y: 2 })
+      commands.Y()
+
+      r1.assertPersisted(Two.make({ y: 2 }))
+    })
+
+    it('should be locked after a command issued', async () => {
+      const r1 = new Runner(Initial, { transitioned: false })
+      r1.feed([], true)
+
+      const snapshot = r1.machine.get()?.as(Initial)
+      const commands = snapshot?.commands
+      if (!snapshot || !commands) throw new Unreachable()
+
+      await r1.toggleCommandDelay({ delaying: true })
+      commands.X(...XCommandParam)
+      r1.assertPersisted(One.make({ x: 42 }))
+
+      // subsequent command call is not issued
+      commands.X(...XCommandParam)
+      r1.assertPersisted()
+
+      await r1.toggleCommandDelay({ delaying: false })
+
+      // subsequent command call is not issued
+      commands.X(...XCommandParam)
+      r1.assertPersisted()
+    })
+
+    it('should be unlocked after previous command is rejected', async () => {
+      const r1 = new Runner(Initial, { transitioned: false })
+      r1.feed([], true)
+
+      const snapshot = r1.machine.get()?.as(Initial)
+      const commands = snapshot?.commands
+      if (!snapshot || !commands) throw new Unreachable()
+
+      await r1.toggleCommandDelay({ delaying: true })
+
+      let rejectionSwitch1 = false
+      commands.X(...XCommandParam).catch(() => (rejectionSwitch1 = true))
+      r1.assertPersisted(One.make({ x: 42 }))
+
+      // subsequent command call is not issued
+      let rejectionSwitch2 = false
+      commands.X(...XCommandParam).catch(() => (rejectionSwitch2 = true))
+      r1.assertPersisted()
+
+      await r1.toggleCommandDelay({ delaying: false, rejectAll: true })
+
+      expect(rejectionSwitch1).toBe(true)
+      expect(rejectionSwitch2).toBe(false) // second commmand should not be issued
+
+      // subsequent command after previous rejection is issued
+      commands.X(...XCommandParam)
+      r1.assertPersisted(One.make({ x: 42 }))
+    })
+
+    it('should be unlocked after state-change', async () => {
+      const r1 = new Runner(Initial, { transitioned: false })
+      r1.feed([], true)
+
+      await r1.toggleCommandDelay({ delaying: true })
+      ;(() => {
+        const snapshot = r1.machine.get()?.as(Initial)
+        const commands = snapshot?.commands
+        if (!snapshot || !commands) throw new Unreachable()
+
+        commands.X(...XCommandParam)
+        r1.assertPersisted(One.make({ x: 42 }))
+
+        // subsequent command call is not issued
+        commands.X(...XCommandParam)
+        r1.assertPersisted()
+      })()
+
+      // disable delay here, let all promise runs
+      await r1.toggleCommandDelay({ delaying: false })
+      // feed Two to transform r1
+      r1.feed([Two.make({ y: 2 })], true)
+      ;(() => {
+        const snapshot = r1.machine.get()?.as(Second)
+        if (!snapshot) throw new Unreachable()
+        // subsequent command call is not issued
+        snapshot.commands?.Y()
+        r1.assertPersisted(Two.make({ y: 2 }))
+      })()
+    })
+  })
+
+  describe('.get function', () => {
+    it('should return null beforee encountering caughtUp for the first time', () => {
+      const r1 = new Runner(Initial, { transitioned: false })
+
+      expect(r1.machine.get()).toBe(null)
+      r1.feed([], false)
+      expect(r1.machine.get()).toBe(null)
+      r1.feed([], true)
+      expect(r1.machine.get()).toBeTruthy()
+      r1.feed([], false)
+      expect(r1.machine.get()).toBeTruthy()
+    })
+  })
+
   describe('.is function', () => {
     it('should match by factory and reduce type inside block', () => {
       const r1 = new Runner(Initial, { transitioned: false })
+
+      r1.feed([], true)
+
       const s1 = r1.machine.get()
+
+      if (!s1) throw new Unreachable()
+
       expect(s1.is(Initial)).toBe(true)
       expect(s1.is(Second)).toBe(false)
 
-      if (s1.is(Initial)) {
-        expect(s1.payload.transitioned).toBe(false)
-      }
+      if (!s1.is(Initial)) throw new Unreachable()
+      expect(s1.payload.transitioned).toBe(false)
 
       const r2 = new Runner(Second, { x: 1, y: 2 })
+      r2.feed([], true)
       const s2 = r2.machine.get()
+
+      if (!s2) throw new Unreachable()
       expect(s2.is(Second)).toBe(true)
       expect(s2.is(Initial)).toBe(false)
-      if (s2.is(Second)) {
-        expect(s2.payload.x).toBe(1)
-        expect(s2.payload.y).toBe(2)
-      }
+
+      if (!s2.is(Second)) throw new Unreachable()
+      expect(s2.payload.x).toBe(1)
+      expect(s2.payload.y).toBe(2)
     })
   })
 
@@ -522,9 +747,11 @@ describe('StateOpaque', () => {
       r.feed([], true)
       const s = r.machine.get()
 
-      if (!s.is(Initial)) throw new Error() // TODO: replace with unreachable after merge with get: null | Opaque
+      if (!s) throw new Unreachable()
+
+      if (!s.is(Initial)) throw new Unreachable()
       const snapshot = s.cast()
-      expect(snapshot.commands.X).toBeTruthy()
+      expect(snapshot.commands?.X).toBeTruthy()
     })
   })
 
@@ -538,16 +765,21 @@ describe('StateOpaque', () => {
 
         const s = r.machine.get()
 
-        const snapshot1Invalid = s.as(Second)
+        r.feed([], true)
+        const state = r.machine.get()
+
+        if (!state) throw new Unreachable()
+
+        const snapshot1Invalid = state.as(Second)
         expect(snapshot1Invalid).toBeFalsy()
 
-        const snapshot1 = s.as(Initial)
+        const snapshot1 = state.as(Initial)
         expect(snapshot1).toBeTruthy()
 
-        if (snapshot1) {
-          expect(snapshot1.commands.X).toBeTruthy()
-          expect(snapshot1.payload.transitioned).toBe(false)
-        }
+        if (!snapshot1) throw new Unreachable()
+
+        expect(snapshot1.commands?.X).toBeTruthy()
+        expect(snapshot1.payload.transitioned).toBe(false)
       })()
 
       // Second State
@@ -557,15 +789,20 @@ describe('StateOpaque', () => {
 
         const s = r.machine.get()
 
-        const snapshot2Invalid = s.as(Initial)
+        r.feed([], true)
+
+        const state = r.machine.get()
+
+        if (!state) throw new Unreachable()
+        const snapshot2Invalid = state.as(Initial)
         expect(snapshot2Invalid).toBeFalsy()
 
-        const snapshot2 = s.as(Second)
-        expect(snapshot2).toBeTruthy()
+        const stateAsSecond = state.as(Second)
+        expect(stateAsSecond).toBeTruthy()
 
-        if (snapshot2) {
-          expect(snapshot2.payload.x).toBe(1)
-          expect(snapshot2.payload.y).toBe(2)
+        if (stateAsSecond) {
+          expect(stateAsSecond.payload.x).toBe(1)
+          expect(stateAsSecond.payload.y).toBe(2)
         }
       })()
     })
@@ -624,28 +861,37 @@ describe('deepCopy', () => {
   })
 })
 
+/**
+ * In this particular test group, bad-good assertions are not required.
+ * This blocks only tests types by making type assignments.
+ * Bad type definitions are expected to fail the compilation
+ */
 describe('typings', () => {
   it("state.as should not return 'any'", () => {
     const r = new Runner(Initial, { transitioned: false })
     const snapshot = r.machine.get()
-    const state = snapshot.as(Initial)
-    if (state) {
-      // This will fail to compile if `as` function returns nothing other than
-      // "Initial", including if it returns any
-      const supposedStateName: NotAnyOrUnknown<State.NameOf<typeof state>> = 'Initial'
-      NOP(supposedStateName)
+    if (!snapshot) return
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const xTypeTest: NotAnyOrUnknown<typeof state.commands.X> = undefined as any
-      const paramsOfXTypeTest: NotAnyOrUnknown<Parameters<typeof state.commands.X>> = [
-        true,
-        1,
-        '',
-        { specificField: 'literal-a' },
-        Symbol(),
-      ]
-      NOP(xTypeTest, paramsOfXTypeTest)
-    }
+    const state = snapshot.as(Initial)
+    if (!state) return
+
+    const commands = state.commands
+    if (!commands) return
+    // This will fail to compile if `as` function returns nothing other than
+    // "Initial", including if it returns any
+    const supposedStateName: NotAnyOrUnknown<State.NameOf<typeof state>> = 'Initial'
+    NOP(supposedStateName)
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const xTypeTest: NotAnyOrUnknown<typeof commands.X> = undefined as any
+    const paramsOfXTypeTest: NotAnyOrUnknown<Parameters<typeof commands.X>> = [
+      true,
+      1,
+      '',
+      { specificField: 'literal-a' },
+      Symbol(),
+    ]
+    NOP(xTypeTest, paramsOfXTypeTest)
 
     const transformedTypeTest = snapshot.as(Initial, (initial) => initial.payload.transitioned)
     const supposedBooleanOrUndefined: NotAnyOrUnknown<typeof transformedTypeTest> = true as
@@ -654,7 +900,6 @@ describe('typings', () => {
       | undefined
 
     NOP(transformedTypeTest, supposedBooleanOrUndefined)
-    expect(true).toBe(true)
     r.machine.destroy()
   })
 
@@ -664,22 +909,22 @@ describe('typings', () => {
     const snapshotTypeTest: NotAnyOrUnknown<typeof snapshot> = snapshot
     NOP(snapshotTypeTest)
 
+    if (!snapshot) return
+
     if (snapshot.is(Initial)) {
       const state = snapshot.cast()
       const typetest: NotAnyOrUnknown<typeof state> = state
-      const typetestCommands: NotAnyOrUnknown<typeof state['commands']['X']> = NOP
-      NOP(typetest, typetestCommands)
+      const commands = state.commands
+      if (commands) {
+        const typetestCommands: NotAnyOrUnknown<typeof commands.X> = () =>
+          Promise.resolve() as Promise<void>
+        NOP(typetest, typetestCommands)
+      }
     }
 
     snapshot.as(Initial)
     snapshot.as(Second)
 
-    // type ExpectedFactory = Parameters<typeof snapshot.as>[0]
-    // const testSecondIsExpected: ExpectedFactory = Second
-    // const testInitialIsExpected: ExpectedFactory = Initial
-    // NOP(testSecondIsExpected, testInitialIsExpected)
-
-    expect(true).toBe(true)
     r.machine.destroy()
   })
 })

@@ -84,16 +84,20 @@ export const useMachineDebug = (machine: MachineRunner, label: string) => {
     const onAuditState: MachineRunner.EventListener<'audit.state'> = (x) =>
       console.log(label, 'state change to ', utils.deepCopy(x.state))
 
+    const onLog: MachineRunner.EventListener<'log'> = (x) => console.log(label, `log`, x)
+
     machine.events.on('debug.eventHandlingPrevState', onPrevState)
     machine.events.on('debug.eventHandling', onDebug)
     machine.events.on('change', onChange)
     machine.events.on('audit.state', onAuditState)
+    machine.events.on('log', onLog)
 
     return () => {
       machine.events.off('debug.eventHandlingPrevState', onPrevState)
       machine.events.off('debug.eventHandling', onDebug)
       machine.events.off('change', onChange)
       machine.events.off('audit.state', onAuditState)
+      machine.events.off('log', onLog)
     }
   }, [machine])
 }

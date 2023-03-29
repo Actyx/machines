@@ -5,7 +5,8 @@ import { AuctionP, BidData, InitialP, RideP } from './machines.js'
 export const UIInitialP = ({ state: state }: { state: State.Of<typeof InitialP> }) => {
   const [pickup, setPickup] = useState('')
   const [destination, setDestination] = useState('')
-  const buttonEnabled = !!pickup.trim() && !!destination.trim()
+  const buttonEnabled =
+    pickup.trim().length > 0 && destination.trim().length > 0 && state.commands !== undefined
   return (
     <div>
       <label>
@@ -24,7 +25,7 @@ export const UIInitialP = ({ state: state }: { state: State.Of<typeof InitialP> 
         type="button"
         disabled={!buttonEnabled}
         onClick={() =>
-          state.commands.request({
+          state.commands?.request({
             pickup,
             destination,
           })
@@ -38,6 +39,7 @@ export const UIInitialP = ({ state: state }: { state: State.Of<typeof InitialP> 
 
 export const UIAuctionP = ({ state: state }: { state: State.Of<typeof AuctionP> }) => {
   const [selection, setSelection] = useState<BidData | null>(state.payload.bids[0] || null)
+  const buttonEnabled = selection !== null && state.commands !== undefined
 
   return (
     <div>
@@ -59,10 +61,10 @@ export const UIAuctionP = ({ state: state }: { state: State.Of<typeof AuctionP> 
         })}
       </select>
       <button
-        disabled={selection === null}
+        disabled={!buttonEnabled}
         onClick={() => {
           if (selection !== null) {
-            state.commands.select(selection.bidderID)
+            state.commands?.select(selection.bidderID)
           }
         }}
       >
@@ -73,11 +75,13 @@ export const UIAuctionP = ({ state: state }: { state: State.Of<typeof AuctionP> 
 }
 
 export const UIRideP = ({ state: state }: { state: State.Of<typeof RideP> }) => {
+  const buttonEnabled = state.commands !== undefined
   return (
     <div>
       <button
+        disabled={!buttonEnabled}
         onClick={() => {
-          state.commands.cancel()
+          state.commands?.cancel()
         }}
       >
         Cancel Ride

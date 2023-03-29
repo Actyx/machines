@@ -8,6 +8,7 @@ export const UIInitialT = ({ state: state }: { state: State.Of<typeof InitialT> 
 
 export const UIFirstBidT = ({ state: state }: { state: State.Of<typeof FirstBidT> }) => {
   const [price, setPrice] = useState<number | null>(null)
+  const buttonEnabled = state.commands !== undefined
   return (
     <div>
       <input
@@ -28,9 +29,10 @@ export const UIFirstBidT = ({ state: state }: { state: State.Of<typeof FirstBidT
       ></input>
       <button
         type="button"
+        disabled={!buttonEnabled}
         onClick={() => {
           if (price !== null) {
-            state.commands.bid({
+            state.commands?.bid({
               price: price,
               time: new Date(),
             })
@@ -45,6 +47,7 @@ export const UIFirstBidT = ({ state: state }: { state: State.Of<typeof FirstBidT
 
 export const UIAuctionT = ({ state: state }: { state: State.Of<typeof AuctionT> }) => {
   const [price, setPrice] = useState<number | null>(null)
+  const buttonEnabled = state.commands !== undefined
   return (
     <div>
       <input
@@ -65,9 +68,10 @@ export const UIAuctionT = ({ state: state }: { state: State.Of<typeof AuctionT> 
       ></input>
       <button
         type="button"
+        disabled={!buttonEnabled}
         onClick={() => {
           if (price !== null) {
-            state.commands.bid({
+            state.commands?.bid({
               price: price,
               time: new Date(),
             })

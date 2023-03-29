@@ -16,7 +16,7 @@ export type MachineEmitter = TypedEventEmitter<MachineEmitterEventMap>
 
 export type MachineEmitterEventMap = {
   'audit.reset': (_: void) => unknown
-  'audit.state': (_: { state: StateRaw.Any; events: ActyxEvent<MachineEvent.Any>[] }) => unknown
+  'audit.state': (_: { state: StateOpaque; events: ActyxEvent<MachineEvent.Any>[] }) => unknown
   'audit.dropped': (_: { state: StateRaw.Any; event: ActyxEvent<MachineEvent.Any> }) => unknown
   'audit.error': (_: {
     state: StateRaw.Any
