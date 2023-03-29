@@ -19,13 +19,7 @@ import {
 } from '../design/state.js'
 import { Destruction } from '../utils/destruction.js'
 import { NOP } from '../utils/index.js'
-import {
-  CommandFiredAfterLocked,
-  CommandIssuanceStatus,
-  RunnerInternals,
-  StateAndFactory,
-  UnknownEventID,
-} from './runner-internals.js'
+import { CommandFiredAfterLocked, RunnerInternals, StateAndFactory } from './runner-internals.js'
 import { MachineEmitter, MachineEmitterEventMap } from './runner-utils.js'
 
 export type MachineRunner = {
@@ -99,29 +93,20 @@ export const createMachineRunnerInternal = <
       return Promise.resolve(CommandFiredAfterLocked)
     }
 
-    const newCommandIssuanceStatus: CommandIssuanceStatus = {
-      issuedEventIds: events.map((_) => UnknownEventID),
-      incomingEventIds: new Set(),
-    }
+    const currentCommandLock = Symbol()
 
-    internals.commandLock = newCommandIssuanceStatus
+    internals.commandLock = currentCommandLock
 
-    const isActual = newCommandIssuanceStatus === internals.commandLock
+    const isActual = () => currentCommandLock === internals.commandLock
 
     const persistResult = persist(events)
-
-    persistResult.then((metadata) => {
-      if (!isActual) return
-      newCommandIssuanceStatus.issuedEventIds = metadata.map((metadata) => metadata.eventId)
-      emitter.emit('change', StateOpaque.make(internals, internals.current))
-    })
 
     persistResult.catch((err) => {
       emitter.emit(
         'log',
         `error publishing ${err} ${events.map((e) => JSON.stringify(e)).join(', ')}`,
       )
-      if (!isActual) return
+      if (!isActual()) return
       internals.commandLock = null
       emitter.emit('change', StateOpaque.make(internals, internals.current))
     })
@@ -167,8 +152,6 @@ export const createMachineRunnerInternal = <
               // TODO: Runtime typeguard for event
               // https://github.com/Actyx/machines/issues/9
               emitter.emit('debug.eventHandlingPrevState', internals.current.data)
-
-              internals.commandLock?.incomingEventIds.add(event.meta.eventId)
 
               const pushEventResult = RunnerInternals.pushEvent(internals, event)
 
@@ -232,10 +215,8 @@ export const createMachineRunnerInternal = <
 
   // Self API construction
 
-  const getSnapshot = (): StateOpaque | null => {
-    console.log('internals.caughtUpFirstTime', internals.caughtUpFirstTime)
-    return internals.caughtUpFirstTime ? StateOpaque.make(internals, internals.current) : null
-  }
+  const getSnapshot = (): StateOpaque | null =>
+    internals.caughtUpFirstTime ? StateOpaque.make(internals, internals.current) : null
 
   const api = {
     id: Symbol(),
@@ -485,7 +466,9 @@ export namespace StateOpaque {
                 getActualContext: () => ({
                   self: stateAndFactoryForSnapshot.data.payload,
                 }),
-                onReturn: (events) => internals.commandEmitFn(events),
+                onReturn: async (events) => {
+                  await internals.commandEmitFn(events)
+                },
               },
             )
           : undefined
@@ -510,7 +493,9 @@ export namespace StateOpaque {
               getActualContext: () => ({
                 self: stateAndFactoryForSnapshot.data.payload,
               }),
-              onReturn: (events) => internals.commandEmitFn(events),
+              onReturn: async (events) => {
+                await internals.commandEmitFn(events)
+              },
             },
           )
         : undefined

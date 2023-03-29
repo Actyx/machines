@@ -8,7 +8,7 @@ export const UIInitialT = ({ state: state }: { state: State.Of<typeof InitialT> 
 
 export const UIFirstBidT = ({ state: state }: { state: State.Of<typeof FirstBidT> }) => {
   const [price, setPrice] = useState<number | null>(null)
-  const buttonEnabled = !!state.commands
+  const buttonEnabled = state.commands !== undefined
   return (
     <div>
       <input
@@ -47,7 +47,7 @@ export const UIFirstBidT = ({ state: state }: { state: State.Of<typeof FirstBidT
 
 export const UIAuctionT = ({ state: state }: { state: State.Of<typeof AuctionT> }) => {
   const [price, setPrice] = useState<number | null>(null)
-  const buttonEnabled = !!state.commands
+  const buttonEnabled = state.commands !== undefined
   return (
     <div>
       <input

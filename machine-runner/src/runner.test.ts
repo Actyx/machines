@@ -785,7 +785,7 @@ describe('typings', () => {
       const commands = state.commands
       if (commands) {
         const typetestCommands: NotAnyOrUnknown<typeof commands.X> = () =>
-          Promise.resolve(1) as Promise<unknown>
+          Promise.resolve() as Promise<void>
         NOP(typetest, typetestCommands)
       }
     }

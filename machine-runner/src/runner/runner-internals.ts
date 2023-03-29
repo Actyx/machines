@@ -38,15 +38,7 @@ export type RunnerInternals<
   >
 
   // TODO: document how it behaves
-  commandLock: null | CommandIssuanceStatus
-}
-
-export const UnknownEventID: unique symbol = Symbol()
-export type UnknownEventID = typeof UnknownEventID
-export type CommandIssuanceStatus = {
-  // TODO: document null = no event issued
-  issuedEventIds: (string | UnknownEventID)[]
-  incomingEventIds: Set<string>
+  commandLock: null | symbol
 }
 
 export namespace RunnerInternals {
