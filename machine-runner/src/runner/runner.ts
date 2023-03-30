@@ -28,7 +28,7 @@ import {
 import { MachineEmitter, MachineEmitterEventMap } from './runner-utils.js'
 
 /**
- * Contains and manage state of a protocol by subscribing and publishing events via an active connection to Actyx. A MachineRunner manage state reactions and transitions when incoming events from Actyx match one of the reactions of the MachineRunner's state as defined by the user via the protocol.
+ * Contains and manages the state of a protocol by subscribing and publishing events via an active connection to Actyx. A MachineRunner manages state reactions and transitions when incoming events from Actyx match one of the reactions of the MachineRunner's state as defined by the user via the protocol.
  *
  * MachineRunner can be used as an async-iterator. However, if used as an async-iterator, it will be destroyed when a 'break' occurs on the loop.
  * @example
@@ -50,7 +50,7 @@ export type MachineRunner = {
   destroy: () => unknown
 
   /**
-   * @returns whether this MachineRunner is destroyed / disconnected from Actyx.
+   * @returns whether this MachineRunner is destroyed/disconnected from Actyx.
    */
   isDestroyed: () => boolean
 
@@ -61,7 +61,7 @@ export type MachineRunner = {
   get: () => StateOpaque | null
 
   /**
-   * @returns a snapshost of the MachineRunner's initial state in the form of StateOpaque
+   * @returns a snapshot of the MachineRunner's initial state in the form of StateOpaque
    */
   initial: () => StateOpaque
 
@@ -431,7 +431,7 @@ namespace NextValueAwaiter {
 }
 
 /**
- * StateOpaque is an opaque snapshot of a MachineRunner state. A StateOpaque does not have direct access to the state's payload or command. In order to access the state's payload, a StateOpaque has to be successfully casted into a particular typed State.
+ * StateOpaque is an opaque snapshot of a MachineRunner state. A StateOpaque does not have direct access to the state's payload or command. In order to access the state's payload, a StateOpaque has to be successfully cast into a particular typed State.
  */
 export interface StateOpaque<
   StateName extends string = string,
@@ -457,10 +457,10 @@ export interface StateOpaque<
   ): this is StateOpaque<DeductStateName, DeductPayload, DeductCommands>
 
   /**
-   * Attempt to cast the StateOpaque into a specific StateFactory and optionally transform the value with `then` function. Whether casting is successful or not depends on whether the StateOpaque's State matches the factory supplied via the first parameter.
+   * Attempt to cast the StateOpaque into a specific StateFactory and optionally transform the value with the `then` function. Whether casting is successful or not depends on whether the StateOpaque's State matches the factory supplied via the first parameter.
    * @param factory - A StateFactory used to cast the StateOpaque
    * @param then - an optional transformation function accepting the typed state and returns an arbitrary value. This function will be executed if the casting is successful
-   * @return a typed State with access to payload and commands if `then` and casting is successful, any value returned by `then` function if supplied and casting is successful, null if casting is not successful
+   * @return a typed State with access to payload and commands if the `then` function is not supplied and the casting is successful, any value returned by the `then` function if supplied and casting is successful, null if casting is not successful
    * @example
    * const maybeHangarControlIdle = machine
    *   .get()?
@@ -482,10 +482,10 @@ export interface StateOpaque<
   ): State<StateName, StatePayload, Commands> | undefined
 
   /**
-   * Attempt to cast the StateOpaque into a specific StateFactory and optionally transform the value with `then` function. Whether casting is successful or not depends on whether the StateOpaque's State matches the factory supplied via the first parameter.
+   * Attempt to cast the StateOpaque into a specific StateFactory and optionally transform the value with the `then` function. Whether casting is successful or not depends on whether the StateOpaque's State matches the factory supplied via the first parameter.
    * @param factory - A StateFactory used to cast the StateOpaque
    * @param then - an optional transformation function accepting the typed state and returns an arbitrary value. This function will be executed if the casting is successful
-   * @return a typed State with access to payload and commands if `then` and casting is successful, any value returned by `then` function if supplied and casting is successful, null if casting is not successful
+   * @return a typed State with access to payload and commands if the `then` function is not supplied and the casting is successful, any value returned by the `then` function if supplied and casting is successful, null if casting is not successful
    * @example
    * const maybeHangarControlIdle = machine
    *   .get()?
@@ -596,7 +596,7 @@ export namespace StateOpaque {
 }
 
 /**
- * A typed snapshot of the MachineRunner's state with access to the state's payload and the associated commands. Commands are available only if at the time the snapshot is created these conditions are met: 1.) the MachineRunner has caught up with Actyx's events stream, 2.) there is no events in the internal queue awaiting for processing, 3.) no command associated with the same state has been issued
+ * A typed snapshot of the MachineRunner's state with access to the state's payload and the associated commands. Commands are available only if at the time the snapshot is created these conditions are met: 1.) the MachineRunner has caught up with Actyx's events stream, 2.) there are no events in the internal queue awaiting processing, 3.) no command associated with the same state has been issued
  */
 export type State<
   StateName extends string,
@@ -604,7 +604,7 @@ export type State<
   Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
 > = StateRaw<StateName, StatePayload> & {
   /**
-   * A dictionary containing commands previously registered during the State Design process. Undefined when commands are unavailable during the time of the state snapshot. Commands are available only if at the time the snapshot is created these conditions are met: 1.) the MachineRunner has caught up with Actyx's events stream, 2.) there is no events in the internal queue awaiting for processing, 3.) no command associated with the same state has been issued.
+   * A dictionary containing commands previously registered during the State Design process. Undefined when commands are unavailable during the time of the state snapshot. Commands are available only if at the time the snapshot is created these conditions are met: 1.) the MachineRunner has caught up with Actyx's events stream, 2.) there are no events in the internal queue awaiting processing, 3.) no command associated with the same state has been issued
    */
   commands?: ToCommandSignatureMap<Commands, any, MachineEvent.Any[]>
 }

@@ -103,7 +103,7 @@ export type StateMechanism<
   readonly name: StateName
   readonly commands: Commands
   /**
-   * Attach a command to a state. Attached commands are available when a MachineRunner is in that particular state.
+   * Attach a command to a state. The attached commands are available when a MachineRunner is in that particular state.
    * @example
    * const HangarControlIdle = protocol
    *   .designState("HangarControlIdle")
@@ -285,7 +285,7 @@ export type StateFactory<
   >
 
   /**
-   * Add a reaction to a set of incoming event for a particular state. A reaction is a computation that MAY result in a state transition or a self-mutation.
+   * Add a reaction to a set of incoming events for a particular state. A reaction is a computation that MAY result in a state transition or a self-mutation.
    * @example
    * HangarControlIdle
    *   .react([IncomingDockingRequest], HangarControlIdle, (context, request) => {

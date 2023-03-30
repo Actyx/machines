@@ -48,7 +48,7 @@ export type Protocol<
 }
 
 /**
- * Set of utilities for designing protocol
+ * Set of utilities for designing a protocol
  */
 export namespace Protocol {
   export type Any = Protocol<any, any>
@@ -78,7 +78,7 @@ export namespace Protocol {
   }
 
   /**
-   * Create a protocol with a specific name and event factories. This function two parameters: the name of the protocol and the list of MachineEventFactories.
+   * Create a protocol with a specific name and event factories. This function has two parameters: the name of the protocol and the list of MachineEventFactories.
    * @example
    * const hangarBay = Protocol.make("hangarBay")
    */
