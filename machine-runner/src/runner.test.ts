@@ -861,6 +861,79 @@ describe('deepCopy', () => {
   })
 })
 
+describe('protocol.createJSONForAnalysis', () => {
+  const E1 = MachineEvent.design('E1').withoutPayload()
+  const E2 = MachineEvent.design('E2').withoutPayload()
+  const protocol = Protocol.make('example', [E1, E2])
+  const S1 = protocol
+    .designEmpty('S1')
+    .command('a', [E1], () => [E1.make({})])
+    .finish()
+  const S2 = protocol
+    .designEmpty('S2')
+    .command('b', [E2], () => [E2.make({})])
+    .finish()
+  S1.react([E1, E2], S1, () => S1.make())
+  S1.react([E2], S2, () => S2.make())
+  S2.react([E2, E1], S2, () => S2.make())
+  S2.react([E1], S1, () => S1.make())
+
+  const expectCommand = (
+    analysisData: ReturnType<typeof protocol['createJSONForAnalysis']>,
+    factory: StateFactory.Any,
+    commandName: string,
+    logType: { type: string }[],
+  ) => {
+    const transitionFound = analysisData.transitions.find(
+      (t) =>
+        t.source === factory.mechanism.name &&
+        t.target === factory.mechanism.name &&
+        t.label.tag === 'Execute' &&
+        t.label.cmd === commandName,
+    )
+    expect(transitionFound).toBeTruthy()
+    expect(transitionFound?.label.tag === 'Execute' && transitionFound.label.logType).toEqual(
+      logType.map((item) => item.type),
+    )
+  }
+
+  const expectReaction = (
+    analysisData: ReturnType<typeof protocol['createJSONForAnalysis']>,
+    source: StateFactory.Any,
+    target: StateFactory.Any,
+    eventType: { type: string },
+  ) => {
+    expect(
+      analysisData.transitions.find(
+        (t) =>
+          t.source === source.mechanism.name &&
+          t.target === target.mechanism.name &&
+          t.label.tag === 'Input' &&
+          t.label.eventType === eventType.type,
+      ),
+    ).toBeTruthy()
+  }
+
+  it('should have all required data', () => {
+    const analysisData = protocol.createJSONForAnalysis(S1)
+
+    expect(analysisData.initial).toBe(S1.mechanism.name)
+    // 2 commands
+    expect(analysisData.transitions.filter((t) => t.label.tag === 'Execute')).toHaveLength(2)
+    // 4 reactions
+    expect(analysisData.transitions.filter((t) => t.label.tag === 'Input')).toHaveLength(4)
+
+    // expect each command
+    expectCommand(analysisData, S1, 'a', [E1])
+    expectCommand(analysisData, S2, 'b', [E2])
+    // expect each reaction
+    expectReaction(analysisData, S1, S1, E1)
+    expectReaction(analysisData, S1, S2, E2)
+    expectReaction(analysisData, S2, S2, E2)
+    expectReaction(analysisData, S2, S1, E1)
+  })
+})
+
 /**
  * In this particular test group, bad-good assertions are not required.
  * This blocks only tests types by making type assignments.

@@ -1,5 +1,11 @@
 import { Tag } from '@actyx/sdk'
-import { StateMechanism, MachineEvent, ProtocolInternals, ReactionMap } from './state.js'
+import {
+  StateMechanism,
+  MachineEvent,
+  ProtocolInternals,
+  ReactionMap,
+  StateFactory,
+} from './state.js'
 
 export type Protocol<
   ProtocolName extends string,
@@ -25,6 +31,10 @@ export type Protocol<
       | ((e: MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>) => string)
       | undefined,
   ) => Tag<MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>>
+
+  createJSONForAnalysis: (
+    initial: StateFactory<ProtocolName, RegisteredEventsFactoriesTuple, any, any, any>,
+  ) => ProtocolAnalysisResource
 }
 
 export namespace Protocol {
@@ -64,15 +74,19 @@ export namespace Protocol {
     const protocolInternal: Internals = {
       name: protocolName,
       registeredEvents: registeredEventFactories,
-      registeredStateNames: new Set(),
       reactionMap: ReactionMap.make(),
+      commands: [],
+      states: {
+        registeredNames: new Set(),
+        allFactories: new Set(),
+      },
     }
 
     const markStateNameAsUsed = (stateName: string) => {
-      if (protocolInternal.registeredStateNames.has(stateName)) {
+      if (protocolInternal.states.registeredNames.has(stateName)) {
         throw new Error(`State "${stateName}" already registered within this protocol`)
       }
-      protocolInternal.registeredStateNames.add(stateName)
+      protocolInternal.states.registeredNames.add(stateName)
     }
 
     const designState: Self['designState'] = (stateName) => {
@@ -89,10 +103,76 @@ export namespace Protocol {
 
     const tag: Self['tag'] = (name = protocolName, extractId) => Tag(name, extractId)
 
+    const createJSONForAnalysis: Self['createJSONForAnalysis'] = (initial) =>
+      ProtocolAnalysisResource.fromProtocolInternals(protocolInternal, initial)
+
     return {
       designState,
       designEmpty,
       tag,
+      createJSONForAnalysis,
     }
+  }
+}
+
+export type ProtocolAnalysisResource = {
+  initial: string
+  transitions: {
+    source: string
+    target: string
+    label: { tag: 'Execute'; cmd: string; logType: string[] } | { tag: 'Input'; eventType: string }
+  }[]
+}
+
+export namespace ProtocolAnalysisResource {
+  export const fromProtocolInternals = <
+    ProtocolName extends string,
+    RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
+  >(
+    protocolInternals: ProtocolInternals<ProtocolName, RegisteredEventsFactoriesTuple>,
+    initial: StateFactory<ProtocolName, RegisteredEventsFactoriesTuple, any, any, any>,
+  ): ProtocolAnalysisResource => {
+    if (!protocolInternals.states.allFactories.has(initial)) {
+      throw new Error('Initial state supplied not found')
+    }
+
+    // Calculate transitions
+
+    const transitionsFromReactions: ProtocolAnalysisResource['transitions'] = Array.from(
+      protocolInternals.reactionMap.getAll().entries(),
+    ).reduce(
+      (accumulated: ProtocolAnalysisResource['transitions'], [source, reactions]) =>
+        accumulated.concat(
+          Array.from(reactions.entries()).map(
+            ([guard, reaction]): ProtocolAnalysisResource['transitions'][0] => ({
+              source: source.name,
+              target: reaction.next.mechanism.name,
+              label: {
+                tag: 'Input',
+                eventType: guard,
+              },
+            }),
+          ),
+        ),
+      [],
+    )
+
+    const transitionsFromCommands: ProtocolAnalysisResource['transitions'] =
+      protocolInternals.commands.map((item): ProtocolAnalysisResource['transitions'][0] => ({
+        source: item.ofState,
+        target: item.ofState,
+        label: {
+          tag: 'Execute',
+          cmd: item.commandName,
+          logType: item.events,
+        },
+      }))
+
+    const resource: ProtocolAnalysisResource = {
+      initial: initial.mechanism.name,
+      transitions: [...transitionsFromCommands, ...transitionsFromReactions],
+    }
+
+    return resource
   }
 }
