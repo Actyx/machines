@@ -1,6 +1,8 @@
-use crate::{err, Role, Subscriptions, SwarmLabel, SwarmProtocol};
+use crate::{Role, Subscriptions, SwarmLabel, SwarmProtocol};
+use bitvec::{bitvec, vec::BitVec};
+use itertools::Itertools;
 use petgraph::{
-    visit::{DfsPostOrder, EdgeRef, GraphBase},
+    visit::{Dfs, DfsPostOrder, EdgeRef, GraphBase, Walker},
     Direction::{Incoming, Outgoing},
 };
 use std::{
@@ -27,21 +29,87 @@ impl Node {
 
 type Graph = petgraph::Graph<Node, SwarmLabel>;
 type NodeId = <Graph as GraphBase>::NodeId;
-type EdgeId = <Graph as GraphBase>::EdgeId;
 
 pub fn check(proto: SwarmProtocol, subs: Subscriptions) -> Result<(), Vec<String>> {
-    let (graph, initial) = prepare_graph(proto, subs)?;
-    Ok(())
+    let (graph, initial) = prepare_graph(proto, &subs)?;
+    well_formed(graph, initial, subs)
+}
+
+fn well_formed(graph: Graph, initial: NodeId, subs: Subscriptions) -> Result<(), Vec<String>> {
+    let mut errors = Vec::new();
+    let empty = BTreeSet::new();
+    let sub = |r: &Role| subs.get(&**r).unwrap_or(&empty);
+    for node in Dfs::new(&graph, initial).iter(&graph) {
+        let state = &graph[node].name;
+        for edge in graph.edges_directed(node, Outgoing) {
+            let log = edge.weight().log_type.as_slice();
+            let role = Role::new(&edge.weight().role);
+            let target = edge.target();
+            let state2 = &graph[target].name;
+            // causal consistency
+            if log_filter(log, sub(&role)).first_one().is_none() {
+                errors.push(format!(
+                    "active role {role} in state {state} does not subscribe to any of its emitted event types"
+                ));
+            }
+            for active in &graph[target].active {
+                let filtered = log_filter(log, sub(active));
+                if filtered.first_one().is_none() {
+                    errors.push(format!(
+                        "subsequently active role {active} in state {state2} \
+                          does not subscribe to events emitted in transition \
+                          {state} --({})--> {state2}",
+                        edge.weight(),
+                    ));
+                }
+                for later in &graph[target].roles {
+                    let later_log = log_filter(log, sub(later));
+                    let extra = later_log & !filtered.clone();
+                    if extra.first_one().is_some() {
+                        errors.push(format!(
+                            "subsequently involved role {later} subscribes to further events than role {active} \
+                              (namely {}) in transition {state} --({})--> {state2}",
+                            extra.iter_ones().map(|i| &log[i]).join(", "),
+                            edge.weight()
+                        ));
+                    }
+                }
+            }
+            // choice determinacy
+            let first_event = &log[0];
+            for later in &graph[target].roles {
+                if !sub(later).contains(first_event) {
+                    errors.push(format!(
+                        "subsequently involved role {later} does not subscribe to guard in transition \
+                         {state} --({})--> {state2}",
+                        edge.weight()
+                    ));
+                }
+            }
+        }
+    }
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors)
+    }
 }
 
 fn prepare_graph(
     proto: SwarmProtocol,
-    subs: Subscriptions,
+    subs: &Subscriptions,
 ) -> Result<(Graph, NodeId), Vec<String>> {
+    let mut errors = Vec::new();
     let mut graph = Graph::new();
     let mut nodes = HashMap::<String, NodeId>::new();
     for t in proto.transitions {
         tracing::debug!("adding {} --({:?})--> {}", t.source, t.label, t.target);
+        if t.label.log_type.len() == 0 {
+            errors.push(format!(
+                "log type must not be empty ({} --({})--> {})",
+                t.source, t.label, t.target
+            ));
+        }
         let source = *nodes
             .entry(t.source.clone())
             .or_insert_with(|| graph.add_node(Node::new(t.source)));
@@ -55,7 +123,8 @@ fn prepare_graph(
         tracing::debug!("initial state {:?}", idx);
         *idx
     } else {
-        return err(["initial state has no transitions"]);
+        errors.push("initial state has no transitions".to_owned());
+        return Err(errors);
     };
 
     // compute the needed Node information
@@ -90,7 +159,11 @@ fn prepare_graph(
         }
     }
 
-    Ok((graph, initial))
+    if errors.is_empty() {
+        Ok((graph, initial))
+    } else {
+        Err(errors)
+    }
 }
 
 fn propagate_back(g: &mut Graph, node: NodeId) {
@@ -168,6 +241,16 @@ fn active(g: &Graph, node: NodeId) -> BTreeSet<Role> {
     active
 }
 
+fn log_filter(log: &[String], subs: &BTreeSet<String>) -> BitVec {
+    let mut ret = bitvec![0; log.len()];
+    for (idx, event_type) in log.iter().enumerate() {
+        if subs.contains(event_type) {
+            ret.set(idx, true);
+        }
+    }
+    ret
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -216,7 +299,7 @@ mod tests {
         )
         .unwrap();
 
-        let (graph, initial) = prepare_graph(proto, subs).unwrap();
+        let (graph, initial) = prepare_graph(proto, &subs).unwrap();
         let mut nodes = BTreeMap::new();
         for node in Dfs::new(&graph, initial).iter(&graph) {
             let node = &graph[node];
@@ -245,5 +328,78 @@ mod tests {
             btreeset! {r("R2"), r("R3"), r("R4"), r("R5"), r("R6")}
         );
         assert_eq!(nodes["S4"].1, btreeset! {});
+
+        let mut errors = well_formed(graph, initial, subs).unwrap_err();
+        errors.sort();
+        assert_eq!(errors, vec![
+            "subsequently active role R2 in state S1 does not subscribe to events emitted in transition S0 --(C0@R1<R1>)--> S1",
+            "subsequently active role R2 in state S1 does not subscribe to events emitted in transition S2 --(C2@R3<R3>)--> S1",
+            "subsequently active role R3 in state S2 does not subscribe to events emitted in transition S1 --(C1@R2<R2>)--> S2",
+            "subsequently active role R3 in state S2 does not subscribe to events emitted in transition S3 --(C4@R5<R5>)--> S2",
+            "subsequently active role R4 in state S2 does not subscribe to events emitted in transition S1 --(C1@R2<R2>)--> S2",
+            "subsequently active role R4 in state S2 does not subscribe to events emitted in transition S3 --(C4@R5<R5>)--> S2",
+            "subsequently active role R5 in state S3 does not subscribe to events emitted in transition S2 --(C3@R4<R4>)--> S3",
+            "subsequently active role R6 in state S1 does not subscribe to events emitted in transition S0 --(C0@R1<R1>)--> S1",
+            "subsequently active role R6 in state S1 does not subscribe to events emitted in transition S2 --(C2@R3<R3>)--> S1",
+            "subsequently involved role R2 does not subscribe to guard in transition S0 --(C0@R1<R1>)--> S1",
+            "subsequently involved role R2 does not subscribe to guard in transition S2 --(C2@R3<R3>)--> S1",
+            "subsequently involved role R2 does not subscribe to guard in transition S2 --(C3@R4<R4>)--> S3",
+            "subsequently involved role R2 does not subscribe to guard in transition S3 --(C4@R5<R5>)--> S2",
+            "subsequently involved role R2 subscribes to further events than role R3 (namely R2) in transition S1 --(C1@R2<R2>)--> S2",
+            "subsequently involved role R2 subscribes to further events than role R4 (namely R2) in transition S1 --(C1@R2<R2>)--> S2",
+            "subsequently involved role R3 does not subscribe to guard in transition S0 --(C0@R1<R1>)--> S1",
+            "subsequently involved role R3 does not subscribe to guard in transition S1 --(C1@R2<R2>)--> S2",
+            "subsequently involved role R3 does not subscribe to guard in transition S2 --(C3@R4<R4>)--> S3",
+            "subsequently involved role R3 does not subscribe to guard in transition S3 --(C4@R5<R5>)--> S2",
+            "subsequently involved role R3 subscribes to further events than role R2 (namely R3) in transition S2 --(C2@R3<R3>)--> S1",
+            "subsequently involved role R3 subscribes to further events than role R6 (namely R3) in transition S2 --(C2@R3<R3>)--> S1",
+            "subsequently involved role R4 does not subscribe to guard in transition S0 --(C0@R1<R1>)--> S1",
+            "subsequently involved role R4 does not subscribe to guard in transition S1 --(C1@R2<R2>)--> S2",
+            "subsequently involved role R4 does not subscribe to guard in transition S2 --(C2@R3<R3>)--> S1",
+            "subsequently involved role R4 does not subscribe to guard in transition S3 --(C4@R5<R5>)--> S2",
+            "subsequently involved role R4 subscribes to further events than role R5 (namely R4) in transition S2 --(C3@R4<R4>)--> S3",
+            "subsequently involved role R5 does not subscribe to guard in transition S0 --(C0@R1<R1>)--> S1",
+            "subsequently involved role R5 does not subscribe to guard in transition S1 --(C1@R2<R2>)--> S2",
+            "subsequently involved role R5 does not subscribe to guard in transition S2 --(C2@R3<R3>)--> S1",
+            "subsequently involved role R5 does not subscribe to guard in transition S2 --(C3@R4<R4>)--> S3",
+            "subsequently involved role R5 subscribes to further events than role R3 (namely R5) in transition S3 --(C4@R5<R5>)--> S2",
+            "subsequently involved role R5 subscribes to further events than role R4 (namely R5) in transition S3 --(C4@R5<R5>)--> S2",
+            "subsequently involved role R6 does not subscribe to guard in transition S0 --(C0@R1<R1>)--> S1",
+            "subsequently involved role R6 does not subscribe to guard in transition S1 --(C1@R2<R2>)--> S2",
+            "subsequently involved role R6 does not subscribe to guard in transition S2 --(C2@R3<R3>)--> S1",
+            "subsequently involved role R6 does not subscribe to guard in transition S2 --(C3@R4<R4>)--> S3",
+            "subsequently involved role R6 does not subscribe to guard in transition S3 --(C4@R5<R5>)--> S2"
+        ]);
+    }
+
+    #[test]
+    fn basics() {
+        setup_logger();
+        let proto = serde_json::from_str::<SwarmProtocol>(
+            r#"{
+                "initial": "S0",
+                "transitions": [
+                    { "source": "S0", "target": "S1", "label": { "cmd": "a", "logType": ["A", "B", "C"], "role": "R1" } },
+                    { "source": "S1", "target": "S2", "label": { "cmd": "b", "logType": ["D", "E"], "role": "R2" } }
+                ]
+            }"#,
+        )
+        .unwrap();
+        let subs = serde_json::from_str::<Subscriptions>(
+            r#"{
+                "R1": ["E"],
+                "R3": ["A", "B", "C", "D"]
+            }"#,
+        )
+        .unwrap();
+        let mut errors = check(proto, subs).unwrap_err();
+        errors.sort();
+        assert_eq!(errors, vec![
+            "active role R1 in state S0 does not subscribe to any of its emitted event types",
+            "active role R2 in state S1 does not subscribe to any of its emitted event types",
+            "subsequently active role R2 in state S1 does not subscribe to events emitted in transition S0 --(a@R1<A,B,C>)--> S1",
+            "subsequently involved role R1 does not subscribe to guard in transition S0 --(a@R1<A,B,C>)--> S1",
+            "subsequently involved role R3 subscribes to further events than role R2 (namely A, B, C) in transition S0 --(a@R1<A,B,C>)--> S1"
+        ]);
     }
 }

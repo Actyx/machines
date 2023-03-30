@@ -2,6 +2,7 @@ use intern_arc::{global::hash_interner, InternedHash};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet},
+    fmt::{self, Display},
     ops::Deref,
 };
 use wasm_bindgen::prelude::*;
@@ -36,6 +37,19 @@ pub struct SwarmLabel {
     role: String,
 }
 
+impl fmt::Display for SwarmLabel {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}@{}<", self.cmd, self.role)?;
+        for (i, t) in self.log_type.iter().enumerate() {
+            if i > 0 {
+                write!(f, ",")?;
+            }
+            write!(f, "{}", t)?;
+        }
+        write!(f, ">")
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(tag = "tag")]
 pub enum MachineLabel {
@@ -51,6 +65,12 @@ pub type Machine = Protocol<MachineLabel>;
 
 #[derive(Clone, Debug, PartialEq, PartialOrd, Ord, Eq)]
 struct Role(InternedHash<str>);
+
+impl Display for Role {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
 
 impl Role {
     pub fn new(name: &str) -> Self {
@@ -90,12 +110,4 @@ pub fn check_swarm(proto: String, subs: String) -> String {
         Ok(_) => serde_json::to_string(&CheckResult::OK).unwrap(),
         Err(errors) => serde_json::to_string(&CheckResult::ERROR { errors }).unwrap(),
     }
-}
-
-fn err<T>(errors: impl IntoIterator<Item = &'static str>) -> Result<T, Vec<String>> {
-    Err(errors.into_iter().map(|e| e.to_owned()).collect())
-}
-
-fn err_owned<T>(errors: impl IntoIterator<Item = String>) -> Result<T, Vec<String>> {
-    Err(errors.into_iter().collect())
 }
