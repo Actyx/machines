@@ -21,7 +21,7 @@ export namespace MachineEvent {
   /**
    * Start a design of a MachineEventFactory used for MachineRunner.
    * @example
-   * const HangarDoorTransitioning = MachineEvent.design("HangarDoorTransitioning").withPayload<{ open: number }>()
+   * const HangarDoorTransitioning = MachineEvent.design("HangarDoorTransitioning").withPayload<{ fractionOpen: number }>()
    * const HangarDoorClosed = MachineEvent.design("HangarDoorClosed").withoutPayload()
    * const HangarDoorOpen = MachineEvent.design("HangarDoorOpen").withoutPayload()
    *
