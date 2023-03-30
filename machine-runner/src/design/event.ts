@@ -18,6 +18,20 @@ export type MachineEvent<Key extends string, Payload extends utils.SerializableO
 } & Payload
 
 export namespace MachineEvent {
+  /**
+   * Start a design of a MachineEventFactory used for MachineRunner.
+   * @example
+   * const HangarDoorTransitioning = MachineEvent.design("HangarDoorTransitioning").withPayload<{ open: number }>()
+   * const HangarDoorClosed = MachineEvent.design("HangarDoorClosed").withoutPayload()
+   * const HangarDoorOpen = MachineEvent.design("HangarDoorOpen").withoutPayload()
+   *
+   * // Creates the protocol involving the events specified in the array passed on to the second parameter
+   * const protocol = Protocol.make("hangardoor", [
+   *  HangarDoorTransitioning,
+   *  HangarDoorClosed,
+   *  HangarDoorOpen,
+   * ])
+   */
   export const design = <Key extends string>(key: Key): EventFactoryIntermediate<Key> => ({
     withPayload: () => ({
       type: key,
@@ -33,7 +47,13 @@ export namespace MachineEvent {
   })
 
   type EventFactoryIntermediate<Key extends string> = {
+    /**
+     * Attaches payload constraints to a MachineEvent
+     */
     withPayload: <Payload extends utils.SerializableObject>() => Factory<Key, Payload>
+    /**
+     * Indicate that the MachineEvent in question does not have any payloads
+     */
     withoutPayload: () => Factory<Key, Record<never, never>>
   }
 
@@ -45,6 +65,11 @@ export namespace MachineEvent {
 
   export type Factory<Key extends string, Payload extends utils.SerializableObject> = {
     type: Key
+    /**
+     * Create an event with the factory's type assigned to it
+     * @example
+     * const machineEventInstance = HangarDoorTransitioning.make({ open: 0.5 })
+     */
     make: (payload: Payload) => MachineEvent<Key, Payload>
   }
 

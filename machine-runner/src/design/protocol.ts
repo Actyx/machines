@@ -5,10 +5,27 @@ export type Protocol<
   ProtocolName extends string,
   RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
 > = {
+  /**
+   * Starts a design process for a state with payload. Payload is data contained in a state.
+   * @example
+   * const HangarControlIncomingShip = protocol
+   *   .designState("HangarControlIncomingShip")
+   *   .withPayload<{
+   *     shipId: string,
+   *   }>()
+   *   .finish()
+   */
   designState: <StateName extends string>(
     stateName: StateName,
   ) => Protocol.DesignStateIntermediate<ProtocolName, RegisteredEventsFactoriesTuple, StateName>
 
+  /**
+   * Starts a design process for a state with payload. Payload is data contained in a state.
+   * @example
+   * const HangarControlIdle = protocol
+   *   .designEmpty("HangarControlIdle")
+   *   .finish()
+   */
   designEmpty: <StateName extends string>(
     stateName: StateName,
   ) => StateMechanism<
@@ -19,6 +36,9 @@ export type Protocol<
     Record<never, never>
   >
 
+  /**
+   * Create a tag for the related protocol
+   */
   tag: (
     rawTagString?: string,
     extractId?:
@@ -27,6 +47,9 @@ export type Protocol<
   ) => Tag<MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>>
 }
 
+/**
+ * Set of utilities for designing protocol
+ */
 export namespace Protocol {
   export type Any = Protocol<any, any>
 
@@ -42,6 +65,9 @@ export namespace Protocol {
     RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
     StateName extends string,
   > = {
+    /**
+     * Attaches payload constraints to a state
+     */
     withPayload: <StatePayload extends any>() => StateMechanism<
       ProtocolName,
       RegisteredEventsFactoriesTuple,
@@ -51,6 +77,11 @@ export namespace Protocol {
     >
   }
 
+  /**
+   * Create a protocol with a specific name and event factories. This function two parameters: the name of the protocol and the list of MachineEventFactories.
+   * @example
+   * const hangarBay = Protocol.make("hangarBay")
+   */
   export const make = <
     ProtocolName extends string,
     RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,

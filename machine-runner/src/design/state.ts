@@ -102,7 +102,27 @@ export type StateMechanism<
   readonly protocol: ProtocolInternals<ProtocolName, RegisteredEventsFactoriesTuple>
   readonly name: StateName
   readonly commands: Commands
-
+  /**
+   * Attach a command to a state. Attached commands are available when a MachineRunner is in that particular state.
+   * @example
+   * const HangarControlIdle = protocol
+   *   .designState("HangarControlIdle")
+   *   .withPayload<{
+   *     dockingRequests: { shipId: string, at: Date }[]
+   *   }>()
+   *   .command('acceptDockingRequest', [DockingRequestAccepted], (context, shipId: string) => [
+   *     DockingRequestAccepted.make({
+   *       shipId
+   *     })
+   *   ])
+   *   .finish()
+   * @example
+   * // When a machine is in a certain state, the commands are available at runtime. TypeScript type hints for the command's parameters are available
+   * const state = machine.get(); // machine is an instance of MachineRunner
+   * if (state.is(HangarControlIdle)) {
+   *   state.cast().commands?.acceptDockingRequest("someShipId");
+   * }
+   */
   readonly command: <
     CommandName extends string,
     AcceptedEventFactories extends utils.NonZeroTuple<
@@ -131,6 +151,10 @@ export type StateMechanism<
     }
   >
 
+  /**
+   * Finalize state design process
+   * @returns a StateFactory
+   */
   readonly finish: () => StateFactory<
     ProtocolName,
     RegisteredEventsFactoriesTuple,
@@ -234,6 +258,9 @@ export type StateFactoryFromMechanism<T extends StateMechanism.Any> = T extends 
   ? StateFactory<ProtocolName, RegisteredEventsFactoriesTuple, StateName, StatePayload, Commands>
   : never
 
+/**
+ * A reference to a state. A StateFactory is used for determining if a snapshot of a state is of a particular type and as a notation for the "next-state" of a reaction.
+ */
 export type StateFactory<
   ProtocolName extends string,
   RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
@@ -241,8 +268,14 @@ export type StateFactory<
   StatePayload,
   Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
 > = {
+  /**
+   * Helper to create a state payload to match the constraint of the state type
+   * @see react for more example
+   */
   make: (payload: StatePayload) => StatePayload
+
   symbol: () => symbol
+
   readonly mechanism: StateMechanism<
     ProtocolName,
     RegisteredEventsFactoriesTuple,
@@ -251,6 +284,23 @@ export type StateFactory<
     Commands
   >
 
+  /**
+   * Add a reaction to a set of incoming event for a particular state. A reaction is a computation that MAY result in a state transition or a self-mutation.
+   * @example
+   * HangarControlIdle
+   *   .react([IncomingDockingRequest], HangarControlIdle, (context, request) => {
+   *     context.self.dockingRequests.push({ shipId: request.shipId, at: new Date() })
+   *   })
+   * @example
+   * HangarControlIdle
+   *   .react(
+   *     [DockingRequestAccepted],
+   *     HangarControlDocking,
+   *     (context, accepted) => HangarControlDocking.make({
+   *       shipId: accepted.shipId
+   *     })
+   *   )
+   */
   react: <
     EventFactoriesChain extends utils.NonZeroTuple<
       MachineEvent.Factory.Reduce<RegisteredEventsFactoriesTuple>
