@@ -6,7 +6,8 @@ export type Protocol<
   RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
 > = {
   /**
-   * Starts a design process for a state with payload. Payload is data contained in a state.
+   * Starts the design process for a state with payload.
+   * Payload data will be required when constructing this state.
    * @example
    * const HangarControlIncomingShip = protocol
    *   .designState("HangarControlIncomingShip")
@@ -20,7 +21,7 @@ export type Protocol<
   ) => Protocol.DesignStateIntermediate<ProtocolName, RegisteredEventsFactoriesTuple, StateName>
 
   /**
-   * Starts a design process for a state with payload. Payload is data contained in a state.
+   * Starts a design process for a state without payload.
    * @example
    * const HangarControlIdle = protocol
    *   .designEmpty("HangarControlIdle")
@@ -37,7 +38,11 @@ export type Protocol<
   >
 
   /**
-   * Create a tag for the related protocol
+   * Create a tag for the related protocol.
+   * The resulting tag is typed to permit the protocol's events.
+   * This tag type definition is required by `createMachineRunner`
+   * @param rawTagString - optional string that is when not supplied defaults to the protocol's name.
+   * @param extractId - @see actyx sdk Tag documentation for the explanation of extractId
    */
   tag: (
     rawTagString?: string,
@@ -49,6 +54,7 @@ export type Protocol<
 
 /**
  * Set of utilities for designing a protocol
+ * @see Protocol.make for getting started with using MachineRunner Protocol
  */
 export namespace Protocol {
   export type Any = Protocol<any, any>
@@ -66,7 +72,7 @@ export namespace Protocol {
     StateName extends string,
   > = {
     /**
-     * Attaches payload constraints to a state
+     * Declare type for a state
      */
     withPayload: <StatePayload extends any>() => StateMechanism<
       ProtocolName,
@@ -78,7 +84,10 @@ export namespace Protocol {
   }
 
   /**
-   * Create a protocol with a specific name and event factories. This function has two parameters: the name of the protocol and the list of MachineEventFactories.
+   * Create a protocol with a specific name and event factories.
+   * @param protocolName - name of the protocol
+   * @param registeredEventFactories - tuple of MachineEventFactories
+   * @see MachineEvent.design to get started on creating MachineEventFactories for the registeredEventFactories parameter
    * @example
    * const hangarBay = Protocol.make("hangarBay")
    */

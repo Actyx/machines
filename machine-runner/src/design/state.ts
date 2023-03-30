@@ -103,7 +103,11 @@ export type StateMechanism<
   readonly name: StateName
   readonly commands: Commands
   /**
-   * Attach a command to a state. The attached commands are available when a MachineRunner is in that particular state.
+   * Attach a command to a state.
+   * The attached commands are available when a MachineRunner is in that particular state.
+   * Note that a command will not automatically trigger a state change.
+   * A reaction must be defined to properly trigger a state change.
+   * @see StateFactory.react on how to define a reaction
    * @example
    * const HangarControlIdle = protocol
    *   .designState("HangarControlIdle")
@@ -116,8 +120,8 @@ export type StateMechanism<
    *     })
    *   ])
    *   .finish()
-   * @example
-   * // When a machine is in a certain state, the commands are available at runtime. TypeScript type hints for the command's parameters are available
+   * // When a machine is in a certain state, the commands are available at runtime.
+   * // TypeScript type hints for the command's parameters are available
    * const state = machine.get(); // machine is an instance of MachineRunner
    * if (state.is(HangarControlIdle)) {
    *   state.cast().commands?.acceptDockingRequest("someShipId");

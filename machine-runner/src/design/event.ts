@@ -21,9 +21,15 @@ export namespace MachineEvent {
   /**
    * Start a design of a MachineEventFactory used for MachineRunner.
    * @example
-   * const HangarDoorTransitioning = MachineEvent.design("HangarDoorTransitioning").withPayload<{ fractionOpen: number }>()
-   * const HangarDoorClosed = MachineEvent.design("HangarDoorClosed").withoutPayload()
-   * const HangarDoorOpen = MachineEvent.design("HangarDoorOpen").withoutPayload()
+   * const HangarDoorTransitioning = MachineEvent
+   *   .design("HangarDoorTransitioning")
+   *   .withPayload<{ fractionOpen: number }>()
+   * const HangarDoorClosed = MachineEvent
+   *   .design("HangarDoorClosed")
+   *   .withoutPayload()
+   * const HangarDoorOpen = MachineEvent
+   *   .design("HangarDoorOpen")
+   *   .withoutPayload()
    *
    * // Creates the protocol involving the events specified in the array passed on to the second parameter
    * const protocol = Protocol.make("hangardoor", [
@@ -48,11 +54,11 @@ export namespace MachineEvent {
 
   type EventFactoryIntermediate<Key extends string> = {
     /**
-     * Attaches payload constraints to a MachineEvent
+     * Declares the payload type for this MachineEvent
      */
     withPayload: <Payload extends utils.SerializableObject>() => Factory<Key, Payload>
     /**
-     * Indicate that the MachineEvent in question does not have a payload
+     * Declares the payload type for this MachineEvent as {}
      */
     withoutPayload: () => Factory<Key, Record<never, never>>
   }
@@ -68,7 +74,11 @@ export namespace MachineEvent {
     /**
      * Create an event with the factory's type assigned to it
      * @example
-     * const machineEventInstance = HangarDoorTransitioning.make({ open: 0.5 })
+     * const HangarDoorTransitioning = MachineEvent
+     *    .design("HangarDoorTransitioning")
+     *    .withPayload<{ fractionOpen: number }>()
+     *
+     * const machineEventInstance = HangarDoorTransitioning.make({ fractionOpen: 0.5 })
      */
     make: (payload: Payload) => MachineEvent<Key, Payload>
   }
