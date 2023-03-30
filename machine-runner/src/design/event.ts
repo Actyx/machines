@@ -52,7 +52,7 @@ export namespace MachineEvent {
      */
     withPayload: <Payload extends utils.SerializableObject>() => Factory<Key, Payload>
     /**
-     * Indicate that the MachineEvent in question does not have any payloads
+     * Indicate that the MachineEvent in question does not have a payload
      */
     withoutPayload: () => Factory<Key, Record<never, never>>
   }
