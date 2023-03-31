@@ -1,4 +1,4 @@
-use crate::{Role, Subscriptions, SwarmLabel, SwarmProtocol};
+use crate::{Command, EventType, Role, Subscriptions, SwarmLabel, SwarmProtocol};
 use bitvec::{bitvec, vec::BitVec};
 use itertools::Itertools;
 use petgraph::{
@@ -6,9 +6,100 @@ use petgraph::{
     Direction::{Incoming, Outgoing},
 };
 use std::{
-    collections::{BTreeSet, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
+    fmt,
     mem::take,
 };
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Error {
+    InitialStateDisconnected,
+    LogTypeEmpty(EdgeId),
+    ActiveRoleNotSubscribed(EdgeId),
+    LaterActiveRoleNotSubscribed(EdgeId, Role),
+    LaterInvolvedRoleMoreSubscribed {
+        edge: EdgeId,
+        later: Role,
+        active: Role,
+        events: BTreeSet<EventType>,
+    },
+    LaterInvolvedNotGuarded(EdgeId, Role),
+    NonDeterministicGuard(EdgeId),
+    NonDeterministicCommand(EdgeId),
+    GuardNotInvariant(EventType),
+}
+
+const INVALID_EDGE: &str = "[invalid EdgeId]";
+
+impl Error {
+    fn to_string(&self, graph: &Graph) -> String {
+        match self {
+            Error::InitialStateDisconnected => format!("initial state has no transitions"),
+            Error::LogTypeEmpty(edge) => {
+                format!("log type must not be empty {}", Edge(graph, *edge))
+            }
+            Error::ActiveRoleNotSubscribed(edge) => {
+                format!("active role does not subscribe to any of its emitted event types in transition {}", Edge(graph, *edge))
+            }
+            Error::LaterActiveRoleNotSubscribed(edge, role) => {
+                format!(
+                    "subsequently active role {role} does not subscribe to events in transition {}",
+                    Edge(graph, *edge)
+                )
+            }
+            Error::LaterInvolvedRoleMoreSubscribed {
+                edge,
+                later,
+                active,
+                events,
+            } => format!(
+                "subsequently involved role {later} subscribes to more events \
+                 than active role {active} in transition {}, namely ({})",
+                Edge(graph, *edge),
+                events.iter().join(", ")
+            ),
+            Error::LaterInvolvedNotGuarded(edge, role) => format!(
+                "subsequently involved role {role} does not subscribe to guard \
+                 in transition {}",
+                Edge(graph, *edge)
+            ),
+            Error::NonDeterministicGuard(edge) => {
+                let Some((state, _)) = graph.edge_endpoints(*edge) else {
+                    return format!("non-deterministic event guard {}", INVALID_EDGE);
+                };
+                let state = &graph[state].name;
+                let guard = &graph[*edge].log_type[0];
+                format!("non-deterministic event guard type {guard} in state {state}")
+            }
+            Error::NonDeterministicCommand(edge) => {
+                let Some((state, _)) = graph.edge_endpoints(*edge) else {
+                    return format!("non-deterministic command {}", INVALID_EDGE);
+                };
+                let state = &graph[state].name;
+                let command = &graph[*edge].cmd;
+                let role = &graph[*edge].role;
+                format!("non-deterministic command {command} for role {role} in state {state}")
+            }
+            Error::GuardNotInvariant(ev) => {
+                format!("guard event type {ev} appears in transitions from multiple states")
+            }
+        }
+    }
+}
+
+struct Edge<'a>(&'a Graph, EdgeId);
+
+impl<'a> fmt::Display for Edge<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let Some((source, target)) = self.0.edge_endpoints(self.1) else {
+            return f.write_str(INVALID_EDGE);
+        };
+        let source = &self.0[source].name;
+        let target = &self.0[target].name;
+        let label = &self.0[self.1];
+        write!(f, "({source})--[{label}]-->({target})")
+    }
+}
 
 #[derive(Debug)]
 struct Node {
@@ -28,115 +119,133 @@ impl Node {
 }
 
 type Graph = petgraph::Graph<Node, SwarmLabel>;
-type NodeId = <Graph as GraphBase>::NodeId;
+pub type NodeId = <petgraph::Graph<(), ()> as GraphBase>::NodeId;
+pub type EdgeId = <petgraph::Graph<(), ()> as GraphBase>::EdgeId;
 
 pub fn check(proto: SwarmProtocol, subs: Subscriptions) -> Result<(), Vec<String>> {
-    let (graph, initial) = prepare_graph(proto, &subs)?;
-    well_formed(graph, initial, subs)
+    let (graph, initial, mut errors) = match prepare_graph(proto, &subs) {
+        Ok((g, i)) => (g, i, Vec::new()),
+        Err((g, Some(i), e)) => (g, i, e),
+        Err((g, None, e)) => return Err(e.into_iter().map(|e| e.to_string(&g)).collect()),
+    };
+    errors.extend(well_formed(&graph, initial, subs));
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors.into_iter().map(|e| e.to_string(&graph)).collect())
+    }
 }
 
-fn well_formed(graph: Graph, initial: NodeId, subs: Subscriptions) -> Result<(), Vec<String>> {
+fn well_formed(graph: &Graph, initial: NodeId, subs: Subscriptions) -> Vec<Error> {
     let mut errors = Vec::new();
     let empty = BTreeSet::new();
     let sub = |r: &Role| subs.get(&**r).unwrap_or(&empty);
     for node in Dfs::new(&graph, initial).iter(&graph) {
-        let state = &graph[node].name;
+        let mut guards = BTreeMap::new();
+        let mut commands = BTreeSet::new();
         for edge in graph.edges_directed(node, Outgoing) {
             let log = edge.weight().log_type.as_slice();
+
+            // event determinism
+            let guard = EventType::new(&log[0]);
+            if *guards
+                .entry(guard.clone())
+                .and_modify(|count| *count += 1)
+                .or_insert(1)
+                == 2
+            {
+                errors.push(Error::NonDeterministicGuard(edge.id()));
+            }
+            // command determinism
+            let command = Command::new(&edge.weight().cmd);
             let role = Role::new(&edge.weight().role);
+            if !commands.insert((role.clone(), command.clone())) {
+                errors.push(Error::NonDeterministicCommand(edge.id()));
+            }
+
             let target = edge.target();
-            let state2 = &graph[target].name;
+
             // causal consistency
             if log_filter(log, sub(&role)).first_one().is_none() {
-                errors.push(format!(
-                    "active role {role} in state {state} does not subscribe to any of its emitted event types"
-                ));
+                errors.push(Error::ActiveRoleNotSubscribed(edge.id()));
             }
             for active in &graph[target].active {
                 let filtered = log_filter(log, sub(active));
                 if filtered.first_one().is_none() {
-                    errors.push(format!(
-                        "subsequently active role {active} in state {state2} \
-                          does not subscribe to events emitted in transition \
-                          {state} --({})--> {state2}",
-                        edge.weight(),
+                    errors.push(Error::LaterActiveRoleNotSubscribed(
+                        edge.id(),
+                        active.clone(),
                     ));
                 }
                 for later in &graph[target].roles {
                     let later_log = log_filter(log, sub(later));
                     let extra = later_log & !filtered.clone();
                     if extra.first_one().is_some() {
-                        errors.push(format!(
-                            "subsequently involved role {later} subscribes to further events than role {active} \
-                              (namely {}) in transition {state} --({})--> {state2}",
-                            extra.iter_ones().map(|i| &log[i]).join(", "),
-                            edge.weight()
-                        ));
+                        errors.push(Error::LaterInvolvedRoleMoreSubscribed {
+                            edge: edge.id(),
+                            later: later.clone(),
+                            active: active.clone(),
+                            events: extra.iter_ones().map(|i| EventType::new(&log[i])).collect(),
+                        });
                     }
                 }
             }
+
             // choice determinacy
             let first_event = &log[0];
             for later in &graph[target].roles {
                 if !sub(later).contains(first_event) {
-                    errors.push(format!(
-                        "subsequently involved role {later} does not subscribe to guard in transition \
-                         {state} --({})--> {state2}",
-                        edge.weight()
-                    ));
+                    errors.push(Error::LaterInvolvedNotGuarded(edge.id(), later.clone()));
                 }
             }
         }
     }
-    if errors.is_empty() {
-        Ok(())
-    } else {
-        Err(errors)
-    }
+    errors
 }
 
 fn prepare_graph(
     proto: SwarmProtocol,
     subs: &Subscriptions,
-) -> Result<(Graph, NodeId), Vec<String>> {
+) -> Result<(Graph, NodeId), (Graph, Option<NodeId>, Vec<Error>)> {
     let mut errors = Vec::new();
     let mut graph = Graph::new();
     let mut nodes = HashMap::<String, NodeId>::new();
     for t in proto.transitions {
         tracing::debug!("adding {} --({:?})--> {}", t.source, t.label, t.target);
-        if t.label.log_type.len() == 0 {
-            errors.push(format!(
-                "log type must not be empty ({} --({})--> {})",
-                t.source, t.label, t.target
-            ));
-        }
         let source = *nodes
             .entry(t.source.clone())
             .or_insert_with(|| graph.add_node(Node::new(t.source)));
         let target = *nodes
             .entry(t.target.clone())
             .or_insert_with(|| graph.add_node(Node::new(t.target)));
-        graph.add_edge(source, target, t.label.clone());
+        let edge = graph.add_edge(source, target, t.label.clone());
+        if t.label.log_type.len() == 0 {
+            errors.push(Error::LogTypeEmpty(edge));
+        }
         tracing::debug!("added {:?} --> {:?}", source, target);
     }
     let initial = if let Some(idx) = nodes.get(&proto.initial) {
         tracing::debug!("initial state {:?}", idx);
         *idx
     } else {
-        errors.push("initial state has no transitions".to_owned());
-        return Err(errors);
+        errors.push(Error::InitialStateDisconnected);
+        return Err((graph, None, errors));
     };
+    let no_empty_logs = errors.is_empty();
 
     // compute the needed Node information
     // - first post-order walk to propagate non-loop roles back
     // - then keep fixing loop-ends until graph is stable
     let mut walk = DfsPostOrder::new(&graph, initial);
     let mut loop_end = HashSet::new();
+    let mut guards = HashSet::new();
+    let mut events = HashMap::new();
     while let Some(node_id) = walk.next(&graph) {
         let active = active(&graph, node_id);
         graph[node_id].active = active;
         let roles = involved(&graph, node_id, &subs, &mut loop_end);
         graph[node_id].roles = roles;
+        mark_events(&graph, node_id, &mut guards, &mut events);
     }
     tracing::debug!("post-order traversal done, {} loop ends", loop_end.len());
     loop {
@@ -159,10 +268,19 @@ fn prepare_graph(
         }
     }
 
+    // confusion-freeness
+    for guard in guards {
+        if events[&guard].is_none() {
+            errors.push(Error::GuardNotInvariant(guard));
+        }
+    }
+
     if errors.is_empty() {
         Ok((graph, initial))
+    } else if no_empty_logs {
+        Err((graph, Some(initial), errors))
     } else {
-        Err(errors)
+        Err((graph, None, errors))
     }
 }
 
@@ -195,6 +313,7 @@ fn propagate_back(g: &mut Graph, node: NodeId) {
     }
 }
 
+/// compute a first approximation of Node::roles assuming to be called in DfsPostOrder
 fn involved(
     g: &Graph,
     node: NodeId,
@@ -241,6 +360,32 @@ fn active(g: &Graph, node: NodeId) -> BTreeSet<Role> {
     active
 }
 
+fn mark_events(
+    g: &Graph,
+    node: NodeId,
+    guards: &mut HashSet<EventType>,
+    events: &mut HashMap<EventType, Option<NodeId>>,
+) {
+    let _span = tracing::debug_span!("mark_events", node = g[node].name).entered();
+    for edge in g.edges_directed(node, Outgoing) {
+        let log = edge.weight().log_type.as_slice();
+        if log.len() < 1 {
+            continue;
+        }
+        guards.insert(EventType::new(&log[0]));
+        for e in log {
+            events
+                .entry(EventType::new(&e))
+                .and_modify(|n| {
+                    if *n != Some(node) {
+                        *n = None;
+                    }
+                })
+                .or_insert(Some(node));
+        }
+    }
+}
+
 fn log_filter(log: &[String], subs: &BTreeSet<String>) -> BitVec {
     let mut ret = bitvec![0; log.len()];
     for (idx, event_type) in log.iter().enumerate() {
@@ -256,6 +401,7 @@ mod tests {
     use super::*;
     use maplit::btreeset;
     use petgraph::visit::{Dfs, Walker};
+    use pretty_assertions::assert_eq;
     use std::collections::BTreeMap;
     use tracing_subscriber::{fmt, fmt::format::FmtSpan, EnvFilter};
 
@@ -269,10 +415,23 @@ mod tests {
     fn r(s: &str) -> Role {
         Role::new(s)
     }
+    fn e(g: &Graph, s: &str) -> EdgeId {
+        g.edge_indices()
+            .map(|id| (id, Edge(g, id).to_string()))
+            .find(|x| &*x.1 == s)
+            .unwrap()
+            .0
+    }
+    fn ev(e: &str) -> EventType {
+        EventType::new(e)
+    }
 
     #[test]
     fn prep_cycles() {
         setup_logger();
+        // (S0) --(C0@R1<R1>)--> (S1) --(C5@R6<R6>)--> (S4)
+        // (S1) --(C1@R2<R2>)--> (S2) --(C2@R3<R3>)--> (S1)  [the first loop above S1]
+        // (S2) --(C3@R4<R4>)--> (S3) --(C4@R5<R5>)--> (S2)  [the second loop atop the first]
         let proto = serde_json::from_str::<SwarmProtocol>(
             r#"{
                 "initial": "S0",
@@ -329,52 +488,91 @@ mod tests {
         );
         assert_eq!(nodes["S4"].1, btreeset! {});
 
-        let mut errors = well_formed(graph, initial, subs).unwrap_err();
+        let mut errors = well_formed(&graph, initial, subs);
         errors.sort();
-        assert_eq!(errors, vec![
-            "subsequently active role R2 in state S1 does not subscribe to events emitted in transition S0 --(C0@R1<R1>)--> S1",
-            "subsequently active role R2 in state S1 does not subscribe to events emitted in transition S2 --(C2@R3<R3>)--> S1",
-            "subsequently active role R3 in state S2 does not subscribe to events emitted in transition S1 --(C1@R2<R2>)--> S2",
-            "subsequently active role R3 in state S2 does not subscribe to events emitted in transition S3 --(C4@R5<R5>)--> S2",
-            "subsequently active role R4 in state S2 does not subscribe to events emitted in transition S1 --(C1@R2<R2>)--> S2",
-            "subsequently active role R4 in state S2 does not subscribe to events emitted in transition S3 --(C4@R5<R5>)--> S2",
-            "subsequently active role R5 in state S3 does not subscribe to events emitted in transition S2 --(C3@R4<R4>)--> S3",
-            "subsequently active role R6 in state S1 does not subscribe to events emitted in transition S0 --(C0@R1<R1>)--> S1",
-            "subsequently active role R6 in state S1 does not subscribe to events emitted in transition S2 --(C2@R3<R3>)--> S1",
-            "subsequently involved role R2 does not subscribe to guard in transition S0 --(C0@R1<R1>)--> S1",
-            "subsequently involved role R2 does not subscribe to guard in transition S2 --(C2@R3<R3>)--> S1",
-            "subsequently involved role R2 does not subscribe to guard in transition S2 --(C3@R4<R4>)--> S3",
-            "subsequently involved role R2 does not subscribe to guard in transition S3 --(C4@R5<R5>)--> S2",
-            "subsequently involved role R2 subscribes to further events than role R3 (namely R2) in transition S1 --(C1@R2<R2>)--> S2",
-            "subsequently involved role R2 subscribes to further events than role R4 (namely R2) in transition S1 --(C1@R2<R2>)--> S2",
-            "subsequently involved role R3 does not subscribe to guard in transition S0 --(C0@R1<R1>)--> S1",
-            "subsequently involved role R3 does not subscribe to guard in transition S1 --(C1@R2<R2>)--> S2",
-            "subsequently involved role R3 does not subscribe to guard in transition S2 --(C3@R4<R4>)--> S3",
-            "subsequently involved role R3 does not subscribe to guard in transition S3 --(C4@R5<R5>)--> S2",
-            "subsequently involved role R3 subscribes to further events than role R2 (namely R3) in transition S2 --(C2@R3<R3>)--> S1",
-            "subsequently involved role R3 subscribes to further events than role R6 (namely R3) in transition S2 --(C2@R3<R3>)--> S1",
-            "subsequently involved role R4 does not subscribe to guard in transition S0 --(C0@R1<R1>)--> S1",
-            "subsequently involved role R4 does not subscribe to guard in transition S1 --(C1@R2<R2>)--> S2",
-            "subsequently involved role R4 does not subscribe to guard in transition S2 --(C2@R3<R3>)--> S1",
-            "subsequently involved role R4 does not subscribe to guard in transition S3 --(C4@R5<R5>)--> S2",
-            "subsequently involved role R4 subscribes to further events than role R5 (namely R4) in transition S2 --(C3@R4<R4>)--> S3",
-            "subsequently involved role R5 does not subscribe to guard in transition S0 --(C0@R1<R1>)--> S1",
-            "subsequently involved role R5 does not subscribe to guard in transition S1 --(C1@R2<R2>)--> S2",
-            "subsequently involved role R5 does not subscribe to guard in transition S2 --(C2@R3<R3>)--> S1",
-            "subsequently involved role R5 does not subscribe to guard in transition S2 --(C3@R4<R4>)--> S3",
-            "subsequently involved role R5 subscribes to further events than role R3 (namely R5) in transition S3 --(C4@R5<R5>)--> S2",
-            "subsequently involved role R5 subscribes to further events than role R4 (namely R5) in transition S3 --(C4@R5<R5>)--> S2",
-            "subsequently involved role R6 does not subscribe to guard in transition S0 --(C0@R1<R1>)--> S1",
-            "subsequently involved role R6 does not subscribe to guard in transition S1 --(C1@R2<R2>)--> S2",
-            "subsequently involved role R6 does not subscribe to guard in transition S2 --(C2@R3<R3>)--> S1",
-            "subsequently involved role R6 does not subscribe to guard in transition S2 --(C3@R4<R4>)--> S3",
-            "subsequently involved role R6 does not subscribe to guard in transition S3 --(C4@R5<R5>)--> S2"
-        ]);
+        let g = &graph;
+        let mut expected = vec![
+            Error::LaterActiveRoleNotSubscribed(e(g, "(S0)--[C0@R1<R1>]-->(S1)"), r("R2")),
+            Error::LaterActiveRoleNotSubscribed(e(g, "(S2)--[C2@R3<R3>]-->(S1)"), r("R2")),
+            Error::LaterActiveRoleNotSubscribed(e(g, "(S1)--[C1@R2<R2>]-->(S2)"), r("R3")),
+            Error::LaterActiveRoleNotSubscribed(e(g, "(S3)--[C4@R5<R5>]-->(S2)"), r("R3")),
+            Error::LaterActiveRoleNotSubscribed(e(g, "(S1)--[C1@R2<R2>]-->(S2)"), r("R4")),
+            Error::LaterActiveRoleNotSubscribed(e(g, "(S3)--[C4@R5<R5>]-->(S2)"), r("R4")),
+            Error::LaterActiveRoleNotSubscribed(e(g, "(S2)--[C3@R4<R4>]-->(S3)"), r("R5")),
+            Error::LaterActiveRoleNotSubscribed(e(g, "(S0)--[C0@R1<R1>]-->(S1)"), r("R6")),
+            Error::LaterActiveRoleNotSubscribed(e(g, "(S2)--[C2@R3<R3>]-->(S1)"), r("R6")),
+            Error::LaterInvolvedRoleMoreSubscribed {
+                edge: e(g, "(S1)--[C1@R2<R2>]-->(S2)"),
+                later: r("R2"),
+                active: r("R3"),
+                events: btreeset![ev("R2")],
+            },
+            Error::LaterInvolvedRoleMoreSubscribed {
+                edge: e(g, "(S1)--[C1@R2<R2>]-->(S2)"),
+                later: r("R2"),
+                active: r("R4"),
+                events: btreeset![ev("R2")],
+            },
+            Error::LaterInvolvedRoleMoreSubscribed {
+                edge: e(g, "(S2)--[C2@R3<R3>]-->(S1)"),
+                later: r("R3"),
+                active: r("R2"),
+                events: btreeset![ev("R3")],
+            },
+            Error::LaterInvolvedRoleMoreSubscribed {
+                edge: e(g, "(S2)--[C2@R3<R3>]-->(S1)"),
+                later: r("R3"),
+                active: r("R6"),
+                events: btreeset![ev("R3")],
+            },
+            Error::LaterInvolvedRoleMoreSubscribed {
+                edge: e(g, "(S2)--[C3@R4<R4>]-->(S3)"),
+                later: r("R4"),
+                active: r("R5"),
+                events: btreeset![ev("R4")],
+            },
+            Error::LaterInvolvedRoleMoreSubscribed {
+                edge: e(g, "(S3)--[C4@R5<R5>]-->(S2)"),
+                later: r("R5"),
+                active: r("R3"),
+                events: btreeset![ev("R5")],
+            },
+            Error::LaterInvolvedRoleMoreSubscribed {
+                edge: e(g, "(S3)--[C4@R5<R5>]-->(S2)"),
+                later: r("R5"),
+                active: r("R4"),
+                events: btreeset![ev("R5")],
+            },
+            Error::LaterInvolvedNotGuarded(e(g, "(S0)--[C0@R1<R1>]-->(S1)"), r("R2")),
+            Error::LaterInvolvedNotGuarded(e(g, "(S2)--[C2@R3<R3>]-->(S1)"), r("R2")),
+            Error::LaterInvolvedNotGuarded(e(g, "(S2)--[C3@R4<R4>]-->(S3)"), r("R2")),
+            Error::LaterInvolvedNotGuarded(e(g, "(S3)--[C4@R5<R5>]-->(S2)"), r("R2")),
+            Error::LaterInvolvedNotGuarded(e(g, "(S0)--[C0@R1<R1>]-->(S1)"), r("R3")),
+            Error::LaterInvolvedNotGuarded(e(g, "(S1)--[C1@R2<R2>]-->(S2)"), r("R3")),
+            Error::LaterInvolvedNotGuarded(e(g, "(S2)--[C3@R4<R4>]-->(S3)"), r("R3")),
+            Error::LaterInvolvedNotGuarded(e(g, "(S3)--[C4@R5<R5>]-->(S2)"), r("R3")),
+            Error::LaterInvolvedNotGuarded(e(g, "(S0)--[C0@R1<R1>]-->(S1)"), r("R4")),
+            Error::LaterInvolvedNotGuarded(e(g, "(S1)--[C1@R2<R2>]-->(S2)"), r("R4")),
+            Error::LaterInvolvedNotGuarded(e(g, "(S2)--[C2@R3<R3>]-->(S1)"), r("R4")),
+            Error::LaterInvolvedNotGuarded(e(g, "(S3)--[C4@R5<R5>]-->(S2)"), r("R4")),
+            Error::LaterInvolvedNotGuarded(e(g, "(S0)--[C0@R1<R1>]-->(S1)"), r("R5")),
+            Error::LaterInvolvedNotGuarded(e(g, "(S1)--[C1@R2<R2>]-->(S2)"), r("R5")),
+            Error::LaterInvolvedNotGuarded(e(g, "(S2)--[C2@R3<R3>]-->(S1)"), r("R5")),
+            Error::LaterInvolvedNotGuarded(e(g, "(S2)--[C3@R4<R4>]-->(S3)"), r("R5")),
+            Error::LaterInvolvedNotGuarded(e(g, "(S0)--[C0@R1<R1>]-->(S1)"), r("R6")),
+            Error::LaterInvolvedNotGuarded(e(g, "(S1)--[C1@R2<R2>]-->(S2)"), r("R6")),
+            Error::LaterInvolvedNotGuarded(e(g, "(S2)--[C2@R3<R3>]-->(S1)"), r("R6")),
+            Error::LaterInvolvedNotGuarded(e(g, "(S2)--[C3@R4<R4>]-->(S3)"), r("R6")),
+            Error::LaterInvolvedNotGuarded(e(g, "(S3)--[C4@R5<R5>]-->(S2)"), r("R6")),
+        ];
+        expected.sort();
+        assert_eq!(errors, expected);
     }
 
     #[test]
     fn basics() {
         setup_logger();
+        // (S0) --(a@R1<A,B,C>)--> (S1) --(b@R2<D,E>)--> (S2)
         let proto = serde_json::from_str::<SwarmProtocol>(
             r#"{
                 "initial": "S0",
@@ -395,11 +593,93 @@ mod tests {
         let mut errors = check(proto, subs).unwrap_err();
         errors.sort();
         assert_eq!(errors, vec![
-            "active role R1 in state S0 does not subscribe to any of its emitted event types",
-            "active role R2 in state S1 does not subscribe to any of its emitted event types",
-            "subsequently active role R2 in state S1 does not subscribe to events emitted in transition S0 --(a@R1<A,B,C>)--> S1",
-            "subsequently involved role R1 does not subscribe to guard in transition S0 --(a@R1<A,B,C>)--> S1",
-            "subsequently involved role R3 subscribes to further events than role R2 (namely A, B, C) in transition S0 --(a@R1<A,B,C>)--> S1"
+            "active role does not subscribe to any of its emitted event types in transition (S0)--[a@R1<A,B,C>]-->(S1)",
+            "active role does not subscribe to any of its emitted event types in transition (S1)--[b@R2<D,E>]-->(S2)",
+            "subsequently active role R2 does not subscribe to events in transition (S0)--[a@R1<A,B,C>]-->(S1)",
+            "subsequently involved role R1 does not subscribe to guard in transition (S0)--[a@R1<A,B,C>]-->(S1)",
+            "subsequently involved role R3 subscribes to more events than active role R2 in transition (S0)--[a@R1<A,B,C>]-->(S1), namely (A, B, C)"
         ]);
+    }
+
+    #[test]
+    fn deterministic() {
+        setup_logger();
+        let proto = serde_json::from_str::<SwarmProtocol>(
+            r#"{
+                "initial": "S0",
+                "transitions": [
+                    { "source": "S0", "target": "S1", "label": { "cmd": "a", "logType": ["A"], "role": "R" } },
+                    { "source": "S1", "target": "S2", "label": { "cmd": "b", "logType": ["B", "A"], "role": "R" } },
+                    { "source": "S2", "target": "S3", "label": { "cmd": "c", "logType": ["A"], "role": "R" } },
+                    { "source": "S2", "target": "S3", "label": { "cmd": "c", "logType": ["C"], "role": "R" } },
+                    { "source": "S2", "target": "S3", "label": { "cmd": "d", "logType": ["A"], "role": "R" } },
+                    { "source": "S2", "target": "S3", "label": { "cmd": "c", "logType": ["A"], "role": "S" } },
+                    { "source": "S2", "target": "S3", "label": { "cmd": "d", "logType": ["A"], "role": "S" } }
+                ]
+            }"#,
+        )
+        .unwrap();
+        let mut errors = check(proto, BTreeMap::new()).unwrap_err();
+        errors.sort();
+        assert_eq!(errors, vec![
+            "active role does not subscribe to any of its emitted event types in transition (S0)--[a@R<A>]-->(S1)",
+            "active role does not subscribe to any of its emitted event types in transition (S1)--[b@R<B,A>]-->(S2)",
+            "active role does not subscribe to any of its emitted event types in transition (S2)--[c@R<A>]-->(S3)",
+            "active role does not subscribe to any of its emitted event types in transition (S2)--[c@R<C>]-->(S3)",
+            "active role does not subscribe to any of its emitted event types in transition (S2)--[c@S<A>]-->(S3)",
+            "active role does not subscribe to any of its emitted event types in transition (S2)--[d@R<A>]-->(S3)",
+            "active role does not subscribe to any of its emitted event types in transition (S2)--[d@S<A>]-->(S3)",
+            "guard event type A appears in transitions from multiple states",
+            "non-deterministic command c for role R in state S2",
+            "non-deterministic event guard type A in state S2",
+            "subsequently active role R does not subscribe to events in transition (S0)--[a@R<A>]-->(S1)",
+            "subsequently active role R does not subscribe to events in transition (S1)--[b@R<B,A>]-->(S2)",
+            "subsequently active role S does not subscribe to events in transition (S1)--[b@R<B,A>]-->(S2)",
+        ]);
+    }
+
+    #[test]
+    fn empty_log() {
+        setup_logger();
+        let proto = serde_json::from_str::<SwarmProtocol>(
+            r#"{
+                "initial": "S0",
+                "transitions": [
+                    { "source": "S0", "target": "S1", "label": { "cmd": "a", "logType": ["A", "B", "C"], "role": "R1" } },
+                    { "source": "S1", "target": "S2", "label": { "cmd": "b", "logType": [], "role": "R2" } }
+                ]
+            }"#,
+        )
+        .unwrap();
+        let mut errors = check(proto, BTreeMap::new()).unwrap_err();
+        errors.sort();
+        assert_eq!(
+            errors,
+            vec!["log type must not be empty (S1)--[b@R2<>]-->(S2)"]
+        );
+    }
+
+    #[test]
+    fn disconnected_initial() {
+        setup_logger();
+        let proto = serde_json::from_str::<SwarmProtocol>(
+            r#"{
+                "initial": "S5",
+                "transitions": [
+                    { "source": "S0", "target": "S1", "label": { "cmd": "a", "logType": ["A", "B", "C"], "role": "R1" } },
+                    { "source": "S1", "target": "S2", "label": { "cmd": "b", "logType": [], "role": "R2" } }
+                ]
+            }"#,
+        )
+        .unwrap();
+        let mut errors = check(proto, BTreeMap::new()).unwrap_err();
+        errors.sort();
+        assert_eq!(
+            errors,
+            vec![
+                "initial state has no transitions",
+                "log type must not be empty (S1)--[b@R2<>]-->(S2)",
+            ]
+        );
     }
 }

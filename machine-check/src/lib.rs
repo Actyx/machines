@@ -2,7 +2,7 @@ use intern_arc::{global::hash_interner, InternedHash};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet},
-    fmt::{self, Display},
+    fmt,
     ops::Deref,
 };
 use wasm_bindgen::prelude::*;
@@ -29,7 +29,7 @@ pub struct Transition<L> {
     target: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[serde(rename_all = "camelCase")]
 pub struct SwarmLabel {
     cmd: String,
@@ -50,7 +50,7 @@ impl fmt::Display for SwarmLabel {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[serde(tag = "tag")]
 pub enum MachineLabel {
     #[serde(rename_all = "camelCase")]
@@ -63,12 +63,12 @@ pub type Subscriptions = BTreeMap<String, BTreeSet<String>>;
 pub type SwarmProtocol = Protocol<SwarmLabel>;
 pub type Machine = Protocol<MachineLabel>;
 
-#[derive(Clone, Debug, PartialEq, PartialOrd, Ord, Eq)]
-struct Role(InternedHash<str>);
+#[derive(Clone, Debug, PartialEq, PartialOrd, Ord, Eq, Hash)]
+pub struct Role(InternedHash<str>);
 
-impl Display for Role {
+impl fmt::Display for Role {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.fmt(f)
+        fmt::Display::fmt(&self.0, f)
     }
 }
 
@@ -79,6 +79,46 @@ impl Role {
 }
 
 impl Deref for Role {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        self.0.as_ref()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, PartialOrd, Ord, Eq, Hash)]
+pub struct EventType(InternedHash<str>);
+
+impl fmt::Display for EventType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.0, f)
+    }
+}
+
+impl EventType {
+    pub fn new(et: &str) -> Self {
+        Self(hash_interner().intern_ref(et))
+    }
+}
+
+impl Deref for EventType {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        self.0.as_ref()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, PartialOrd, Ord, Eq, Hash)]
+pub struct Command(InternedHash<str>);
+
+impl Command {
+    pub fn new(et: &str) -> Self {
+        Self(hash_interner().intern_ref(et))
+    }
+}
+
+impl Deref for Command {
     type Target = str;
 
     fn deref(&self) -> &Self::Target {
