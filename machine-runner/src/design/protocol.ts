@@ -6,7 +6,7 @@ export type Protocol<
   RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
 > = {
   /**
-   * Starts the design process for a state with payload.
+   * Starts the design process for a state with a payload.
    * Payload data will be required when constructing this state.
    * @example
    * const HangarControlIncomingShip = protocol
