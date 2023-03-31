@@ -289,7 +289,8 @@ export type StateFactory<
   >
 
   /**
-   * Add a reaction to a set of incoming events for a particular state. A reaction is a computation that MAY result in a state transition or a self-mutation.
+   * Add a reaction to a set of incoming events for a particular state. 
+   * A reaction is a computation that MAY result in a state transition or a self-mutation.
    * @example
    * HangarControlIdle
    *   .react([IncomingDockingRequest], HangarControlIdle, (context, request) => {
