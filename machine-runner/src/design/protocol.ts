@@ -117,6 +117,7 @@ export namespace Protocol {
 
 export type ProtocolAnalysisResource = {
   initial: string
+  subscriptions: string[]
   transitions: {
     source: string
     target: string
@@ -125,6 +126,15 @@ export type ProtocolAnalysisResource = {
 }
 
 export namespace ProtocolAnalysisResource {
+  export const syntheticEventName = (
+    baseStateFactory: StateMechanism.Any | StateFactory.Any,
+    modifyingEvents: Pick<MachineEvent.Factory.Any, 'type'>[],
+  ) =>
+    `§${[
+      ('mechanism' in baseStateFactory ? baseStateFactory.mechanism : baseStateFactory).name,
+      ...modifyingEvents.map((f) => f.type),
+    ].join('+')}`
+
   export const fromProtocolInternals = <
     ProtocolName extends string,
     RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
@@ -138,24 +148,55 @@ export namespace ProtocolAnalysisResource {
 
     // Calculate transitions
 
-    const transitionsFromReactions: ProtocolAnalysisResource['transitions'] = Array.from(
-      protocolInternals.reactionMap.getAll().entries(),
-    ).reduce(
-      (accumulated: ProtocolAnalysisResource['transitions'], [source, reactions]) =>
-        accumulated.concat(
-          Array.from(reactions.entries()).map(
-            ([guard, reaction]): ProtocolAnalysisResource['transitions'][0] => ({
-              source: source.name,
-              target: reaction.next.mechanism.name,
-              label: {
-                tag: 'Input',
-                eventType: guard,
-              },
-            }),
+    const reactionMapEntries = Array.from(protocolInternals.reactionMap.getAll().entries())
+
+    const subscriptions: string[] = Array.from(
+      new Set(
+        reactionMapEntries.flatMap(([_, reactions]) =>
+          Array.from(reactions.values()).flatMap((reaction): string[] =>
+            reaction.eventChainTrigger.map((trigger) => trigger.type),
           ),
         ),
-      [],
+      ),
     )
+
+    const transitionsFromReactions: ProtocolAnalysisResource['transitions'] =
+      reactionMapEntries.reduce(
+        (accumulated: ProtocolAnalysisResource['transitions'], [ofState, reactions]) => {
+          for (const reaction of reactions.values()) {
+            // This block converts a reaction into a chain of of transitions of states and synthetic states
+            // Example:
+            // A reacts to Events E1, E2, and E3 sequentially and transform into B
+            // will result in these transitions
+            // Source: A,       Input: E1, Target: A+E1
+            // Source: A+E1,    Input: E2, Target: A+E1+E2
+            // Source: A+E1+E2, Input: E3, Target: B
+            const modifier: MachineEvent.Factory.Any[] = []
+            for (const [index, trigger] of reaction.eventChainTrigger.entries()) {
+              const source = index === 0 ? ofState.name : syntheticEventName(ofState, modifier)
+
+              const target =
+                index === reaction.eventChainTrigger.length - 1
+                  ? reaction.next.mechanism.name
+                  : syntheticEventName(ofState, [...modifier, trigger])
+
+              modifier.push(trigger)
+
+              accumulated.push({
+                source: source,
+                target: target,
+                label: {
+                  tag: 'Input',
+                  eventType: trigger.type,
+                },
+              })
+            }
+          }
+
+          return accumulated
+        },
+        [],
+      )
 
     const transitionsFromCommands: ProtocolAnalysisResource['transitions'] =
       protocolInternals.commands.map((item): ProtocolAnalysisResource['transitions'][0] => ({
@@ -170,6 +211,7 @@ export namespace ProtocolAnalysisResource {
 
     const resource: ProtocolAnalysisResource = {
       initial: initial.mechanism.name,
+      subscriptions,
       transitions: [...transitionsFromCommands, ...transitionsFromReactions],
     }
 
