@@ -28,9 +28,14 @@ import {
 import { MachineEmitter, MachineEmitterEventMap } from './runner-utils.js'
 
 /**
- * Contains and manages the state of a protocol by subscribing and publishing events via an active connection to Actyx. A MachineRunner manages state reactions and transitions when incoming events from Actyx match one of the reactions of the MachineRunner's state as defined by the user via the protocol.
+ * Contains and manages the state of a protocol by subscribing and publishing
+ * events via an active connection to Actyx. A MachineRunner manages state
+ * reactions and transitions when incoming events from Actyx match one of the
+ * reactions of the MachineRunner's state as defined by the user via the
+ * protocol.
  *
- * MachineRunner can be used as an async-iterator. However, if used as an async-iterator, it will be destroyed when a 'break' occurs on the loop.
+ * MachineRunner can be used as an async-iterator. However, if used as an
+ * async-iterator, it will be destroyed when a 'break' occurs on the loop.
  * @example
  * const state = machine.get();
  *
@@ -55,18 +60,22 @@ export type MachineRunner = {
   isDestroyed: () => boolean
 
   /**
-   * @returns a snapshot of the MachineRunner's current state in the form of StateOpaque.
-   * @returns null if the MachineRunner has not processed all incoming events for the first time.
+   * @returns a snapshot of the MachineRunner's current state in the form of
+   * StateOpaque.
+   * @returns null if the MachineRunner has not processed all incoming events
+   * for the first time.
    */
   get: () => StateOpaque | null
 
   /**
-   * @returns a snapshot of the MachineRunner's initial state in the form of StateOpaque
+   * @returns a snapshot of the MachineRunner's initial state in the form of
+   * StateOpaque
    */
   initial: () => StateOpaque
 
   /**
-   * @returns a copy of the MachineRunner referring to its parent's state that does not destroy the parent when it is destroyed.
+   * @returns a copy of the MachineRunner referring to its parent's state that
+   * does not destroy the parent when it is destroyed.
    * @example
    * for await (const state of machine.noAutoDestroy()) {
    *   break; // this break does not destroy `machine`
@@ -154,14 +163,15 @@ export const createMachineRunnerInternal = <
         `error publishing ${err} ${events.map((e) => JSON.stringify(e)).join(', ')}`,
       )
       /**
-       * Guards against cases where command's events couldn't be persisted but state has changed
+       * Guards against cases where command's events couldn't be persisted but
+       * state has changed
        */
       if (currentCommandLock !== internals.commandLock) return
       internals.commandLock = null
-      emitter.emit('change', StateOpaque.make(internals, internals.current))
+      emitter.emit('change', ImplStateOpaque.make(internals, internals.current))
     })
 
-    emitter.emit('change', StateOpaque.make(internals, internals.current))
+    emitter.emit('change', ImplStateOpaque.make(internals, internals.current))
     return persistResult
   })
 
@@ -218,7 +228,7 @@ export const createMachineRunnerInternal = <
                 if (pushEventResult.executionHappened) {
                   if (emitter.listenerCount('audit.state') > 0) {
                     emitter.emit('audit.state', {
-                      state: StateOpaque.make(internals, internals.current),
+                      state: ImplStateOpaque.make(internals, internals.current),
                       events: pushEventResult.triggeringEvents,
                     })
                   }
@@ -234,11 +244,12 @@ export const createMachineRunnerInternal = <
             }
 
             if (d.caughtUp) {
-              // the SDK translates an OffsetMap response into MsgType.events with caughtUp=true
+              // the SDK translates an OffsetMap response into MsgType.events
+              // with caughtUp=true
               internals.caughtUp = true
               internals.caughtUpFirstTime = true
               emitter.emit('log', 'Caught up')
-              emitter.emit('change', StateOpaque.make(internals, internals.current))
+              emitter.emit('change', ImplStateOpaque.make(internals, internals.current))
             }
           }
         } catch (error) {
@@ -248,7 +259,7 @@ export const createMachineRunnerInternal = <
       (err) => {
         RunnerInternals.reset(internals)
         emitter.emit('audit.reset')
-        emitter.emit('change', StateOpaque.make(internals, internals.current))
+        emitter.emit('change', ImplStateOpaque.make(internals, internals.current))
 
         emitter.emit('log', 'Restarting in 1sec due to error')
         unsubscribeFromActyx()
@@ -266,13 +277,13 @@ export const createMachineRunnerInternal = <
   // Self API construction
 
   const getSnapshot = (): StateOpaque | null =>
-    internals.caughtUpFirstTime ? StateOpaque.make(internals, internals.current) : null
+    internals.caughtUpFirstTime ? ImplStateOpaque.make(internals, internals.current) : null
 
   const api = {
     id: Symbol(),
     events: emitter,
     get: getSnapshot,
-    initial: (): StateOpaque => StateOpaque.make(internals, internals.initial),
+    initial: (): StateOpaque => ImplStateOpaque.make(internals, internals.initial),
     destroy: destruction.destroy,
     isDestroyed: destruction.isDestroyed,
     noAutoDestroy: () =>
@@ -431,7 +442,10 @@ namespace NextValueAwaiter {
 }
 
 /**
- * StateOpaque is an opaque snapshot of a MachineRunner state. A StateOpaque does not have direct access to the state's payload or command. In order to access the state's payload, a StateOpaque has to be successfully cast into a particular typed State.
+ * StateOpaque is an opaque snapshot of a MachineRunner state. A StateOpaque
+ * does not have direct access to the state's payload or command. In order to
+ * access the state's payload, a StateOpaque has to be successfully cast into a
+ * particular typed State.
  */
 export interface StateOpaque<
   StateName extends string = string,
@@ -441,7 +455,8 @@ export interface StateOpaque<
   /**
    * Checks if the StateOpaque's type equals to the StateFactory's type
    * @param factory - A StateFactory used to narrow the StateOpaque's type
-   * @return boolean that narrows the type of the StateOpaque based on the supplied StateFactory.
+   * @return boolean that narrows the type of the StateOpaque based on the
+   * supplied StateFactory.
    * @example
    * const state = machine.get()
    * if (state.is(HangarControlIdle)) {
@@ -457,10 +472,18 @@ export interface StateOpaque<
   ): this is StateOpaque<DeductStateName, DeductPayload, DeductCommands>
 
   /**
-   * Attempt to cast the StateOpaque into a specific StateFactory and optionally transform the value with the `then` function. Whether casting is successful or not depends on whether the StateOpaque's State matches the factory supplied via the first parameter.
+   * Attempt to cast the StateOpaque into a specific StateFactory and optionally
+   * transform the value with the `then` function. Whether casting is successful
+   * or not depends on whether the StateOpaque's State matches the factory
+   * supplied via the first parameter.
    * @param factory - A StateFactory used to cast the StateOpaque
-   * @param then - an optional transformation function accepting the typed state and returns an arbitrary value. This function will be executed if the casting is successful
-   * @return a typed State with access to payload and commands if the `then` function is not supplied and the casting is successful, any value returned by the `then` function if supplied and casting is successful, null if casting is not successful
+   * @param then - an optional transformation function accepting the typed state
+   * and returns an arbitrary value. This function will be executed if the
+   * casting is successful
+   * @return a typed State with access to payload and commands if the `then`
+   * function is not supplied and the casting is successful, any value returned
+   * by the `then` function if supplied and casting is successful, null if
+   * casting is not successful
    * @example
    * const maybeHangarControlIdle = machine
    *   .get()?
@@ -482,10 +505,18 @@ export interface StateOpaque<
   ): State<StateName, StatePayload, Commands> | undefined
 
   /**
-   * Attempt to cast the StateOpaque into a specific StateFactory and optionally transform the value with the `then` function. Whether casting is successful or not depends on whether the StateOpaque's State matches the factory supplied via the first parameter.
+   * Attempt to cast the StateOpaque into a specific StateFactory and optionally
+   * transform the value with the `then` function. Whether casting is successful
+   * or not depends on whether the StateOpaque's State matches the factory
+   * supplied via the first parameter.
    * @param factory - A StateFactory used to cast the StateOpaque
-   * @param then - an optional transformation function accepting the typed state and returns an arbitrary value. This function will be executed if the casting is successful
-   * @return a typed State with access to payload and commands if the `then` function is not supplied and the casting is successful, any value returned by the `then` function if supplied and casting is successful, null if casting is not successful
+   * @param then - an optional transformation function accepting the typed state
+   * and returns an arbitrary value. This function will be executed if the
+   * casting is successful
+   * @return a typed State with access to payload and commands if the `then`
+   * function is not supplied and the casting is successful, any value returned
+   * by the `then` function if supplied and casting is successful, null if
+   * casting is not successful
    * @example
    * const maybeHangarControlIdle = machine
    *   .get()?
@@ -509,7 +540,8 @@ export interface StateOpaque<
   ): ReturnType<Then> | undefined
 
   /**
-   * Cast into a typed State. Usable only inside a block where this StateOpaque's type is narrowed.
+   * Cast into a typed State. Usable only inside a block where this
+   * StateOpaque's type is narrowed.
    * @return typed State with access to payload and commands
    * @example
    * const state = machine.get()
@@ -522,7 +554,7 @@ export interface StateOpaque<
   cast(): State<StateName, Payload, Commands>
 }
 
-export namespace StateOpaque {
+namespace ImplStateOpaque {
   export const isExpired = (
     internals: RunnerInternals.Any,
     stateAndFactoryForSnapshot: StateAndFactory.Any,
@@ -551,7 +583,7 @@ export namespace StateOpaque {
       queueLengthAtSnapshot === 0
 
     // TODO: write unit test on expiry
-    const isExpired = () => StateOpaque.isExpired(internals, stateAndFactoryForSnapshot)
+    const isExpired = () => ImplStateOpaque.isExpired(internals, stateAndFactoryForSnapshot)
 
     const is: StateOpaque['is'] = (factory) => factoryAtSnapshot.mechanism === factory.mechanism
 
@@ -564,7 +596,7 @@ export namespace StateOpaque {
       then?: any,
     ) => {
       if (factoryAtSnapshot.mechanism === factory.mechanism) {
-        const snapshot = State.makeForSnapshot({
+        const snapshot = ImplState.makeForSnapshot({
           factory: factoryAtSnapshot,
           commandEmitFn: internals.commandEmitFn,
           isExpired,
@@ -577,7 +609,7 @@ export namespace StateOpaque {
     }
 
     const cast: StateOpaque['cast'] = () =>
-      State.makeForSnapshot({
+      ImplState.makeForSnapshot({
         factory: factoryAtSnapshot,
         commandEmitFn: internals.commandEmitFn,
         isExpired,
@@ -596,7 +628,12 @@ export namespace StateOpaque {
 }
 
 /**
- * A typed snapshot of the MachineRunner's state with access to the state's payload and the associated commands. Commands are available only if at the time the snapshot is created these conditions are met: 1.) the MachineRunner has caught up with Actyx's events stream, 2.) there are no events in the internal queue awaiting processing, 3.) no command associated with the same state has been issued
+ * A typed snapshot of the MachineRunner's state with access to the state's
+ * payload and the associated commands. Commands are available only if at the
+ * time the snapshot is created these conditions are met: 1.) the MachineRunner
+ * has caught up with Actyx's events stream, 2.) there are no events in the
+ * internal queue awaiting processing, 3.) no command associated with the same
+ * state has been issued
  */
 export type State<
   StateName extends string,
@@ -604,16 +641,43 @@ export type State<
   Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
 > = StateRaw<StateName, StatePayload> & {
   /**
-   * A dictionary containing commands previously registered during the State Design process. Undefined when commands are unavailable during the time of the state snapshot. Commands are available only if at the time the snapshot is created these conditions are met: 1.) the MachineRunner has caught up with Actyx's events stream, 2.) there are no events in the internal queue awaiting processing, 3.) no command associated with the same state has been issued
+   * A dictionary containing commands previously registered during the State
+   * Design process. Undefined when commands are unavailable during the time of
+   * the state snapshot. Commands are available only if at the time the snapshot
+   * is created these conditions are met: 1.) the MachineRunner has caught up
+   * with Actyx's events stream, 2.) there are no events in the internal queue
+   * awaiting processing, 3.) no command associated with the same state has been
+   * issued
    */
   commands?: ToCommandSignatureMap<Commands, any, MachineEvent.Any[]>
 }
 
+/**
+ * A collection of type utilities around State
+ */
 export namespace State {
   export type Minim = State<string, any, CommandDefinerMap<any, any, MachineEvent.Any>>
 
   export type NameOf<T extends State.Minim> = T extends State<infer Name, any, any> ? Name : never
 
+  /**
+   * Extract the a typed state from a StateFactory
+   * @example
+   * const Active = protocol
+   *   .designEmpty("Active")
+   *   .command("deactivate", [Deactivate], () => [Deactivate.make()])
+   *   .finish();
+   *
+   * // this function accepts a typed state instance of Active
+   * const deactivate = (state: StateOf<Active>) => {
+   *   if (SOME_THRESHOLD()) {
+   *     state.commands?.deactivate()
+   *   }
+   * }
+   *
+   * // calling the function
+   * machine.get()?.as(Active, (state) => deactivate(state));
+   */
   export type Of<T extends StateFactory.Any> = T extends StateFactory<
     any,
     any,
@@ -623,7 +687,9 @@ export namespace State {
   >
     ? State<StateName, StatePayload, Commands>
     : never
+}
 
+namespace ImplState {
   export const makeForSnapshot = <
     RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
     StateName extends string,

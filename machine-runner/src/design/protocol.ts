@@ -1,13 +1,21 @@
 import { Tag } from '@actyx/sdk'
 import { StateMechanism, MachineEvent, ProtocolInternals, ReactionMap } from './state.js'
 
+/**
+ * A protocool is guides the design processes a state. It contains information
+ * regarding its own name and the types MachineEvent allowed to be involved in
+ * the states and the transition of the states.
+ *
+ * The resulting states will be constrained to only used Events that has been
+ * registered within the protocol.
+ */
 export type Protocol<
   ProtocolName extends string,
   RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
 > = {
   /**
-   * Starts the design process for a state with a payload.
-   * Payload data will be required when constructing this state.
+   * Starts the design process for a state with a payload. Payload data will be
+   * required when constructing this state.
    * @example
    * const HangarControlIncomingShip = protocol
    *   .designState("HangarControlIncomingShip")
@@ -18,7 +26,7 @@ export type Protocol<
    */
   designState: <StateName extends string>(
     stateName: StateName,
-  ) => Protocol.DesignStateIntermediate<ProtocolName, RegisteredEventsFactoriesTuple, StateName>
+  ) => DesignStateIntermediate<ProtocolName, RegisteredEventsFactoriesTuple, StateName>
 
   /**
    * Starts a design process for a state without payload.
@@ -52,36 +60,49 @@ export type Protocol<
   ) => Tag<MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>>
 }
 
+type DesignStateIntermediate<
+  ProtocolName extends string,
+  RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
+  StateName extends string,
+> = {
+  /**
+   * Declare type for a state
+   */
+  withPayload: <StatePayload extends any>() => StateMechanism<
+    ProtocolName,
+    RegisteredEventsFactoriesTuple,
+    StateName,
+    StatePayload,
+    Record<never, never>
+  >
+}
+
 /**
- * Set of utilities for designing a protocol
+ * A collection of utilities for designing a protocol
  * @see Protocol.make for getting started with using MachineRunner Protocol
  */
 export namespace Protocol {
   export type Any = Protocol<any, any>
 
+  /**
+   * Extract the type of registered MachineEvent of a protocol in the form of a union type
+   * @example
+   * const E1 = MachineEvent.design("E1").withoutPayload();
+   * const E2 = MachineEvent.design("E2").withoutPayload();
+   * const E3 = MachineEvent.design("E3").withoutPayload();
+   *
+   * const protocol = Protocol.make("somename", [E1, E2, E3]);
+   *
+   * type AllEvents = Protocol.EventsOf<typeof protocol>;
+   * // Equivalent of:
+   * // MachineEvent.Of<typeof E1> | MachineEvent.Of<typeof E2> | MachineEvent.Of<typeof E3>
+   */
   export type EventsOf<T extends Protocol.Any> = T extends Protocol<
     any,
     infer RegisteredEventsFactoriesTuple
   >
     ? MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>
     : never
-
-  export type DesignStateIntermediate<
-    ProtocolName extends string,
-    RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
-    StateName extends string,
-  > = {
-    /**
-     * Declare type for a state
-     */
-    withPayload: <StatePayload extends any>() => StateMechanism<
-      ProtocolName,
-      RegisteredEventsFactoriesTuple,
-      StateName,
-      StatePayload,
-      Record<never, never>
-    >
-  }
 
   /**
    * Create a protocol with a specific name and event factories.
