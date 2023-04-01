@@ -1,130 +1,15 @@
-use intern_arc::{global::hash_interner, InternedHash};
-use serde::{Deserialize, Serialize};
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    fmt,
-    ops::Deref,
-};
+use std::collections::{BTreeMap, BTreeSet};
 use wasm_bindgen::prelude::*;
 
+mod machine;
 mod swarm;
+pub mod types;
 
-#[derive(Serialize)]
-#[serde(tag = "type")]
-pub enum CheckResult {
-    OK,
-    ERROR { errors: Vec<String> },
-}
+use types::{CheckResult, EventType, MachineLabel, Protocol, Role, SwarmLabel};
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Protocol<L> {
-    initial: String,
-    transitions: Vec<Transition<L>>,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Transition<L> {
-    label: L,
-    source: String,
-    target: String,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[serde(rename_all = "camelCase")]
-pub struct SwarmLabel {
-    cmd: String,
-    log_type: Vec<String>,
-    role: String,
-}
-
-impl fmt::Display for SwarmLabel {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}@{}<", self.cmd, self.role)?;
-        for (i, t) in self.log_type.iter().enumerate() {
-            if i > 0 {
-                write!(f, ",")?;
-            }
-            write!(f, "{}", t)?;
-        }
-        write!(f, ">")
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[serde(tag = "tag")]
-pub enum MachineLabel {
-    #[serde(rename_all = "camelCase")]
-    Execute { cmd: String, log_type: Vec<String> },
-    #[serde(rename_all = "camelCase")]
-    Input { event_type: String },
-}
-
-pub type Subscriptions = BTreeMap<String, BTreeSet<String>>;
+pub type Subscriptions = BTreeMap<Role, BTreeSet<EventType>>;
 pub type SwarmProtocol = Protocol<SwarmLabel>;
 pub type Machine = Protocol<MachineLabel>;
-
-#[derive(Clone, Debug, PartialEq, PartialOrd, Ord, Eq, Hash)]
-pub struct Role(InternedHash<str>);
-
-impl fmt::Display for Role {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Display::fmt(&self.0, f)
-    }
-}
-
-impl Role {
-    pub fn new(name: &str) -> Self {
-        Self(hash_interner().intern_ref(name))
-    }
-}
-
-impl Deref for Role {
-    type Target = str;
-
-    fn deref(&self) -> &Self::Target {
-        self.0.as_ref()
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, PartialOrd, Ord, Eq, Hash)]
-pub struct EventType(InternedHash<str>);
-
-impl fmt::Display for EventType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Display::fmt(&self.0, f)
-    }
-}
-
-impl EventType {
-    pub fn new(et: &str) -> Self {
-        Self(hash_interner().intern_ref(et))
-    }
-}
-
-impl Deref for EventType {
-    type Target = str;
-
-    fn deref(&self) -> &Self::Target {
-        self.0.as_ref()
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, PartialOrd, Ord, Eq, Hash)]
-pub struct Command(InternedHash<str>);
-
-impl Command {
-    pub fn new(et: &str) -> Self {
-        Self(hash_interner().intern_ref(et))
-    }
-}
-
-impl Deref for Command {
-    type Target = str;
-
-    fn deref(&self) -> &Self::Target {
-        self.0.as_ref()
-    }
-}
 
 #[wasm_bindgen]
 pub fn check_swarm(proto: String, subs: String) -> String {

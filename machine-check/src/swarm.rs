@@ -1,4 +1,7 @@
-use crate::{Command, EventType, Role, Subscriptions, SwarmLabel, SwarmProtocol};
+use crate::{
+    types::{EventType, Role, State, SwarmLabel},
+    Subscriptions, SwarmProtocol,
+};
 use bitvec::{bitvec, vec::BitVec};
 use itertools::Itertools;
 use petgraph::{
@@ -103,13 +106,13 @@ impl<'a> fmt::Display for Edge<'a> {
 
 #[derive(Debug)]
 struct Node {
-    name: String,
+    name: State,
     active: BTreeSet<Role>,
     roles: BTreeSet<Role>,
 }
 
 impl Node {
-    fn new(name: String) -> Self {
+    fn new(name: State) -> Self {
         Self {
             name,
             active: Default::default(),
@@ -139,7 +142,7 @@ pub fn check(proto: SwarmProtocol, subs: Subscriptions) -> Result<(), Vec<String
 fn well_formed(graph: &Graph, initial: NodeId, subs: Subscriptions) -> Vec<Error> {
     let mut errors = Vec::new();
     let empty = BTreeSet::new();
-    let sub = |r: &Role| subs.get(&**r).unwrap_or(&empty);
+    let sub = |r: &Role| subs.get(r).unwrap_or(&empty);
     for node in Dfs::new(&graph, initial).iter(&graph) {
         let mut guards = BTreeMap::new();
         let mut commands = BTreeSet::new();
@@ -147,7 +150,7 @@ fn well_formed(graph: &Graph, initial: NodeId, subs: Subscriptions) -> Vec<Error
             let log = edge.weight().log_type.as_slice();
 
             // event determinism
-            let guard = EventType::new(&log[0]);
+            let guard = &log[0];
             if *guards
                 .entry(guard.clone())
                 .and_modify(|count| *count += 1)
@@ -157,8 +160,8 @@ fn well_formed(graph: &Graph, initial: NodeId, subs: Subscriptions) -> Vec<Error
                 errors.push(Error::NonDeterministicGuard(edge.id()));
             }
             // command determinism
-            let command = Command::new(&edge.weight().cmd);
-            let role = Role::new(&edge.weight().role);
+            let command = &edge.weight().cmd;
+            let role = &edge.weight().role;
             if !commands.insert((role.clone(), command.clone())) {
                 errors.push(Error::NonDeterministicCommand(edge.id()));
             }
@@ -185,7 +188,7 @@ fn well_formed(graph: &Graph, initial: NodeId, subs: Subscriptions) -> Vec<Error
                             edge: edge.id(),
                             later: later.clone(),
                             active: active.clone(),
-                            events: extra.iter_ones().map(|i| EventType::new(&log[i])).collect(),
+                            events: extra.iter_ones().map(|i| log[i].clone()).collect(),
                         });
                     }
                 }
@@ -209,7 +212,7 @@ fn prepare_graph(
 ) -> Result<(Graph, NodeId), (Graph, Option<NodeId>, Vec<Error>)> {
     let mut errors = Vec::new();
     let mut graph = Graph::new();
-    let mut nodes = HashMap::<String, NodeId>::new();
+    let mut nodes = HashMap::new();
     for t in proto.transitions {
         tracing::debug!("adding {} --({:?})--> {}", t.source, t.label, t.target);
         let source = *nodes
@@ -285,7 +288,7 @@ fn prepare_graph(
 }
 
 fn propagate_back(g: &mut Graph, node: NodeId) {
-    let _span = tracing::debug_span!("propagate_back", node = g[node].name).entered();
+    let _span = tracing::debug_span!("propagate_back", node = %g[node].name).entered();
     let mut queue = vec![node];
     rec(g, &mut queue);
     fn rec(g: &mut Graph, q: &mut Vec<NodeId>) {
@@ -320,7 +323,7 @@ fn involved(
     subs: &Subscriptions,
     loop_end: &mut HashSet<NodeId>,
 ) -> BTreeSet<Role> {
-    let _span = tracing::debug_span!("involved", node = g[node].name).entered();
+    let _span = tracing::debug_span!("involved", node = %g[node].name).entered();
     let mut roles = BTreeSet::new();
     for edge in g.edges_directed(node, Outgoing) {
         // first propagate back all roles from target state
@@ -335,14 +338,13 @@ fn involved(
         }
         // then add roles involved in this transition
         for (role, types) in subs {
-            let role = Role::new(role);
-            if roles.contains(&role) {
+            if roles.contains(role) {
                 continue;
             }
             let interested = edge.weight().log_type.iter().any(|t| types.contains(t));
             if interested {
                 tracing::debug!("{:?} is interested (towards {})", role, g[target].name);
-                roles.insert(role);
+                roles.insert(role.clone());
             }
         }
     }
@@ -351,11 +353,11 @@ fn involved(
 
 fn active(g: &Graph, node: NodeId) -> BTreeSet<Role> {
     let mut active = BTreeSet::new();
-    let _span = tracing::debug_span!("active", node = g[node].name).entered();
+    let _span = tracing::debug_span!("active", node = %g[node].name).entered();
     for x in g.edges_directed(node, Outgoing) {
         let role = &x.weight().role;
         tracing::debug!("found role {} (target {})", role, g[x.target()].name);
-        active.insert(Role::new(role));
+        active.insert(role.clone());
     }
     active
 }
@@ -366,16 +368,16 @@ fn mark_events(
     guards: &mut HashSet<EventType>,
     events: &mut HashMap<EventType, Option<NodeId>>,
 ) {
-    let _span = tracing::debug_span!("mark_events", node = g[node].name).entered();
+    let _span = tracing::debug_span!("mark_events", node = %g[node].name).entered();
     for edge in g.edges_directed(node, Outgoing) {
         let log = edge.weight().log_type.as_slice();
         if log.len() < 1 {
             continue;
         }
-        guards.insert(EventType::new(&log[0]));
+        guards.insert(log[0].clone());
         for e in log {
             events
-                .entry(EventType::new(&e))
+                .entry(e.clone())
                 .and_modify(|n| {
                     if *n != Some(node) {
                         *n = None;
@@ -386,7 +388,7 @@ fn mark_events(
     }
 }
 
-fn log_filter(log: &[String], subs: &BTreeSet<String>) -> BitVec {
+fn log_filter(log: &[EventType], subs: &BTreeSet<EventType>) -> BitVec {
     let mut ret = bitvec![0; log.len()];
     for (idx, event_type) in log.iter().enumerate() {
         if subs.contains(event_type) {
