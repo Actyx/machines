@@ -114,3 +114,13 @@ pub enum MachineLabel {
     #[serde(rename_all = "camelCase")]
     Input { event_type: EventType },
 }
+
+pub trait StateName {
+    fn state_name(&self) -> &State;
+}
+
+impl StateName for State {
+    fn state_name(&self) -> &State {
+        self
+    }
+}

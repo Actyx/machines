@@ -1,11 +1,11 @@
 use crate::{
-    types::{EventType, Role, State, SwarmLabel},
-    Subscriptions, SwarmProtocol,
+    types::{EventType, Role, State, StateName, SwarmLabel},
+    EdgeId, NodeId, Subscriptions, SwarmProtocol,
 };
 use bitvec::{bitvec, vec::BitVec};
 use itertools::Itertools;
 use petgraph::{
-    visit::{Dfs, DfsPostOrder, EdgeRef, GraphBase, Walker},
+    visit::{Dfs, DfsPostOrder, EdgeRef, Walker},
     Direction::{Incoming, Outgoing},
 };
 use std::{
@@ -35,7 +35,7 @@ pub enum Error {
 const INVALID_EDGE: &str = "[invalid EdgeId]";
 
 impl Error {
-    fn to_string(&self, graph: &Graph) -> String {
+    fn to_string<N: StateName>(&self, graph: &petgraph::Graph<N, SwarmLabel>) -> String {
         match self {
             Error::InitialStateDisconnected => format!("initial state has no transitions"),
             Error::LogTypeEmpty(edge) => {
@@ -70,7 +70,7 @@ impl Error {
                 let Some((state, _)) = graph.edge_endpoints(*edge) else {
                     return format!("non-deterministic event guard {}", INVALID_EDGE);
                 };
-                let state = &graph[state].name;
+                let state = graph[state].state_name();
                 let guard = &graph[*edge].log_type[0];
                 format!("non-deterministic event guard type {guard} in state {state}")
             }
@@ -78,7 +78,7 @@ impl Error {
                 let Some((state, _)) = graph.edge_endpoints(*edge) else {
                     return format!("non-deterministic command {}", INVALID_EDGE);
                 };
-                let state = &graph[state].name;
+                let state = graph[state].state_name();
                 let command = &graph[*edge].cmd;
                 let role = &graph[*edge].role;
                 format!("non-deterministic command {command} for role {role} in state {state}")
@@ -88,17 +88,23 @@ impl Error {
             }
         }
     }
+
+    pub fn convert<N: StateName>(
+        graph: &petgraph::Graph<N, SwarmLabel>,
+    ) -> impl Fn(Error) -> String + '_ {
+        |err| err.to_string(graph)
+    }
 }
 
-struct Edge<'a>(&'a Graph, EdgeId);
+struct Edge<'a, N: StateName>(&'a petgraph::Graph<N, SwarmLabel>, EdgeId);
 
-impl<'a> fmt::Display for Edge<'a> {
+impl<'a, N: StateName> fmt::Display for Edge<'a, N> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let Some((source, target)) = self.0.edge_endpoints(self.1) else {
             return f.write_str(INVALID_EDGE);
         };
-        let source = &self.0[source].name;
-        let target = &self.0[target].name;
+        let source = self.0[source].state_name();
+        let target = self.0[target].state_name();
         let label = &self.0[self.1];
         write!(f, "({source})--[{label}]-->({target})")
     }
@@ -121,25 +127,31 @@ impl Node {
     }
 }
 
-type Graph = petgraph::Graph<Node, SwarmLabel>;
-pub type NodeId = <petgraph::Graph<(), ()> as GraphBase>::NodeId;
-pub type EdgeId = <petgraph::Graph<(), ()> as GraphBase>::EdgeId;
-
-pub fn check(proto: SwarmProtocol, subs: Subscriptions) -> Result<(), Vec<String>> {
-    let (graph, initial, mut errors) = match prepare_graph(proto, &subs) {
-        Ok((g, i)) => (g, i, Vec::new()),
-        Err((g, Some(i), e)) => (g, i, e),
-        Err((g, None, e)) => return Err(e.into_iter().map(|e| e.to_string(&g)).collect()),
-    };
-    errors.extend(well_formed(&graph, initial, subs));
-    if errors.is_empty() {
-        Ok(())
-    } else {
-        Err(errors.into_iter().map(|e| e.to_string(&graph)).collect())
+impl StateName for Node {
+    fn state_name(&self) -> &State {
+        &self.name
     }
 }
 
-fn well_formed(graph: &Graph, initial: NodeId, subs: Subscriptions) -> Vec<Error> {
+type Graph = petgraph::Graph<Node, SwarmLabel>;
+
+pub fn check(
+    proto: SwarmProtocol,
+    subs: &Subscriptions,
+) -> (super::Graph, Option<NodeId>, Vec<Error>) {
+    let (graph, initial, mut errors) = match prepare_graph(proto, &subs) {
+        (g, Some(i), e) => (g, i, e),
+        (g, None, e) => return (g.map(|_, n| n.name.clone(), |_, x| x.clone()), None, e),
+    };
+    errors.extend(well_formed(&graph, initial, subs));
+    (
+        graph.map(|_, n| n.name.clone(), |_, x| x.clone()),
+        Some(initial),
+        errors,
+    )
+}
+
+fn well_formed(graph: &Graph, initial: NodeId, subs: &Subscriptions) -> Vec<Error> {
     let mut errors = Vec::new();
     let empty = BTreeSet::new();
     let sub = |r: &Role| subs.get(r).unwrap_or(&empty);
@@ -209,7 +221,7 @@ fn well_formed(graph: &Graph, initial: NodeId, subs: Subscriptions) -> Vec<Error
 fn prepare_graph(
     proto: SwarmProtocol,
     subs: &Subscriptions,
-) -> Result<(Graph, NodeId), (Graph, Option<NodeId>, Vec<Error>)> {
+) -> (Graph, Option<NodeId>, Vec<Error>) {
     let mut errors = Vec::new();
     let mut graph = Graph::new();
     let mut nodes = HashMap::new();
@@ -232,7 +244,7 @@ fn prepare_graph(
         *idx
     } else {
         errors.push(Error::InitialStateDisconnected);
-        return Err((graph, None, errors));
+        return (graph, None, errors);
     };
     let no_empty_logs = errors.is_empty();
 
@@ -278,13 +290,8 @@ fn prepare_graph(
         }
     }
 
-    if errors.is_empty() {
-        Ok((graph, initial))
-    } else if no_empty_logs {
-        Err((graph, Some(initial), errors))
-    } else {
-        Err((graph, None, errors))
-    }
+    let initial = no_empty_logs.then(|| initial);
+    (graph, initial, errors)
 }
 
 fn propagate_back(g: &mut Graph, node: NodeId) {
@@ -401,6 +408,7 @@ fn log_filter(log: &[EventType], subs: &BTreeSet<EventType>) -> BitVec {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::MapVec;
     use maplit::btreeset;
     use petgraph::visit::{Dfs, Walker};
     use pretty_assertions::assert_eq;
@@ -426,6 +434,11 @@ mod tests {
     }
     fn ev(e: &str) -> EventType {
         EventType::new(e)
+    }
+    fn prep_graph(proto: SwarmProtocol, subs: &Subscriptions) -> (super::Graph, NodeId) {
+        let (graph, initial, e) = prepare_graph(proto, &subs);
+        assert_eq!(e.len(), 0);
+        (graph, initial.unwrap())
     }
 
     #[test]
@@ -460,7 +473,7 @@ mod tests {
         )
         .unwrap();
 
-        let (graph, initial) = prepare_graph(proto, &subs).unwrap();
+        let (graph, initial) = prep_graph(proto, &subs);
         let mut nodes = BTreeMap::new();
         for node in Dfs::new(&graph, initial).iter(&graph) {
             let node = &graph[node];
@@ -490,7 +503,7 @@ mod tests {
         );
         assert_eq!(nodes["S4"].1, btreeset! {});
 
-        let mut errors = well_formed(&graph, initial, subs);
+        let mut errors = well_formed(&graph, initial, &subs);
         errors.sort();
         let g = &graph;
         let mut expected = vec![
@@ -592,7 +605,8 @@ mod tests {
             }"#,
         )
         .unwrap();
-        let mut errors = check(proto, subs).unwrap_err();
+        let (g, _, errors) = check(proto, &subs);
+        let mut errors = errors.map(Error::convert(&g));
         errors.sort();
         assert_eq!(errors, vec![
             "active role does not subscribe to any of its emitted event types in transition (S0)--[a@R1<A,B,C>]-->(S1)",
@@ -621,7 +635,8 @@ mod tests {
             }"#,
         )
         .unwrap();
-        let mut errors = check(proto, BTreeMap::new()).unwrap_err();
+        let (g, _, errors) = check(proto, &BTreeMap::new());
+        let mut errors = errors.map(Error::convert(&g));
         errors.sort();
         assert_eq!(errors, vec![
             "active role does not subscribe to any of its emitted event types in transition (S0)--[a@R<A>]-->(S1)",
@@ -653,7 +668,8 @@ mod tests {
             }"#,
         )
         .unwrap();
-        let mut errors = check(proto, BTreeMap::new()).unwrap_err();
+        let (g, _, errors) = check(proto, &BTreeMap::new());
+        let mut errors = errors.map(Error::convert(&g));
         errors.sort();
         assert_eq!(
             errors,
@@ -674,7 +690,8 @@ mod tests {
             }"#,
         )
         .unwrap();
-        let mut errors = check(proto, BTreeMap::new()).unwrap_err();
+        let (g, _, errors) = check(proto, &BTreeMap::new());
+        let mut errors = errors.map(Error::convert(&g));
         errors.sort();
         assert_eq!(
             errors,
