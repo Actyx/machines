@@ -20,30 +20,17 @@ pub type EdgeId = <petgraph::Graph<(), ()> as GraphBase>::EdgeId;
 pub fn check_swarm(proto: String, subs: String) -> String {
     let proto = match serde_json::from_str::<SwarmProtocol>(&proto) {
         Ok(p) => p,
-        Err(e) => {
-            return serde_json::to_string(&CheckResult::ERROR {
-                errors: vec![e.to_string()],
-            })
-            .unwrap()
-        }
+        Err(e) => return err(vec![format!("parsing swarm protocol: {}", e)]),
     };
     let subs = match serde_json::from_str::<Subscriptions>(&subs) {
         Ok(p) => p,
-        Err(e) => {
-            return serde_json::to_string(&CheckResult::ERROR {
-                errors: vec![e.to_string()],
-            })
-            .unwrap()
-        }
+        Err(e) => return err(vec![format!("parsing subscriptions: {}", e)]),
     };
     let (graph, _, errors) = swarm::check(proto, &subs);
     if errors.is_empty() {
         serde_json::to_string(&CheckResult::OK).unwrap()
     } else {
-        serde_json::to_string(&CheckResult::ERROR {
-            errors: errors.map(swarm::Error::convert(&graph)),
-        })
-        .unwrap()
+        err(errors.map(swarm::Error::convert(&graph)))
     }
 }
 
@@ -51,42 +38,27 @@ pub fn check_swarm(proto: String, subs: String) -> String {
 pub fn check_projection(swarm: String, subs: String, role: String, machine: String) -> String {
     let swarm = match serde_json::from_str::<SwarmProtocol>(&swarm) {
         Ok(p) => p,
-        Err(e) => {
-            return serde_json::to_string(&CheckResult::ERROR {
-                errors: vec![e.to_string()],
-            })
-            .unwrap()
-        }
+        Err(e) => return err(vec![format!("parsing swarm protocol: {}", e)]),
     };
     let subs = match serde_json::from_str::<Subscriptions>(&subs) {
         Ok(p) => p,
-        Err(e) => {
-            return serde_json::to_string(&CheckResult::ERROR {
-                errors: vec![e.to_string()],
-            })
-            .unwrap()
-        }
+        Err(e) => return err(vec![format!("parsing subscriptions: {}", e)]),
     };
     let role = Role::new(&role);
     let machine = match serde_json::from_str::<Machine>(&machine) {
         Ok(p) => p,
-        Err(e) => {
-            return serde_json::to_string(&CheckResult::ERROR {
-                errors: vec![e.to_string()],
-            })
-            .unwrap()
-        }
+        Err(e) => return err(vec![format!("parsing machine: {}", e)]),
     };
 
     let (swarm, initial, mut errors) = swarm::from_json(swarm, &subs);
     let Some(initial) = initial else {
-        return serde_json::to_string(&CheckResult::ERROR { errors }).unwrap();
+        return err(errors);
     };
     let (proj, proj_initial) = machine::project(&swarm, initial, &subs, role);
     let (machine, json_initial) = machine::from_json(machine);
     let Some(json_initial) = json_initial else {
         errors.push(format!("initial machine state has no transitions"));
-        return serde_json::to_string(&CheckResult::ERROR { errors }).unwrap();
+        return err(errors);
     };
 
     errors.extend(
@@ -98,8 +70,12 @@ pub fn check_projection(swarm: String, subs: String, role: String, machine: Stri
     if errors.is_empty() {
         serde_json::to_string(&CheckResult::OK).unwrap()
     } else {
-        serde_json::to_string(&CheckResult::ERROR { errors }).unwrap()
+        err(errors)
     }
+}
+
+fn err(errors: Vec<String>) -> String {
+    serde_json::to_string(&CheckResult::ERROR { errors }).unwrap()
 }
 
 trait MapVec<T> {
