@@ -1,6 +1,6 @@
 use crate::{
     types::{EventType, Role, State, StateName, SwarmLabel},
-    EdgeId, NodeId, Subscriptions, SwarmProtocol,
+    EdgeId, MapVec, NodeId, Subscriptions, SwarmProtocol,
 };
 use bitvec::{bitvec, vec::BitVec};
 use itertools::Itertools;
@@ -37,7 +37,9 @@ const INVALID_EDGE: &str = "[invalid EdgeId]";
 impl Error {
     fn to_string<N: StateName>(&self, graph: &petgraph::Graph<N, SwarmLabel>) -> String {
         match self {
-            Error::InitialStateDisconnected => format!("initial state has no transitions"),
+            Error::InitialStateDisconnected => {
+                format!("initial swarm protocol state has no transitions")
+            }
             Error::LogTypeEmpty(edge) => {
                 format!("log type must not be empty {}", Edge(graph, *edge))
             }
@@ -144,11 +146,11 @@ pub fn check(
         (g, None, e) => return (g.map(|_, n| n.name.clone(), |_, x| x.clone()), None, e),
     };
     errors.extend(well_formed(&graph, initial, subs));
-    (
-        graph.map(|_, n| n.name.clone(), |_, x| x.clone()),
-        Some(initial),
-        errors,
-    )
+    (to_swarm(&graph), Some(initial), errors)
+}
+
+fn to_swarm(graph: &Graph) -> super::Graph {
+    graph.map(|_, n| n.name.clone(), |_, x| x.clone())
 }
 
 fn well_formed(graph: &Graph, initial: NodeId, subs: &Subscriptions) -> Vec<Error> {
@@ -216,6 +218,14 @@ fn well_formed(graph: &Graph, initial: NodeId, subs: &Subscriptions) -> Vec<Erro
         }
     }
     errors
+}
+
+pub fn from_json(
+    proto: SwarmProtocol,
+    subs: &Subscriptions,
+) -> (super::Graph, Option<NodeId>, Vec<String>) {
+    let (g, i, e) = prepare_graph(proto, subs);
+    (to_swarm(&g), i, e.map(Error::convert(&g)))
 }
 
 fn prepare_graph(
@@ -696,7 +706,7 @@ mod tests {
         assert_eq!(
             errors,
             vec![
-                "initial state has no transitions",
+                "initial swarm protocol state has no transitions",
                 "log type must not be empty (S1)--[b@R2<>]-->(S2)",
             ]
         );

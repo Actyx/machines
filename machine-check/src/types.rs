@@ -93,12 +93,7 @@ pub struct SwarmLabel {
 impl fmt::Display for SwarmLabel {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}@{}<", self.cmd, self.role)?;
-        for (i, t) in self.log_type.iter().enumerate() {
-            if i > 0 {
-                write!(f, ",")?;
-            }
-            write!(f, "{}", t)?;
-        }
+        print_log(&self.log_type, f)?;
         write!(f, ">")
     }
 }
@@ -113,6 +108,28 @@ pub enum MachineLabel {
     },
     #[serde(rename_all = "camelCase")]
     Input { event_type: EventType },
+}
+
+impl fmt::Display for MachineLabel {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            MachineLabel::Execute { cmd, log_type } => {
+                write!(f, "{}/", cmd)?;
+                print_log(&log_type, f)
+            }
+            MachineLabel::Input { event_type } => write!(f, "{event_type}?"),
+        }
+    }
+}
+
+fn print_log(log: &[EventType], f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    for (i, t) in log.iter().enumerate() {
+        if i > 0 {
+            write!(f, ",")?;
+        }
+        write!(f, "{}", t)?;
+    }
+    Ok(())
 }
 
 pub trait StateName {

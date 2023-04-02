@@ -47,6 +47,61 @@ pub fn check_swarm(proto: String, subs: String) -> String {
     }
 }
 
+#[wasm_bindgen]
+pub fn check_projection(swarm: String, subs: String, role: String, machine: String) -> String {
+    let swarm = match serde_json::from_str::<SwarmProtocol>(&swarm) {
+        Ok(p) => p,
+        Err(e) => {
+            return serde_json::to_string(&CheckResult::ERROR {
+                errors: vec![e.to_string()],
+            })
+            .unwrap()
+        }
+    };
+    let subs = match serde_json::from_str::<Subscriptions>(&subs) {
+        Ok(p) => p,
+        Err(e) => {
+            return serde_json::to_string(&CheckResult::ERROR {
+                errors: vec![e.to_string()],
+            })
+            .unwrap()
+        }
+    };
+    let role = Role::new(&role);
+    let machine = match serde_json::from_str::<Machine>(&machine) {
+        Ok(p) => p,
+        Err(e) => {
+            return serde_json::to_string(&CheckResult::ERROR {
+                errors: vec![e.to_string()],
+            })
+            .unwrap()
+        }
+    };
+
+    let (swarm, initial, mut errors) = swarm::from_json(swarm, &subs);
+    let Some(initial) = initial else {
+        return serde_json::to_string(&CheckResult::ERROR { errors }).unwrap();
+    };
+    let (proj, proj_initial) = machine::project(&swarm, initial, &subs, role);
+    let (machine, json_initial) = machine::from_json(machine);
+    let Some(json_initial) = json_initial else {
+        errors.push(format!("initial machine state has no transitions"));
+        return serde_json::to_string(&CheckResult::ERROR { errors }).unwrap();
+    };
+
+    errors.extend(
+        machine::equivalent(&proj, proj_initial, &machine, json_initial)
+            .into_iter()
+            .map(machine::Error::convert(&proj, &machine)),
+    );
+
+    if errors.is_empty() {
+        serde_json::to_string(&CheckResult::OK).unwrap()
+    } else {
+        serde_json::to_string(&CheckResult::ERROR { errors }).unwrap()
+    }
+}
+
 trait MapVec<T> {
     fn map<U>(self, f: impl Fn(T) -> U) -> Vec<U>;
 }
