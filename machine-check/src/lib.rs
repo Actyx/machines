@@ -55,11 +55,16 @@ pub fn check_projection(swarm: String, subs: String, role: String, machine: Stri
         return err(errors);
     };
     let (proj, proj_initial) = machine::project(&swarm, initial, &subs, role);
-    let (machine, json_initial) = machine::from_json(machine);
+    let (machine, json_initial, m_errors) = machine::from_json(machine);
+    let machine_problem = !m_errors.is_empty();
+    errors.extend(m_errors);
     let Some(json_initial) = json_initial else {
         errors.push(format!("initial machine state has no transitions"));
         return err(errors);
     };
+    if machine_problem {
+        return err(errors);
+    }
 
     errors.extend(
         machine::equivalent(&proj, proj_initial, &machine, json_initial)

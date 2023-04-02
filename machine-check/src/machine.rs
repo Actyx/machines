@@ -73,20 +73,27 @@ pub fn project(
     (machine, m_nodes[initial.index()])
 }
 
-pub fn from_json(proto: Machine) -> (Graph, Option<NodeId>) {
+pub fn from_json(proto: Machine) -> (Graph, Option<NodeId>, Vec<String>) {
+    let mut errors = Vec::new();
     let mut machine = Graph::new();
     let mut nodes = HashMap::new();
     for t in proto.transitions {
         tracing::debug!("adding {} --({:?})--> {}", t.source, t.label, t.target);
         let source = *nodes
             .entry(t.source.clone())
-            .or_insert_with(|| machine.add_node(Some(t.source)));
+            .or_insert_with(|| machine.add_node(Some(t.source.clone())));
         let target = *nodes
             .entry(t.target.clone())
             .or_insert_with(|| machine.add_node(Some(t.target)));
+        if let (MachineLabel::Execute { cmd, .. }, true) = (&t.label, source != target) {
+            errors.push(format!(
+                "command {cmd} is not a self-loop in state {}",
+                t.source
+            ));
+        }
         machine.add_edge(source, target, t.label);
     }
-    (machine, nodes.get(&proto.initial).copied())
+    (machine, nodes.get(&proto.initial).copied(), errors)
 }
 
 pub enum Side {
