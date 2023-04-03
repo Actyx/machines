@@ -29,7 +29,7 @@ export type MachineEvent<Key extends string, Payload extends utils.SerializableO
 
 /**
  * Collection of utilities surrounding MachineEvent creations
- * @see MachineEvent.design for more information about desigining MachineEvent
+ * @see MachineEvent.design for more information about designing MachineEvent
  */
 export namespace MachineEvent {
   /**
