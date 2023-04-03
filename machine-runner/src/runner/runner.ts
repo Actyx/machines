@@ -104,7 +104,7 @@ export type PersistFn<RegisteredEventsFactoriesTuple extends MachineEvent.Factor
 
 /**
  * @param sdk - An instance of Actyx.
- * @param tags - List of tags to be subscribed
+ * @param tags - List of tags to be subscribed. These tags will also be added to events published to Actyx.
  * @param initialFactory - initial state factory of the machine
  * @param initialPayload - initial state payload of the machine
  * @returns a MachineRunner instance
@@ -629,11 +629,17 @@ namespace ImplStateOpaque {
 
 /**
  * A typed snapshot of the MachineRunner's state with access to the state's
- * payload and the associated commands. Commands are available only if at the
- * time the snapshot is created these conditions are met: 1.) the MachineRunner
- * has caught up with Actyx's events stream, 2.) there are no events in the
- * internal queue awaiting processing, 3.) no command associated with the same
- * state has been issued
+ * payload and the associated commands.
+ *
+ * Commands are available only if at the time the snapshot is created these
+ * conditions are met: 1.) the MachineRunner has caught up with Actyx's events
+ * stream, 2.) there are no events in the internal queue awaiting processing,
+ * 3.) no command has been issued from this State yet.
+ *
+ * Commands runs the associated handler defined on the state-design step and
+ * will persists all the events returned by the handler into Actyx. It returns a
+ * promise that is resolved when persisting is successful, and rejects when
+ * persisting is failed.
  */
 export type State<
   StateName extends string,
@@ -643,11 +649,17 @@ export type State<
   /**
    * A dictionary containing commands previously registered during the State
    * Design process. Undefined when commands are unavailable during the time of
-   * the state snapshot. Commands are available only if at the time the snapshot
-   * is created these conditions are met: 1.) the MachineRunner has caught up
-   * with Actyx's events stream, 2.) there are no events in the internal queue
-   * awaiting processing, 3.) no command associated with the same state has been
-   * issued
+   * the state snapshot.
+   *
+   * Commands are available only if at the time the snapshot is created these
+   * conditions are met: 1.) the MachineRunner has caught up with Actyx's events
+   * stream, 2.) there are no events in the internal queue awaiting processing,
+   * 3.) no command has been issued from this State yet
+   *
+   * Commands runs the associated handler defined on the state-design step and
+   * will persists all the events returned by the handler into Actyx. It returns a
+   * promise that is resolved when persisting is successful, and rejects when
+   * persisting is failed.
    */
   commands?: ToCommandSignatureMap<Commands, any, MachineEvent.Any[]>
 }

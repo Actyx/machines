@@ -2,12 +2,12 @@ import { Tag } from '@actyx/sdk'
 import { StateMechanism, MachineEvent, ProtocolInternals, ReactionMap } from './state.js'
 
 /**
- * A protocool is guides the design processes a state. It contains information
- * regarding its own name and the types MachineEvent allowed to be involved in
- * the states and the transition of the states.
- *
- * The resulting states will be constrained to only used Events that has been
- * registered within the protocol.
+ * A protocol is the entry point for designing machine states and transitions.
+ * Its name should correspond to a role definition in a machine-check swarm
+ * protocol. The resulting states are constrained to only be able to interact
+ * with the events listed in the protocol design step. It accumulates
+ * information on states and reactions. This information can be passed to
+ * checkProjection to verify that the machine fits into a given swarm protocol.
  */
 export type Protocol<
   ProtocolName extends string,
@@ -46,11 +46,13 @@ export type Protocol<
   >
 
   /**
-   * Create a tag for the related protocol.
-   * The resulting tag is typed to permit the protocol's events.
-   * This tag type definition is required by `createMachineRunner`
-   * @param rawTagString - optional string that is when not supplied defaults to the protocol's name.
-   * @param extractId - @see actyx sdk Tag documentation for the explanation of extractId
+   * Create an Actyx event tag for this protocol. The resulting tag is typed to
+   * permit the protocol's events. This tag type definition is required by
+   * `createMachineRunner`
+   * @param rawTagString - optional string that is when not supplied defaults to
+   * the protocol's name.
+   * @param extractId - @see actyx sdk Tag documentation for the explanation of
+   * extractId
    */
   tag: (
     rawTagString?: string,
@@ -66,7 +68,7 @@ type DesignStateIntermediate<
   StateName extends string,
 > = {
   /**
-   * Declare type for a state
+   * Declare payload type for a state
    */
   withPayload: <StatePayload extends any>() => StateMechanism<
     ProtocolName,

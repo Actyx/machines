@@ -18,10 +18,11 @@ import * as utils from '../utils/type-utils.js'
  * MachineEvent is a type definition for data used by MachineRunner to
  * communicate in between instances and itself. Instances of MachineEvent are
  * persisted in Actyx as the payload of ActyxEvent. States can be designed to
- * emit MachineEvents and react to MachineEvents by transforming into a new
- * state
- * @see MachineEvent.design for more information regarding desigining MachineEvent
- * @see MachineEvent.Factory.make for more information regarding instantiating MachineEvent
+ * emit MachineEvents and react to MachineEvents, which yields a new state
+ * @see MachineEvent.design for more information regarding desigining
+ * MachineEvent
+ * @see MachineEvent.Factory.make for more information regarding instantiating
+ * MachineEvent
  */
 export type MachineEvent<Key extends string, Payload extends utils.SerializableObject> = {
   type: Key
@@ -29,7 +30,7 @@ export type MachineEvent<Key extends string, Payload extends utils.SerializableO
 
 /**
  * Collection of utilities surrounding MachineEvent creations
- * @see MachineEvent.design for more information about desigining MachineEvent
+ * @see MachineEvent.design for more information about designing MachineEvent
  */
 export namespace MachineEvent {
   /**
@@ -45,7 +46,7 @@ export namespace MachineEvent {
    *   .design("HangarDoorOpen")
    *   .withoutPayload()
    *
-   * // Creates the protocol involving the events specified in the array passed on to the second parameter
+   * // Creates a protocol that can make use of these three event types
    * const protocol = Protocol.make("hangardoor", [
    *  HangarDoorTransitioning,
    *  HangarDoorClosed,
@@ -78,6 +79,10 @@ export namespace MachineEvent {
   }
 
   export type Any = MachineEvent<string, any>
+
+  export type Of<T extends Factory.Any> = T extends Factory<infer Key, infer Payload>
+    ? MachineEvent<Key, Payload>
+    : never
 
   export type NonZeroTuple = utils.NonZeroTuple<Any>
 
