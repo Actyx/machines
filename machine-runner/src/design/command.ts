@@ -6,7 +6,7 @@ import { DeepReadonly } from '../utils/type-utils.js'
  * whatever is passed here is an important type that needs to be accounted for
  * in compilation.
  *
- * Changing some of them to unknown or object will cause
+ * Changing some of them to unknown or object will cause issues.
  */
 
 export type CommandContext<Self> = {
