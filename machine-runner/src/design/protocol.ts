@@ -183,12 +183,12 @@ export namespace ProtocolAnalysisResource {
             for (const [index, trigger] of reaction.eventChainTrigger.entries()) {
               const source = index === 0 ? ofState.name : syntheticEventName(ofState, modifier)
 
+              modifier.push(trigger)
+
               const target =
                 index === reaction.eventChainTrigger.length - 1
                   ? reaction.next.mechanism.name
-                  : syntheticEventName(ofState, [...modifier, trigger])
-
-              modifier.push(trigger)
+                  : syntheticEventName(ofState, modifier)
 
               accumulated.push({
                 source: source,
