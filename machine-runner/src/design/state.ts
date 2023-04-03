@@ -7,7 +7,7 @@ export * from './command.js'
 export * from './event.js'
 
 /**
- * @private not intended for use outside of actyx packages
+ * @private not intended for use outside of actyx packages.
  */
 export type StateRaw<Name extends string, Payload> = {
   type: Name
@@ -15,7 +15,7 @@ export type StateRaw<Name extends string, Payload> = {
 }
 
 /**
- * @private not intended for use outside of actyx packages
+ * @private not intended for use outside of actyx packages.
  */
 export namespace StateRaw {
   export type Any = StateRaw<string, unknown>
@@ -162,7 +162,7 @@ export type StateMechanism<
   >
 
   /**
-   * Finalize state design process
+   * Finalize state design process.
    * @returns a StateFactory
    */
   readonly finish: () => StateFactory<
@@ -273,8 +273,8 @@ export type StateFactory<
   Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
 > = {
   /**
-   * Helper to create a state payload to match the constraint of the state type
-   * @see react for more example
+   * Helper to create a state payload to match the constraint of the state type.
+   * @see react for more example.
    */
   make: (payload: StatePayload) => StatePayload
 

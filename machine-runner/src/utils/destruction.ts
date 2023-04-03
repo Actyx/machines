@@ -1,7 +1,7 @@
 /**
- * Utility to help centralize destruction-related mechanism such as
- * marking an object as destroyed, invoking previously registered
- * cleanup functions, and guarding cleanup to be invoked once.
+ * Utility to help centralize destruction-related mechanisms such as marking an
+ * object as destroyed, invoking previously registered cleanup functions, and
+ * guarding cleanup to be invoked once.
  */
 export type Destruction = ReturnType<typeof Destruction['make']>
 
@@ -23,8 +23,8 @@ export namespace Destruction {
 }
 
 /**
- * Utility to collect a set of functions that will be called when
- * "clean" method is called.
+ * Utility to collect a set of functions that will be called when the "clean"
+ * method is called.
  */
 export type Cleanup = ReturnType<typeof Cleanup['make']>
 

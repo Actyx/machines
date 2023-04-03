@@ -29,7 +29,7 @@ export type Protocol<
   ) => DesignStateIntermediate<ProtocolName, RegisteredEventsFactoriesTuple, StateName>
 
   /**
-   * Starts a design process for a state without payload.
+   * Starts a design process for a state without a payload.
    * @example
    * const HangarControlIdle = protocol
    *   .designEmpty("HangarControlIdle")
@@ -52,7 +52,7 @@ export type Protocol<
    * @param rawTagString - optional string that is when not supplied defaults to
    * the protocol's name.
    * @param extractId - @see actyx sdk Tag documentation for the explanation of
-   * extractId
+   * extractId.
    */
   tag: (
     rawTagString?: string,
@@ -68,7 +68,7 @@ type DesignStateIntermediate<
   StateName extends string,
 > = {
   /**
-   * Declare payload type for a state
+   * Declare payload type for a state.
    */
   withPayload: <StatePayload extends any>() => StateMechanism<
     ProtocolName,
@@ -80,14 +80,15 @@ type DesignStateIntermediate<
 }
 
 /**
- * A collection of utilities for designing a protocol
- * @see Protocol.make for getting started with using MachineRunner Protocol
+ * A collection of utilities for designing a protocol.
+ * @see Protocol.make for getting started with using MachineRunner Protocol.
  */
 export namespace Protocol {
   export type Any = Protocol<any, any>
 
   /**
-   * Extract the type of registered MachineEvent of a protocol in the form of a union type
+   * Extract the type of registered MachineEvent of a protocol in the form of a
+   * union type.
    * @example
    * const E1 = MachineEvent.design("E1").withoutPayload();
    * const E2 = MachineEvent.design("E2").withoutPayload();
@@ -108,9 +109,10 @@ export namespace Protocol {
 
   /**
    * Create a protocol with a specific name and event factories.
-   * @param protocolName - name of the protocol
-   * @param registeredEventFactories - tuple of MachineEventFactories
-   * @see MachineEvent.design to get started on creating MachineEventFactories for the registeredEventFactories parameter
+   * @param protocolName - name of the protocol.
+   * @param registeredEventFactories - tuple of MachineEventFactories.
+   * @see MachineEvent.design to get started on creating MachineEventFactories
+   * for the registeredEventFactories parameter.
    * @example
    * const hangarBay = Protocol.make("hangarBay")
    */

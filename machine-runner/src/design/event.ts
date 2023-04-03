@@ -15,11 +15,12 @@ import * as utils from '../utils/type-utils.js'
 // "loose" is required.
 
 /**
- * MachineEvent is a type definition for data used by MachineRunner to
- * communicate in between instances and itself. Instances of MachineEvent are
- * persisted in Actyx as the payload of ActyxEvent. States can be designed to
- * emit MachineEvents and react to MachineEvents, which yields a new state
- * @see MachineEvent.design for more information regarding desigining
+ * MachineEvent is a type definition for data used by an instance of
+ * MachineRunner to communicate with other instances and with itself. Instances
+ * of MachineEvent are persisted in Actyx as the payload of ActyxEvent. States
+ * can be designed to emit MachineEvents and react to MachineEvents, which
+ * yields a new state
+ * @see MachineEvent.design for more information regarding designing
  * MachineEvent
  * @see MachineEvent.Factory.make for more information regarding instantiating
  * MachineEvent
@@ -29,7 +30,7 @@ export type MachineEvent<Key extends string, Payload extends utils.SerializableO
 } & Payload
 
 /**
- * Collection of utilities surrounding MachineEvent creations
+ * Collection of utilities surrounding MachineEvent creations.
  * @see MachineEvent.design for more information about designing MachineEvent
  */
 export namespace MachineEvent {
@@ -87,9 +88,9 @@ export namespace MachineEvent {
   export type NonZeroTuple = utils.NonZeroTuple<Any>
 
   /**
-   * MachineEvent.Factory is a type definition for a constructor type that serve
+   * MachineEvent.Factory is a type definition for a constructor type that serves
    * as a blueprint for the resulting instances.
-   * @see MachineEvent.design for more information regarding desigining
+   * @see MachineEvent.design for more information regarding designing
    * MachineEvent
    * @see MachineEvent.Factory.make for more information regarding instantiating
    * MachineEvent
@@ -97,7 +98,7 @@ export namespace MachineEvent {
   export type Factory<Key extends string, Payload extends utils.SerializableObject> = {
     type: Key
     /**
-     * Create an event with the factory's type assigned to it
+     * Create an event with the factory's type assigned to it.
      * @example
      * const HangarDoorTransitioning = MachineEvent
      *    .design("HangarDoorTransitioning")
@@ -109,7 +110,7 @@ export namespace MachineEvent {
   }
 
   /**
-   * A collection of type utilities around Payload of a MachineEvent.Factory
+   * A collection of type utilities around the Payload of a MachineEvent.Factory.
    */
   export namespace Payload {
     export type Of<T extends MachineEvent.Any | Factory.Any> = T extends MachineEvent<
@@ -123,7 +124,7 @@ export namespace MachineEvent {
   }
 
   /**
-   * A collection of type utilities around Payload of a MachineEvent.Factory
+   * A collection of type utilities around MachineEvent.Factory.
    */
   export namespace Factory {
     export type Any = Factory<string, any>
@@ -143,7 +144,7 @@ export namespace MachineEvent {
       : ACC
 
     /**
-     * Turns a subtype of MachineEvent.Factory.Any[] into ActyxEvent[]
+     * Turns a subtype of MachineEvent.Factory.Any[] into ActyxEvent[].
      * @example
      * MachineEvent.Factory.MapToActyxEvent<[A,B]>
      * // where A and B are MachineEvent.Factory
@@ -160,7 +161,7 @@ export namespace MachineEvent {
       : ACC
 
     /**
-     * Turns a subtype of MachineEvent.Factory.Any[] into MachineEvent[]
+     * Turns a subtype of MachineEvent.Factory.Any[] into MachineEvent[].
      * @example
      * MachineEvent.Factory.MapToMachineEvent<[A,B]>
      * // where A and B are MachineEvent.Factory
@@ -177,7 +178,7 @@ export namespace MachineEvent {
       : ACC
 
     /**
-     * Turns a subtype of MachineEvent.Factory.Any[] into MachineEvent[]
+     * Turns a subtype of MachineEvent.Factory.Any[] into MachineEvent[].
      * @example
      * MachineEvent.Factory.MapToPayload<[A,B]>
      * // where A and B are MachineEvent.Factory
@@ -194,7 +195,7 @@ export namespace MachineEvent {
       : UNION
 
     /**
-     * Turns a subtype of MachineEvent.Factory.Any[] into union of its members
+     * Turns a subtype of MachineEvent.Factory.Any[] into union of its members.
      * @example
      * MachineEvent.Factory.Reduce<[A,B]>
      * // where A and B are MachineEvent.Factory
@@ -211,7 +212,8 @@ export namespace MachineEvent {
       : UNION
 
     /**
-     * Turns a subtype of MachineEvent.Factory.Any[] into union of its members' instance
+     * Turns a subtype of MachineEvent.Factory.Any[] into union of its members'
+     * instance.
      * @example
      * MachineEvent.Factory.Reduce<[A,B]>
      * // where A and B are MachineEvent.Factory

@@ -50,7 +50,7 @@ export type MachineRunner = {
   events: MachineEmitter
 
   /**
-   * Disconnect from actyx and disable future reactions and commands.
+   * Disconnect from Actyx and disable future reactions and commands.
    */
   destroy: () => unknown
 
@@ -69,7 +69,7 @@ export type MachineRunner = {
 
   /**
    * @returns a snapshot of the MachineRunner's initial state in the form of
-   * StateOpaque
+   * StateOpaque.
    */
   initial: () => StateOpaque
 
@@ -104,10 +104,11 @@ export type PersistFn<RegisteredEventsFactoriesTuple extends MachineEvent.Factor
 
 /**
  * @param sdk - An instance of Actyx.
- * @param tags - List of tags to be subscribed. These tags will also be added to events published to Actyx.
- * @param initialFactory - initial state factory of the machine
- * @param initialPayload - initial state payload of the machine
- * @returns a MachineRunner instance
+ * @param tags - List of tags to be subscribed. These tags will also be added to
+ * events published to Actyx.
+ * @param initialFactory - initial state factory of the machine.
+ * @param initialPayload - initial state payload of the machine.
+ * @returns a MachineRunner instance.
  */
 export const createMachineRunner = <
   RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
@@ -163,8 +164,8 @@ export const createMachineRunnerInternal = <
         `error publishing ${err} ${events.map((e) => JSON.stringify(e)).join(', ')}`,
       )
       /**
-       * Guards against cases where command's events couldn't be persisted but
-       * state has changed
+       * Guards against cases where command's events cannot be persisted but the
+       * state has changed.
        */
       if (currentCommandLock !== internals.commandLock) return
       internals.commandLock = null
@@ -357,7 +358,7 @@ namespace MachineRunnerIterableIterator {
 }
 
 /**
- * Object to help "awaiting" next value
+ * Object to help "awaiting" next value.
  */
 export type NextValueAwaiter = ReturnType<typeof NextValueAwaiter['make']>
 
@@ -453,10 +454,13 @@ export interface StateOpaque<
   Commands extends CommandDefinerMap<object, any, MachineEvent.Any[]> = object,
 > extends StateRaw<StateName, Payload> {
   /**
-   * Checks if the StateOpaque's type equals to the StateFactory's type
-   * @param factory - A StateFactory used to narrow the StateOpaque's type
+   * Checks if the StateOpaque's type equals to the StateFactory's type.
+   *
+   * @param factory - A StateFactory used to narrow the StateOpaque's type.
+   *
    * @return boolean that narrows the type of the StateOpaque based on the
    * supplied StateFactory.
+   *
    * @example
    * const state = machine.get()
    * if (state.is(HangarControlIdle)) {
@@ -476,14 +480,18 @@ export interface StateOpaque<
    * transform the value with the `then` function. Whether casting is successful
    * or not depends on whether the StateOpaque's State matches the factory
    * supplied via the first parameter.
-   * @param factory - A StateFactory used to cast the StateOpaque
+   *
+   * @param factory - A StateFactory used to cast the StateOpaque.
+   *
    * @param then - an optional transformation function accepting the typed state
    * and returns an arbitrary value. This function will be executed if the
-   * casting is successful
+   * casting is successful.
+   *
    * @return a typed State with access to payload and commands if the `then`
    * function is not supplied and the casting is successful, any value returned
    * by the `then` function if supplied and casting is successful, null if
-   * casting is not successful
+   * casting is not successful.
+   *
    * @example
    * const maybeHangarControlIdle = machine
    *   .get()?
@@ -509,14 +517,18 @@ export interface StateOpaque<
    * transform the value with the `then` function. Whether casting is successful
    * or not depends on whether the StateOpaque's State matches the factory
    * supplied via the first parameter.
-   * @param factory - A StateFactory used to cast the StateOpaque
+   *
+   * @param factory - A StateFactory used to cast the StateOpaque.
+   *
    * @param then - an optional transformation function accepting the typed state
    * and returns an arbitrary value. This function will be executed if the
-   * casting is successful
+   * casting is successful.
+   *
    * @return a typed State with access to payload and commands if the `then`
    * function is not supplied and the casting is successful, any value returned
    * by the `then` function if supplied and casting is successful, null if
-   * casting is not successful
+   * casting is not successful.
+   *
    * @example
    * const maybeHangarControlIdle = machine
    *   .get()?
@@ -542,7 +554,9 @@ export interface StateOpaque<
   /**
    * Cast into a typed State. Usable only inside a block where this
    * StateOpaque's type is narrowed.
-   * @return typed State with access to payload and commands
+   *
+   * @return typed State with access to payload and commands.
+   *
    * @example
    * const state = machine.get()
    * if (state.is(HangarControlIdle)) {
@@ -636,9 +650,9 @@ namespace ImplStateOpaque {
  * stream, 2.) there are no events in the internal queue awaiting processing,
  * 3.) no command has been issued from this State yet.
  *
- * Commands runs the associated handler defined on the state-design step and
- * will persists all the events returned by the handler into Actyx. It returns a
- * promise that is resolved when persisting is successful, and rejects when
+ * Commands run the associated handler defined on the state-design step and will
+ * persist all the events returned by the handler into Actyx. It returns a
+ * promise that is resolved when persisting is successful and rejects when
  * persisting is failed.
  */
 export type State<
@@ -656,16 +670,16 @@ export type State<
    * stream, 2.) there are no events in the internal queue awaiting processing,
    * 3.) no command has been issued from this State yet
    *
-   * Commands runs the associated handler defined on the state-design step and
-   * will persists all the events returned by the handler into Actyx. It returns a
-   * promise that is resolved when persisting is successful, and rejects when
+   * Commands run the associated handler defined on the state-design step and
+   * will persist all the events returned by the handler into Actyx. It returns
+   * a promise that is resolved when persisting is successful and rejects when
    * persisting is failed.
    */
   commands?: ToCommandSignatureMap<Commands, any, MachineEvent.Any[]>
 }
 
 /**
- * A collection of type utilities around State
+ * A collection of type utilities around the State.
  */
 export namespace State {
   export type Minim = State<string, any, CommandDefinerMap<any, any, MachineEvent.Any>>
@@ -673,7 +687,8 @@ export namespace State {
   export type NameOf<T extends State.Minim> = T extends State<infer Name, any, any> ? Name : never
 
   /**
-   * Extract the a typed state from a StateFactory
+   * Extract the typed state from a StateFactory.
+   *
    * @example
    * const Active = protocol
    *   .designEmpty("Active")
