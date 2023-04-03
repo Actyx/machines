@@ -90,6 +90,12 @@ export namespace Protocol {
     }
 
     const designState: Self['designState'] = (stateName) => {
+      if (stateName.includes(ProtocolAnalysisResource.SyntheticDelimiter)) {
+        throw new Error(
+          `Name should not contain character '${ProtocolAnalysisResource.SyntheticDelimiter}'`,
+        )
+      }
+
       markStateNameAsUsed(stateName)
       return {
         withPayload: () => StateMechanism.make(protocolInternal, stateName),
@@ -126,14 +132,16 @@ export type ProtocolAnalysisResource = {
 }
 
 export namespace ProtocolAnalysisResource {
+  export const SyntheticDelimiter = '§' as const
+
   export const syntheticEventName = (
     baseStateFactory: StateMechanism.Any | StateFactory.Any,
     modifyingEvents: Pick<MachineEvent.Factory.Any, 'type'>[],
   ) =>
-    `§${[
+    `${SyntheticDelimiter}${[
       ('mechanism' in baseStateFactory ? baseStateFactory.mechanism : baseStateFactory).name,
       ...modifyingEvents.map((f) => f.type),
-    ].join('+')}`
+    ].join(SyntheticDelimiter)}`
 
   export const fromProtocolInternals = <
     ProtocolName extends string,
