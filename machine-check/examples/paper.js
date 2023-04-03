@@ -4,16 +4,16 @@ import { checkSwarmProtocol, checkProjection } from '../lib/index.js'
 const swarm = {
   initial: 'S0',
   transitions: [
-    { label: { cmd: 'Request', logType: ['Requested'], role: 'P', }, source: 'S0', target: 'S1', },
-    { label: { cmd: 'Offer', logType: ['Bid', 'BidderID'], role: 'T', }, source: 'S1', target: 'S2', },
-    { label: { cmd: 'Offer', logType: ['Bid', 'BidderID'], role: 'T', }, source: 'S2', target: 'S2', },
-    { label: { cmd: 'Select', logType: ['Selected', 'PassengerID'], role: 'P', }, source: 'S2', target: 'S3', },
-    { label: { cmd: 'Cancel', logType: ['Cancelled'], role: 'P', }, source: 'S3', target: 'S6', },
-    { label: { cmd: 'Arrive', logType: ['Arrived'], role: 'T', }, source: 'S3', target: 'S4', },
-    { label: { cmd: 'Start', logType: ['Started'], role: 'P', }, source: 'S4', target: 'S5', },
-    { label: { cmd: 'Record', logType: ['Path'], role: 'T', }, source: 'S5', target: 'S5', },
-    { label: { cmd: 'Finish', logType: ['Finished', 'Rating'], role: 'P', }, source: 'S5', target: 'S6', },
-    { label: { cmd: 'Receipt', logType: ['Receipt'], role: 'O', }, source: 'S6', target: 'S7', },
+    { source: 'S0', target: 'S1', label: { role: 'P', cmd: 'Request', logType: ['Requested'] } },
+    { source: 'S1', target: 'S2', label: { role: 'T', cmd: 'Offer', logType: ['Bid', 'BidderID'] } },
+    { source: 'S2', target: 'S2', label: { role: 'T', cmd: 'Offer', logType: ['Bid', 'BidderID'] } },
+    { source: 'S2', target: 'S3', label: { role: 'P', cmd: 'Select', logType: ['Selected', 'PassengerID'] } },
+    { source: 'S3', target: 'S6', label: { role: 'P', cmd: 'Cancel', logType: ['Cancelled'] } },
+    { source: 'S3', target: 'S4', label: { role: 'T', cmd: 'Arrive', logType: ['Arrived'] } },
+    { source: 'S4', target: 'S5', label: { role: 'P', cmd: 'Start', logType: ['Started'] } },
+    { source: 'S5', target: 'S5', label: { role: 'T', cmd: 'Record', logType: ['Path'] } },
+    { source: 'S5', target: 'S6', label: { role: 'P', cmd: 'Finish', logType: ['Finished', 'Rating'] } },
+    { source: 'S6', target: 'S7', label: { role: 'O', cmd: 'Receipt', logType: ['Receipt'] } },
   ],
 }
 
