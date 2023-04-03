@@ -28,11 +28,24 @@ const subscription = {
 const P = {
   initial: 'S0',
   transitions: [
-    { source: 'S0', target: 'S0', label: { tag: 'Execute', cmd: 'Request', logType: ['Requested'] }, },
+    { source: 'S0', target: 'S0', label: { tag: 'Execute', cmd: 'Request', logType: ['Requested'] } },
     { source: 'S0', target: 'S1', label: { tag: 'Input', eventType: 'Requested' } },
     { source: 'S1', target: 'S2', label: { tag: 'Input', eventType: 'Bid' } },
     { source: 'S2', target: 'S3', label: { tag: 'Input', eventType: 'BidderID' } },
-    { source: 'S3', target: 'S3', label: { tag: 'Execute', cmd: 'Select', logType: ['Selected'] } },
+    { source: 'S3', target: 'S3', label: { tag: 'Execute', cmd: 'Select', logType: ['Selected', 'PassengerID'] } },
+    { source: 'S3', target: 'S4', label: { tag: 'Input', eventType: 'Bid' } },
+    { source: 'S4', target: 'S3', label: { tag: 'Input', eventType: 'BidderID' } },
+    { source: 'S3', target: 'S5', label: { tag: 'Input', eventType: 'Selected' } },
+    { source: 'S5', target: 'S6', label: { tag: 'Input', eventType: 'PassengerID' } },
+    { source: 'S6', target: 'S6', label: { tag: 'Execute', cmd: 'Cancel', logType: ['Cancelled'] } },
+    { source: 'S6', target: 'S7', label: { tag: 'Input', eventType: 'Cancelled' } },
+    { source: 'S6', target: 'S8', label: { tag: 'Input', eventType: 'Arrived' } },
+    { source: 'S8', target: 'S8', label: { tag: 'Execute', cmd: 'Start', logType: ['Started'] } },
+    { source: 'S8', target: 'S9', label: { tag: 'Input', eventType: 'Started' } },
+    { source: 'S9', target: 'S9', label: { tag: 'Input', eventType: 'Path' } },
+    { source: 'S9', target: 'S9', label: { tag: 'Execute', cmd: 'Finish', logType: ['Finished', 'Rating'] } },
+    { source: 'S9', target: 'S7', label: { tag: 'Input', eventType: 'Finished' } },
+    { source: 'S7', target: 'S10', label: { tag: 'Input', eventType: 'Receipt' } },
   ],
 }
 

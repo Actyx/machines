@@ -13,5 +13,7 @@
       "path": "dev-example"
     }
   ],
-  "settings": {}
+  "settings": {
+    "git.ignoreLimitWarning": true
+  }
 }
