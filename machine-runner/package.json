@@ -5,6 +5,10 @@
   "description": "asymmetric replicated state machines: runtime support",
   "main": "./lib/index.js",
   "types": "./lib/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Actyx/machines"
+  },
   "files": [
     "./lib/**/*"
   ],
