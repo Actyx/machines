@@ -48,7 +48,7 @@ export namespace MachineEvent {
    *   .withoutPayload()
    *
    * // Creates a protocol that can make use of these three event types
-   * const protocol = Machine.make("hangardoor", [
+   * const protocol = SwarmProtocol.make("HangarBayExchange", ["HangarBayExchange"], [
    *  HangarDoorTransitioning,
    *  HangarDoorClosed,
    *  HangarDoorOpen,

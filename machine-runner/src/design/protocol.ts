@@ -8,7 +8,16 @@ import {
 } from './state.js'
 import { NonZeroTuple } from '../utils/type-utils.js'
 
-// TODO: document
+/**
+ * SwarmProtocol is the entry point of designing a swarm of MachineRunners. A
+ * SwarmProtocol dictates MachineEvents used for communication and Actyx Tags
+ * used as the channel to transport said Events. A SwarmProtocol provides a way
+ * to design Machine protocols that abides the Events and Tags rules of the
+ * SwarmProtocol.
+ * @example
+ * const protocol = SwarmProtocol.make("HangarBayExchange")
+ * const machine = protocol.makeMachine("HangarBay")
+ */
 export type SwarmProtocol<
   SwarmProtocolName extends string,
   TagString extends NonZeroTuple<string>,
@@ -20,7 +29,20 @@ export type SwarmProtocol<
   tags: Tags<MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>>
 }
 
+/**
+ * Utilities for SwarmProtocol
+ * @see SwarmProtocol.make
+ */
 export namespace SwarmProtocol {
+  /**
+   * Construct a SwarmProtocol
+   * @param swarmProtocolName - The name of the swarm protocol
+   * @param tags - the tags used to mark the events passed to Actyx
+   * @param registeredEventFactories - MachineEvent.Factories that are allowed
+   * to be used for communications in the scope of this SwarmProtocol
+   * @example
+   * const protocol = SwarmProtocol.make("")
+   */
   export const make = <
     SwarmProtocolName extends string,
     TagString extends NonZeroTuple<string>,
@@ -129,8 +151,7 @@ type DesignStateIntermediate<
 }
 
 /**
- * A collection of utilities for designing a protocol.
- * @see Machine.make for getting started with using MachineRunner Machine Protocol.
+ * A collection of type utilities around Machine.
  */
 export namespace Machine {
   export type Any = Machine<any, any>
@@ -143,11 +164,14 @@ export namespace Machine {
    * const E2 = MachineEvent.design("E2").withoutPayload();
    * const E3 = MachineEvent.design("E3").withoutPayload();
    *
-   * const machine = Machine.make("somename", [E1, E2, E3]);
+   * const protocol = SwarmProtocol.make("HangarBayExchange", ["HangarBayExchange"], [E1, E2, E3]);
+   *
+   * const machine = protocol.makeMachine("somename");
    *
    * type AllEvents = Machine.EventsOf<typeof machine>;
    * // Equivalent of:
    * // MachineEvent.Of<typeof E1> | MachineEvent.Of<typeof E2> | MachineEvent.Of<typeof E3>
+   * // { "type": "E1" }           | { "type": "E2" }           | { "type": "E3" }
    */
   export type EventsOf<T extends Machine.Any> = T extends Machine<
     any,
