@@ -10,7 +10,7 @@ export const UITaxiInitial = ({ state }: UITaxiInitialProps) => {
 
 type UITaxiFirstBidProps = { state: State.Of<typeof Taxi.FirstBid> }
 
-export const UITaxiFirstBid = ({ state: state }: UITaxiFirstBidProps) => {
+export const UITaxiFirstBid = ({ state }: UITaxiFirstBidProps) => {
   const [price, setPrice] = useState<number | null>(null)
   const buttonEnabled = state.commands !== undefined
   return (
@@ -51,7 +51,7 @@ export const UITaxiFirstBid = ({ state: state }: UITaxiFirstBidProps) => {
 
 type UITaxiAuctionProps = { state: State.Of<typeof Taxi.Auction> }
 
-export const UITaxiAuction = ({ state: state }: UITaxiAuctionProps) => {
+export const UITaxiAuction = ({ state }: UITaxiAuctionProps) => {
   const [price, setPrice] = useState<number | null>(null)
   const buttonEnabled = state.commands !== undefined
   return (
@@ -92,6 +92,6 @@ export const UITaxiAuction = ({ state: state }: UITaxiAuctionProps) => {
 
 type UITaxiRideProps = { state: State.Of<typeof Taxi.Ride> }
 
-export const UITaxiRide = ({ state: state }: UITaxiRideProps) => {
+export const UITaxiRide = ({ state }: UITaxiRideProps) => {
   return null
 }

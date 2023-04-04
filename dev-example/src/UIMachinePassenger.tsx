@@ -6,7 +6,7 @@ type UIPassengerInitialProps = {
   state: State.Of<typeof Passenger.Initial>
 }
 
-export const UIPassengerInitial = ({ state: state }: UIPassengerInitialProps) => {
+export const UIPassengerInitial = ({ state }: UIPassengerInitialProps) => {
   const [pickup, setPickup] = useState('')
   const [destination, setDestination] = useState('')
   const buttonEnabled =
@@ -45,7 +45,7 @@ export type UIPassengerAuctionProps = {
   state: State.Of<typeof Passenger.Auction>
 }
 
-export const UIPassengerAuction = ({ state: state }: UIPassengerAuctionProps) => {
+export const UIPassengerAuction = ({ state }: UIPassengerAuctionProps) => {
   const [selection, setSelection] = useState<BidData | null>(state.payload.bids[0] || null)
   const buttonEnabled = selection !== null && state.commands !== undefined
 
@@ -86,7 +86,7 @@ export type UIPassengerRideProps = {
   state: State.Of<typeof Passenger.Ride>
 }
 
-export const UIPassengerRide = ({ state: state }: UIPassengerRideProps) => {
+export const UIPassengerRide = ({ state }: UIPassengerRideProps) => {
   const buttonEnabled = state.commands !== undefined
   return (
     <div>

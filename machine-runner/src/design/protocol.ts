@@ -53,16 +53,7 @@ export namespace SwarmProtocol {
     registeredEventFactories: RegisteredEventsFactoriesTuple,
   ): SwarmProtocol<SwarmProtocolName, TagString, RegisteredEventsFactoriesTuple> => {
     return {
-      tags: (() => {
-        const [first, ...rest] = tags
-        return rest.reduce(
-          (
-            acc: Tags<MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>>,
-            moreTagString,
-          ) => acc.and(Tag(moreTagString)),
-          Tag<MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>>(first),
-        )
-      })(),
+      tags: Tags(...tags),
       makeMachine: (machineName) => ImplMachine.make(machineName, registeredEventFactories),
     }
   }
