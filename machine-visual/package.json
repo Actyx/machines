@@ -7,11 +7,15 @@
   "exports": {
     ".": "./lib/index.js"
   },
+  "files": [
+    "./lib"
+  ],
   "scripts": {
     "prepare:machine-runner": "cd ../machine-runner && npm install && npm run lint && npm run build && npm run test",
     "prepare": "npm run prepare:machine-runner",
     "clean": "rimraf ./lib",
-    "build": "tsc"
+    "build": "tsc",
+    "prepublishOnly": "npm run clean && npm run build && npm run test && npm run lint"
   },
   "keywords": [
     "local-first"
