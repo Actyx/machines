@@ -6,11 +6,17 @@ import { MachineEvent } from './event.js'
 export * from './command.js'
 export * from './event.js'
 
+/**
+ * @private not intended for use outside of actyx packages.
+ */
 export type StateRaw<Name extends string, Payload> = {
   type: Name
   payload: Payload
 }
 
+/**
+ * @private not intended for use outside of actyx packages.
+ */
 export namespace StateRaw {
   export type Any = StateRaw<string, unknown>
 }
@@ -106,7 +112,31 @@ export type StateMechanism<
   readonly protocol: ProtocolInternals<ProtocolName, RegisteredEventsFactoriesTuple>
   readonly name: StateName
   readonly commands: Commands
-
+  /**
+   * Attach a command to a state. The attached commands are available when a
+   * MachineRunner is in that particular state. Note that a command will not
+   * automatically trigger a state change. A reaction must be defined to
+   * properly trigger a state change.
+   * @see StateFactory.react on how to define a reaction
+   * @example
+   * const HangarControlIdle = protocol
+   *   .designState("HangarControlIdle")
+   *   .withPayload<{
+   *     dockingRequests: { shipId: string, at: Date }[]
+   *   }>()
+   *   .command('acceptDockingRequest', [DockingRequestAccepted], (context, shipId: string) => [
+   *     DockingRequestAccepted.make({
+   *       shipId
+   *     })
+   *   ])
+   *   .finish()
+   * // When a machine is in a certain state, the commands are available at runtime.
+   * // TypeScript type hints for the command's parameters are available
+   * const state = machine.get(); // machine is an instance of MachineRunner
+   * if (state.is(HangarControlIdle)) {
+   *   state.cast().commands?.acceptDockingRequest("someShipId");
+   * }
+   */
   readonly command: <
     CommandName extends string,
     AcceptedEventFactories extends utils.NonZeroTuple<
@@ -135,6 +165,10 @@ export type StateMechanism<
     }
   >
 
+  /**
+   * Finalize state design process.
+   * @returns a StateFactory
+   */
   readonly finish: () => StateFactory<
     ProtocolName,
     RegisteredEventsFactoriesTuple,
@@ -178,14 +212,15 @@ export namespace StateMechanism {
 
     const command: Self['command'] = (name, factories, commandDefinition) => {
       // TODO: make this more sturdy
-      // commandDefinition now is supposed to be returning event payload
-      // and the patched commandDefinition here
+      //
+      // commandDefinition now is supposed to be returning event payload and the
+      // patched commandDefinition here
 
       type Params = Parameters<typeof commandDefinition>
 
       const patchedCommandDefinition = (...params: Params) => {
-        // Payload is either 0 or factories.length
-        // Therefore converting payload to event this way is safe-ish
+        // Payload is either 0 or factories.length. Therefore converting
+        // payload to event this way is safe-ish
         const payloads = commandDefinition(...params)
         const events = payloads.map((payload, index) => {
           const factory = factories[index]
@@ -200,12 +235,17 @@ export namespace StateMechanism {
         commands: {
           ...commands,
 
-          // TODO: continuing "sturdyness" note above
-          // This part is eventually used by convertCommandMapToCommandSignatureMap
-          // (find "convertCommandMapToCommandSignatureMap" in the StateContainer's code)
-          // "convertCommandMapToCommandSignatureMap" doesn't understand that non-patched commandDefinition
-          // is not returning events, but payloads.
-          // Therefore, changing this line and the patchedCommandDefinition above may break the library
+          // TODO: continuing "sturdyness" note above.
+          //
+          // This part is eventually used by
+          // convertCommandMapToCommandSignatureMap (find
+          // "convertCommandMapToCommandSignatureMap" in the StateContainer's
+          // code) "convertCommandMapToCommandSignatureMap" doesn't understand
+          // that non-patched commandDefinition is not returning events, but
+          // payloads.
+          //
+          // Therefore, changing this line and the patchedCommandDefinition
+          // above may break the library
           [name]: patchedCommandDefinition,
         },
         commandDataForAnalytics: [
@@ -244,20 +284,11 @@ export namespace StateMechanism {
   }
 }
 
-// ==================================
-// StateFactory
-// ==================================
-
-export type StateFactoryFromMechanism<T extends StateMechanism.Any> = T extends StateFactory<
-  infer ProtocolName,
-  infer RegisteredEventsFactoriesTuple,
-  infer StateName,
-  infer StatePayload,
-  infer Commands
->
-  ? StateFactory<ProtocolName, RegisteredEventsFactoriesTuple, StateName, StatePayload, Commands>
-  : never
-
+/**
+ * A reference to a state. A StateFactory is used for determining if a snapshot
+ * of a state is of a particular type and as a notation for the "next-state" of
+ * a reaction.
+ */
 export type StateFactory<
   ProtocolName extends string,
   RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
@@ -265,8 +296,14 @@ export type StateFactory<
   StatePayload,
   Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
 > = {
+  /**
+   * Helper to create a state payload to match the constraint of the state type.
+   * @see react for more example.
+   */
   make: (payload: StatePayload) => StatePayload
+
   symbol: () => symbol
+
   readonly mechanism: StateMechanism<
     ProtocolName,
     RegisteredEventsFactoriesTuple,
@@ -275,6 +312,25 @@ export type StateFactory<
     Commands
   >
 
+  /**
+   * Add a reaction to a set of incoming events for a particular state. A
+   * reaction is a computation that MAY result in a state transition or a
+   * self-mutation.
+   * @example
+   * HangarControlIdle
+   *   .react([IncomingDockingRequest], HangarControlIdle, (context, request) => {
+   *     context.self.dockingRequests.push({ shipId: request.shipId, at: new Date() })
+   *   })
+   * @example
+   * HangarControlIdle
+   *   .react(
+   *     [DockingRequestAccepted],
+   *     HangarControlDocking,
+   *     (context, accepted) => HangarControlDocking.make({
+   *       shipId: accepted.shipId
+   *     })
+   *   )
+   */
   react: <
     EventFactoriesChain extends utils.NonZeroTuple<
       MachineEvent.Factory.Reduce<RegisteredEventsFactoriesTuple>

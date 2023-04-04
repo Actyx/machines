@@ -1,12 +1,12 @@
 import { DeepReadonly } from '../utils/type-utils.js'
 
 /**
- * DO NOT CHANGE `any` usage in this file!
- * TypeScript's behavior towards extends `any` is completely different
- * than `object`. `any` here tells TypeScript that whatever passed here
- * is an important type that needs to be accounted for in compilation.
+ * DO NOT CHANGE `any` usage in this file! TypeScript's behavior towards extends
+ * `any` is completely different than `object`. `any` here tells TypeScript that
+ * whatever is passed here is an important type that needs to be accounted for
+ * in compilation.
  *
- * Changing some of them to unknown or object will cause
+ * Changing some of them to unknown or object will cause issues.
  */
 
 export type CommandContext<Self> = {
@@ -48,11 +48,12 @@ export type ToCommandSignatureMap<
 }
 
 /**
- * Used by StateContainers to get the current context of the StateContainer
- * It is in the form of getter function so that it can be called when a command is called
- * and not when it is defined because it MAY contain a possible mutable property
- * It is called when the command is called to make sure that it has the latest mutable property
- * in case the property turns out to be a non-reference/primitives
+ * Used by StateContainers to get the current context of the StateContainer. It
+ * is in the form of getter function so that it can be called when a command is
+ * called and not when it is defined because it MAY contain a possible mutable
+ * property. It is called when the command is called to make sure that it has
+ * the latest mutable property in case the property turns out to be a
+ * non-reference/primitives
  */
 export type ActualContextGetter<Self> = () => Readonly<CommandContext<DeepReadonly<Self>>>
 
@@ -60,8 +61,8 @@ export type ConvertCommandMapParams<Self, RetVal> = {
   getActualContext: ActualContextGetter<Self>
   onReturn: (retval: RetVal) => Promise<void>
   /**
-   * isExpired is intended to flag if a snapshot that owns the reference to a command
-   * is not up to date with the state container's state.
+   * isExpired is intended to flag if a snapshot that owns the reference to a
+   * command is not up to date with the state container's state.
    */
   isExpired: () => boolean
 }

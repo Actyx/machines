@@ -7,8 +7,8 @@ import { EventMap } from 'typed-emitter'
 import { StateOpaque } from './runner.js'
 
 /**
- * Imported this way because it cannot be imported via normal import ... from syntax
- * https://github.com/andywer/typed-emitter/issues/39
+ * Imported this way because it cannot be imported via normal import ... from
+ * syntax https://github.com/andywer/typed-emitter/issues/39
  */
 type TypedEventEmitter<Events extends EventMap> = import('typed-emitter').default<Events>
 
