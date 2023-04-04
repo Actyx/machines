@@ -83,6 +83,12 @@ export namespace Protocol {
     }
 
     const markStateNameAsUsed = (stateName: string) => {
+      if (stateName.includes(ProtocolAnalysisResource.SyntheticDelimiter)) {
+        throw new Error(
+          `Name should not contain character '${ProtocolAnalysisResource.SyntheticDelimiter}'`,
+        )
+      }
+
       if (protocolInternal.states.registeredNames.has(stateName)) {
         throw new Error(`State "${stateName}" already registered within this protocol`)
       }
@@ -90,12 +96,6 @@ export namespace Protocol {
     }
 
     const designState: Self['designState'] = (stateName) => {
-      if (stateName.includes(ProtocolAnalysisResource.SyntheticDelimiter)) {
-        throw new Error(
-          `Name should not contain character '${ProtocolAnalysisResource.SyntheticDelimiter}'`,
-        )
-      }
-
       markStateNameAsUsed(stateName)
       return {
         withPayload: () => StateMechanism.make(protocolInternal, stateName),

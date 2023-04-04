@@ -864,10 +864,10 @@ describe('deepCopy', () => {
 
 describe('ProtocolAnalysisResource.syntheticEventName', () => {
   it('should be as formatted in the test', () => {
-    // TODO: determine if we want this naming
     expect(ProtocolAnalysisResource.syntheticEventName(Initial, [One, Two])).toBe(
-      '§Initial+One+Two',
+      '§Initial§One§Two',
     )
+    expect(ProtocolAnalysisResource.syntheticEventName(Second, [One])).toBe('§Second§One')
   })
 })
 
