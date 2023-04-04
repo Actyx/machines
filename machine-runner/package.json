@@ -5,11 +5,15 @@
   "description": "asymmetric replicated state machines: runtime support",
   "main": "./lib/index.js",
   "types": "./lib/index.d.ts",
+  "files": [
+    "./lib"
+  ],
   "scripts": {
     "build": "tsc",
     "clean": "rimraf ./lib",
     "test": "jest",
-    "lint": "npx eslint src/**/*.ts"
+    "lint": "npx eslint src/**/*.ts",
+    "prepublishOnly": "npm run clean && npm run build && npm run test && npm run lint"
   },
   "keywords": [
     "local-first"
