@@ -1,19 +1,18 @@
-import { auditMachine, State } from '@actyx/machine-runner'
-import { Actyx, ActyxEvent, Where } from '@actyx/sdk'
+import { MachineRunner, StateRaw } from '@actyx/machine-runner'
+import { Actyx, ActyxEvent } from '@actyx/sdk'
 import { Fragment, useEffect, useState } from 'react'
 import { Stage, Layer, Circle, Line, Label, Tag, Text, Rect } from 'react-konva'
 
 type Ev = { type: string }
-type Machine = { name: string; where: Where<Ev>; initial: State<Ev> }
 type Props = {
   actyx: Actyx
-  machines: Machine[]
+  machines: { name: string; machine: MachineRunner }[]
   className?: string
 }
 
 type MachineState =
-  | { idx: number; type: 'state'; state: State<Ev> }
-  | { idx: number; type: 'unhandled'; state: State<Ev> }
+  | { idx: number; type: 'state'; state: StateRaw.Any }
+  | { idx: number; type: 'unhandled'; state: StateRaw.Any }
   | { idx: number; type: 'queued' }
   | { idx: number; type: 'error'; error: unknown }
 
@@ -24,16 +23,16 @@ type TimePoint = {
 }
 
 type MachinePoint =
-  | { type: 'state'; state: State<Ev>; events: ActyxEvent<Ev>[] }
-  | { type: 'unhandled'; state: State<Ev>; event: ActyxEvent<Ev> }
-  | { type: 'error'; state: State<Ev>; events: ActyxEvent<Ev>[]; err: unknown }
+  | { type: 'state'; state: StateRaw.Any; events: ActyxEvent<Ev>[] }
+  | { type: 'unhandled'; state: StateRaw.Any; event: ActyxEvent<Ev> }
+  | { type: 'error'; state: StateRaw.Any; events: ActyxEvent<Ev>[]; err: unknown }
 
 type States = {
   merged: TimePoint[]
   split: MachinePoint[][]
 }
 
-function init(mach: Machine[]): States {
+function init(mach: { name: string; machine: MachineRunner }[]): States {
   const split = mach.map(() => [])
   return { merged: [], split }
 }
@@ -190,7 +189,7 @@ export function AuditMachines({ actyx, machines }: Props) {
   const [states] = useState<States>(() => init(machines))
   const [places, setPlaces] = useState<Placement>({ minutes: [], perPoint: [] })
   const [se, setSE] = useState<{
-    state: State<Ev>
+    state: StateRaw.Any
     name: string
     machNr: number
     tpIdx: number
@@ -207,35 +206,55 @@ export function AuditMachines({ actyx, machines }: Props) {
         }, 250)
       }
     }
-    const subs = machines.map(({ initial, where }, machNr) =>
-      auditMachine(
-        actyx,
-        where,
-        initial,
-        new (class {
-          reset() {
-            states.split[machNr].length = 0
-            recompute()
-          }
-          state(state: State<Ev>, events: ActyxEvent<Ev>[]) {
-            states.split[machNr].push({ type: 'state', state, events })
-            recompute()
-          }
-          dropped(state: State<Ev>, event: ActyxEvent<Ev>) {
-            states.split[machNr].push({ type: 'unhandled', event, state })
-            recompute()
-          }
-          error(state: State<Ev>, events: ActyxEvent<Ev>[], err: unknown) {
-            states.split[machNr].push({ type: 'error', events, err, state })
-          }
-        })(),
-      ),
-    )
+
+    const subscriptions = machines
+      .map(({ machine }, machineNumber) => {
+        const onReset: MachineRunner.EventListener<'audit.reset'> = () => {
+          states.split[machineNumber].length = 0
+          recompute()
+        }
+
+        const onStateChange: MachineRunner.EventListener<'audit.state'> = ({ events, state }) => {
+          states.split[machineNumber].push({ type: 'state', events, state: { ...state } })
+          recompute()
+        }
+
+        const onDroppedEvents: MachineRunner.EventListener<'audit.dropped'> = ({
+          event,
+          state,
+        }) => {
+          states.split[machineNumber].push({ type: 'unhandled', event, state: { ...state } })
+          recompute()
+        }
+
+        const onError: MachineRunner.EventListener<'audit.error'> = ({ error, events, state }) => {
+          states.split[machineNumber].push({
+            type: 'error',
+            events,
+            err: error,
+            state: { ...state },
+          })
+        }
+
+        machine.events.on('audit.reset', onReset)
+        machine.events.on('audit.state', onStateChange)
+        machine.events.on('audit.dropped', onDroppedEvents)
+        machine.events.on('audit.error', onError)
+
+        return [
+          () => machine.events.off('audit.reset', onReset),
+          () => machine.events.off('audit.state', onStateChange),
+          () => machine.events.off('audit.dropped', onDroppedEvents),
+          () => machine.events.off('audit.error', onError),
+        ]
+      })
+      .reduce((a: (() => unknown)[], b) => a.concat(b), [])
+
     return () => {
       if (timer !== null) clearTimeout(timer)
-      subs.forEach((cancel) => cancel())
+      subscriptions.forEach((cancel) => cancel())
     }
-  }, [actyx, machines, states])
+  }, [...machines])
 
   const mkX = (w: number) => w * 20 + 150
   const height = 240 + 40 * machines.length
@@ -346,9 +365,10 @@ export function AuditMachines({ actyx, machines }: Props) {
               />
             </Fragment>
           ))}
-          {machines.map(({ name, initial }, machNr) => {
+          {machines.map(({ name, machine }, machNr) => {
             const y = 40 * machNr + 130
-            let prevState = initial
+            const initial = machine.initial()
+            let prevState = initial as StateRaw.Any
             const initCB =
               machNr === se?.machNr && -1 === se?.tpIdx
                 ? undefined
@@ -378,7 +398,7 @@ export function AuditMachines({ actyx, machines }: Props) {
                   if (mPos < 0) return
                   const m = tp.machines[mPos]
                   const x = mkX(places.perPoint[tpIdx].center)
-                  const mkCB = (state: State<Ev>) =>
+                  const mkCB = (state: StateRaw.Any) =>
                     machNr === se?.machNr && tpIdx === se?.tpIdx
                       ? undefined
                       : () => setSE({ name, state, machNr, tpIdx })
