@@ -868,12 +868,8 @@ describe('deepCopy', () => {
 
 describe('MachineAnalysisResource.syntheticEventName', () => {
   it('should be as formatted in the test', () => {
-    expect(MachineAnalysisResource.syntheticEventName(Initial, [One, Two])).toBe(
-      '§TestSwarm.TestMachine.Initial§One§Two',
-    )
-    expect(MachineAnalysisResource.syntheticEventName(Second, [One])).toBe(
-      '§TestSwarm.TestMachine.Second§One',
-    )
+    expect(MachineAnalysisResource.syntheticEventName(Initial, [One, Two])).toBe('§Initial§One§Two')
+    expect(MachineAnalysisResource.syntheticEventName(Second, [One])).toBe('§Second§One')
   })
 })
 
@@ -978,8 +974,7 @@ describe('typings', () => {
     if (!commands) return
     // This will fail to compile if `as` function returns nothing other than
     // "Initial", including if it returns any
-    const supposedStateName: NotAnyOrUnknown<State.NameOf<typeof state>> =
-      'TestSwarm.TestMachine.Initial'
+    const supposedStateName: NotAnyOrUnknown<State.NameOf<typeof state>> = 'Initial'
     NOP(supposedStateName)
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

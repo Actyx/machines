@@ -16,7 +16,7 @@ export type SwarmProtocol<
 > = {
   makeMachine: <MachineName extends string>(
     machineName: MachineName,
-  ) => Machine<`${SwarmProtocolName}.${MachineName}`, RegisteredEventsFactoriesTuple>
+  ) => Machine<MachineName, RegisteredEventsFactoriesTuple>
   tags: Tags<MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>>
 }
 
@@ -41,8 +41,7 @@ export namespace SwarmProtocol {
           Tag<MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>>(first),
         )
       })(),
-      makeMachine: (machineName) =>
-        ImplMachine.make(`${swarmProtocolName}.${machineName}`, registeredEventFactories),
+      makeMachine: (machineName) => ImplMachine.make(machineName, registeredEventFactories),
     }
   }
 }
@@ -70,9 +69,9 @@ export type Machine<
    *   }>()
    *   .finish()
    */
-  designState: <Name extends string>(
-    stateName: Name,
-  ) => DesignStateIntermediate<MachineName, RegisteredEventsFactoriesTuple, Name>
+  designState: <StateName extends string>(
+    stateName: StateName,
+  ) => DesignStateIntermediate<MachineName, RegisteredEventsFactoriesTuple, StateName>
 
   /**
    * Starts a design process for a state without a payload.
@@ -81,12 +80,12 @@ export type Machine<
    *   .designEmpty("HangarControlIdle")
    *   .finish()
    */
-  designEmpty: <Name extends string>(
-    stateName: Name,
+  designEmpty: <StateName extends string>(
+    stateName: StateName,
   ) => StateMechanism<
     MachineName,
     RegisteredEventsFactoriesTuple,
-    `${MachineName}.${Name}`,
+    StateName,
     void,
     Record<never, never>
   >
@@ -115,7 +114,7 @@ export type Machine<
 type DesignStateIntermediate<
   MachineName extends string,
   RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
-  Name extends string,
+  StateName extends string,
 > = {
   /**
    * Declare payload type for a state.
@@ -123,7 +122,7 @@ type DesignStateIntermediate<
   withPayload: <StatePayload extends any>() => StateMechanism<
     MachineName,
     RegisteredEventsFactoriesTuple,
-    `${MachineName}.${Name}`,
+    StateName,
     StatePayload,
     Record<never, never>
   >
@@ -205,13 +204,13 @@ namespace ImplMachine {
     const designState: Self['designState'] = (stateName) => {
       markStateNameAsUsed(stateName)
       return {
-        withPayload: () => StateMechanism.make(protocol, `${machineName}.${stateName}`),
+        withPayload: () => StateMechanism.make(protocol, stateName),
       }
     }
 
     const designEmpty: Self['designEmpty'] = (stateName) => {
       markStateNameAsUsed(stateName)
-      return StateMechanism.make(protocol, `${machineName}.${stateName}`)
+      return StateMechanism.make(protocol, stateName)
     }
 
     const createJSONForAnalysis: Self['createJSONForAnalysis'] = (initial) =>
