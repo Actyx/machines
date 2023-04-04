@@ -1,8 +1,12 @@
 import { State } from '@actyx/machine-runner'
 import { useState } from 'react'
-import { AuctionP, BidData, InitialP, RideP } from './machines.js'
+import { BidData, Passenger } from './machines/index.js'
 
-export const UIInitialP = ({ state: state }: { state: State.Of<typeof InitialP> }) => {
+type UIPassengerInitialProps = {
+  state: State.Of<typeof Passenger.Initial>
+}
+
+export const UIPassengerInitial = ({ state }: UIPassengerInitialProps) => {
   const [pickup, setPickup] = useState('')
   const [destination, setDestination] = useState('')
   const buttonEnabled =
@@ -37,7 +41,11 @@ export const UIInitialP = ({ state: state }: { state: State.Of<typeof InitialP> 
   )
 }
 
-export const UIAuctionP = ({ state: state }: { state: State.Of<typeof AuctionP> }) => {
+export type UIPassengerAuctionProps = {
+  state: State.Of<typeof Passenger.Auction>
+}
+
+export const UIPassengerAuction = ({ state }: UIPassengerAuctionProps) => {
   const [selection, setSelection] = useState<BidData | null>(state.payload.bids[0] || null)
   const buttonEnabled = selection !== null && state.commands !== undefined
 
@@ -74,7 +82,11 @@ export const UIAuctionP = ({ state: state }: { state: State.Of<typeof AuctionP> 
   )
 }
 
-export const UIRideP = ({ state: state }: { state: State.Of<typeof RideP> }) => {
+export type UIPassengerRideProps = {
+  state: State.Of<typeof Passenger.Ride>
+}
+
+export const UIPassengerRide = ({ state }: UIPassengerRideProps) => {
   const buttonEnabled = state.commands !== undefined
   return (
     <div>

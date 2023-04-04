@@ -7,11 +7,15 @@
   "exports": {
     ".": "./lib/index.js"
   },
+  "files": [
+    "./lib"
+  ],
   "scripts": {
     "prepare:machine-runner": "cd ../machine-runner && npm install && npm run lint && npm run build && npm run test",
     "prepare": "npm run prepare:machine-runner",
     "clean": "rimraf ./lib",
-    "build": "tsc"
+    "build": "tsc",
+    "prepublishOnly": "npm run clean && npm run build && npm run test && npm run lint"
   },
   "keywords": [
     "local-first"
@@ -32,9 +36,6 @@
   "dependencies": {
     "@actyx/machine-runner": "file:../machine-runner",
     "@actyx/sdk": "^0.5.7",
-    "@rjsf/core": "^5.1.0",
-    "@rjsf/utils": "^5.1.0",
-    "@rjsf/validator-ajv8": "^5.1.0",
     "react-konva": "^18.2.5",
     "konva": "^8.4.3"
   },

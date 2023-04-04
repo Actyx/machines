@@ -1,12 +1,16 @@
 import { State } from '@actyx/machine-runner'
 import { useState } from 'react'
-import { AuctionT, FirstBidT, InitialT, RideT } from './machines.js'
+import { Taxi } from './machines/index.js'
 
-export const UIInitialT = ({ state: state }: { state: State.Of<typeof InitialT> }) => {
+type UITaxiInitialProps = { state: State.Of<typeof Taxi.Initial> }
+
+export const UITaxiInitial = ({ state }: UITaxiInitialProps) => {
   return <div>Waiting for passengers...</div>
 }
 
-export const UIFirstBidT = ({ state: state }: { state: State.Of<typeof FirstBidT> }) => {
+type UITaxiFirstBidProps = { state: State.Of<typeof Taxi.FirstBid> }
+
+export const UITaxiFirstBid = ({ state }: UITaxiFirstBidProps) => {
   const [price, setPrice] = useState<number | null>(null)
   const buttonEnabled = state.commands !== undefined
   return (
@@ -45,7 +49,9 @@ export const UIFirstBidT = ({ state: state }: { state: State.Of<typeof FirstBidT
   )
 }
 
-export const UIAuctionT = ({ state: state }: { state: State.Of<typeof AuctionT> }) => {
+type UITaxiAuctionProps = { state: State.Of<typeof Taxi.Auction> }
+
+export const UITaxiAuction = ({ state }: UITaxiAuctionProps) => {
   const [price, setPrice] = useState<number | null>(null)
   const buttonEnabled = state.commands !== undefined
   return (
@@ -84,6 +90,8 @@ export const UIAuctionT = ({ state: state }: { state: State.Of<typeof AuctionT> 
   )
 }
 
-export const UIRideT = ({ state: state }: { state: State.Of<typeof RideT> }) => {
+type UITaxiRideProps = { state: State.Of<typeof Taxi.Ride> }
+
+export const UITaxiRide = ({ state }: UITaxiRideProps) => {
   return null
 }
