@@ -269,6 +269,7 @@ fn prepare_graph(
         let active = active(&graph, node_id);
         graph[node_id].active = active;
         let roles = involved(&graph, node_id, &subs, &mut loop_end);
+        // FIXME: transition into final state without any subscription will make final state a loop end!
         graph[node_id].roles = roles;
         mark_events(&graph, node_id, &mut guards, &mut events);
     }
