@@ -90,8 +90,12 @@ export type ProtocolInternals<
 > = {
   readonly name: ProtocolName
   readonly registeredEvents: RegisteredEventsFactoriesTuple
-  readonly registeredStateNames: Set<string>
   readonly reactionMap: ReactionMap
+  readonly commands: { ofState: string; commandName: string; events: string[] }[]
+  readonly states: {
+    readonly registeredNames: Set<string>
+    readonly allFactories: Set<StateFactory.Any>
+  }
 }
 
 export namespace ProtocolInternals {
@@ -187,6 +191,7 @@ export namespace StateMechanism {
     stateName: StateName,
     props?: {
       commands?: Commands
+      commandDataForAnalytics: { commandName: string; events: string[] }[]
     },
   ): StateMechanism<
     ProtocolName,
@@ -243,10 +248,29 @@ export namespace StateMechanism {
           // above may break the library
           [name]: patchedCommandDefinition,
         },
+        commandDataForAnalytics: [
+          ...(props?.commandDataForAnalytics || []),
+          {
+            events: factories.map((eventFactory) => eventFactory.type),
+            commandName: name,
+          },
+        ],
       })
     }
 
-    const finish: Self['finish'] = () => StateFactory.fromMechanism(mechanism)
+    const finish: Self['finish'] = () => {
+      const factory = StateFactory.fromMechanism(mechanism)
+      protocol.states.allFactories.add(factory)
+      protocol.commands.push(
+        ...(props?.commandDataForAnalytics || []).map(
+          (item: { commandName: string; events: string[] }) => ({
+            ...item,
+            ofState: mechanism.name,
+          }),
+        ),
+      )
+      return factory
+    }
 
     const mechanism: Self = {
       protocol,
