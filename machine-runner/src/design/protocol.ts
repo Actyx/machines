@@ -112,22 +112,6 @@ export type Machine<
     Record<never, never>
   >
 
-  // /**
-  //  * Create an Actyx event tag for this machine protocol. The resulting tag is typed to
-  //  * permit the protocol's events. This tag type definition is required by
-  //  * `createMachineRunner`
-  //  * @param rawTagString - optional string that is when not supplied defaults to
-  //  * the protocol's name.
-  //  * @param extractId - @see actyx sdk Tag documentation for the explanation of
-  //  * extractId.
-  //  */
-  // tag: (
-  //   rawTagString?: string,
-  //   extractId?:
-  //     | ((e: MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>) => string)
-  //     | undefined,
-  // ) => Tag<MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>>
-
   createJSONForAnalysis: (
     initial: StateFactory<MachineName, RegisteredEventsFactoriesTuple, any, any, any>,
   ) => MachineAnalysisResource
