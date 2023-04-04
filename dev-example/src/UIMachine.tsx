@@ -1,10 +1,10 @@
 import { MachineRunner } from '@actyx/machine-runner'
 import { MachineEmitterEventMap } from '@actyx/machine-runner/lib/runner/runner-utils.js'
 import { useEffect, useState } from 'react'
-import { AuctionP, AuctionT, FirstBidT, InitialP, InitialT, RideP, RideT } from './machines.js'
 import { PrintState } from './UIMachineCommon.js'
-import { UIAuctionP, UIInitialP, UIRideP } from './UIMachinePassenger.js'
-import { UIAuctionT, UIFirstBidT, UIInitialT, UIRideT } from './UIMachineTaxi.js'
+import { UIPassengerAuction, UIPassengerInitial, UIPassengerRide } from './UIMachinePassenger.js'
+import { UITaxiAuction, UITaxiFirstBid, UITaxiInitial, UITaxiRide } from './UIMachineTaxi.js'
+import { Passenger, Taxi } from './machines/index.js'
 
 export const UIMachine = ({ machine, name }: { name: string; machine: MachineRunner }) => {
   const [state, setState] = useState(machine.get())
@@ -17,7 +17,7 @@ export const UIMachine = ({ machine, name }: { name: string; machine: MachineRun
     }
   }, [machine.id])
 
-  if (state && state.is(AuctionP)) {
+  if (state && state.is(Passenger.Auction)) {
     const { bids } = state.payload
     // just to demonstrate that `state.is()` works
 
@@ -31,13 +31,13 @@ export const UIMachine = ({ machine, name }: { name: string; machine: MachineRun
       {state && (
         <>
           <PrintState state={state} />
-          {state.is(InitialP) && <UIInitialP state={state.cast()} />}
-          {state.is(AuctionP) && <UIAuctionP state={state.cast()} />}
-          {state.is(RideP) && <UIRideP state={state.cast()} />}
-          {state.is(InitialT) && <UIInitialT state={state.cast()} />}
-          {state.is(FirstBidT) && <UIFirstBidT state={state.cast()} />}
-          {state.is(AuctionT) && <UIAuctionT state={state.cast()} />}
-          {state.is(RideT) && <UIRideT state={state.cast()} />}
+          {state.is(Passenger.Initial) && <UIPassengerInitial state={state.cast()} />}
+          {state.is(Passenger.Auction) && <UIPassengerAuction state={state.cast()} />}
+          {state.is(Passenger.Ride) && <UIPassengerRide state={state.cast()} />}
+          {state.is(Taxi.Initial) && <UITaxiInitial state={state.cast()} />}
+          {state.is(Taxi.FirstBid) && <UITaxiFirstBid state={state.cast()} />}
+          {state.is(Taxi.Auction) && <UITaxiAuction state={state.cast()} />}
+          {state.is(Taxi.Ride) && <UITaxiRide state={state.cast()} />}
         </>
       )}
     </div>

@@ -1,4 +1,4 @@
-import { Tag } from '@actyx/sdk'
+import { Tag, Tags } from '@actyx/sdk'
 import {
   StateMechanism,
   MachineEvent,
@@ -6,6 +6,46 @@ import {
   ReactionMap,
   StateFactory,
 } from './state.js'
+import { NonZeroTuple } from '../utils/type-utils.js'
+
+// TODO: document
+export type SwarmProtocol<
+  SwarmProtocolName extends string,
+  TagString extends NonZeroTuple<string>,
+  RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
+> = {
+  makeMachine: <MachineName extends string>(
+    machineName: MachineName,
+  ) => Machine<`${SwarmProtocolName}.${MachineName}`, RegisteredEventsFactoriesTuple>
+  tags: Tags<MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>>
+}
+
+export namespace SwarmProtocol {
+  export const make = <
+    SwarmProtocolName extends string,
+    TagString extends NonZeroTuple<string>,
+    RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
+  >(
+    swarmProtocolName: SwarmProtocolName,
+    tags: TagString,
+    registeredEventFactories: RegisteredEventsFactoriesTuple,
+  ): SwarmProtocol<SwarmProtocolName, TagString, RegisteredEventsFactoriesTuple> => {
+    return {
+      tags: (() => {
+        const [first, ...rest] = tags
+        return rest.reduce(
+          (
+            acc: Tags<MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>>,
+            moreTagString,
+          ) => acc.and(Tag(moreTagString)),
+          Tag<MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>>(first),
+        )
+      })(),
+      makeMachine: (machineName) =>
+        ImplMachine.make(`${swarmProtocolName}.${machineName}`, registeredEventFactories),
+    }
+  }
+}
 
 /**
  * A machine is the entry point for designing machine states and transitions.
@@ -30,9 +70,9 @@ export type Machine<
    *   }>()
    *   .finish()
    */
-  designState: <StateName extends string>(
-    stateName: StateName,
-  ) => DesignStateIntermediate<MachineName, RegisteredEventsFactoriesTuple, StateName>
+  designState: <Name extends string>(
+    stateName: Name,
+  ) => DesignStateIntermediate<MachineName, RegisteredEventsFactoriesTuple, Name>
 
   /**
    * Starts a design process for a state without a payload.
@@ -41,31 +81,31 @@ export type Machine<
    *   .designEmpty("HangarControlIdle")
    *   .finish()
    */
-  designEmpty: <StateName extends string>(
-    stateName: StateName,
+  designEmpty: <Name extends string>(
+    stateName: Name,
   ) => StateMechanism<
     MachineName,
     RegisteredEventsFactoriesTuple,
-    StateName,
+    `${MachineName}.${Name}`,
     void,
     Record<never, never>
   >
 
-  /**
-   * Create an Actyx event tag for this machine protocol. The resulting tag is typed to
-   * permit the protocol's events. This tag type definition is required by
-   * `createMachineRunner`
-   * @param rawTagString - optional string that is when not supplied defaults to
-   * the protocol's name.
-   * @param extractId - @see actyx sdk Tag documentation for the explanation of
-   * extractId.
-   */
-  tag: (
-    rawTagString?: string,
-    extractId?:
-      | ((e: MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>) => string)
-      | undefined,
-  ) => Tag<MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>>
+  // /**
+  //  * Create an Actyx event tag for this machine protocol. The resulting tag is typed to
+  //  * permit the protocol's events. This tag type definition is required by
+  //  * `createMachineRunner`
+  //  * @param rawTagString - optional string that is when not supplied defaults to
+  //  * the protocol's name.
+  //  * @param extractId - @see actyx sdk Tag documentation for the explanation of
+  //  * extractId.
+  //  */
+  // tag: (
+  //   rawTagString?: string,
+  //   extractId?:
+  //     | ((e: MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>) => string)
+  //     | undefined,
+  // ) => Tag<MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>>
 
   createJSONForAnalysis: (
     initial: StateFactory<MachineName, RegisteredEventsFactoriesTuple, any, any, any>,
@@ -75,7 +115,7 @@ export type Machine<
 type DesignStateIntermediate<
   MachineName extends string,
   RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
-  StateName extends string,
+  Name extends string,
 > = {
   /**
    * Declare payload type for a state.
@@ -83,7 +123,7 @@ type DesignStateIntermediate<
   withPayload: <StatePayload extends any>() => StateMechanism<
     MachineName,
     RegisteredEventsFactoriesTuple,
-    StateName,
+    `${MachineName}.${Name}`,
     StatePayload,
     Record<never, never>
   >
@@ -116,10 +156,12 @@ export namespace Machine {
   >
     ? MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>
     : never
+}
 
+namespace ImplMachine {
   /**
    * Create a machine protocol with a specific name and event factories.
-   * @param protocolName - name of the machine protocol.
+   * @param machineName - name of the machine protocol.
    * @param registeredEventFactories - tuple of MachineEventFactories.
    * @see MachineEvent.design to get started on creating MachineEventFactories
    * for the registeredEventFactories parameter.
@@ -130,14 +172,14 @@ export namespace Machine {
     MachineName extends string,
     RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
   >(
-    protocolName: MachineName,
+    machineName: MachineName,
     registeredEventFactories: RegisteredEventsFactoriesTuple,
   ): Machine<MachineName, RegisteredEventsFactoriesTuple> => {
     type Self = Machine<MachineName, RegisteredEventsFactoriesTuple>
     type Protocol = MachineProtocol<MachineName, RegisteredEventsFactoriesTuple>
 
     const protocol: Protocol = {
-      name: protocolName,
+      name: machineName,
       registeredEvents: registeredEventFactories,
       reactionMap: ReactionMap.make(),
       commands: [],
@@ -163,16 +205,14 @@ export namespace Machine {
     const designState: Self['designState'] = (stateName) => {
       markStateNameAsUsed(stateName)
       return {
-        withPayload: () => StateMechanism.make(protocol, stateName),
+        withPayload: () => StateMechanism.make(protocol, `${machineName}.${stateName}`),
       }
     }
 
     const designEmpty: Self['designEmpty'] = (stateName) => {
       markStateNameAsUsed(stateName)
-      return StateMechanism.make(protocol, stateName)
+      return StateMechanism.make(protocol, `${machineName}.${stateName}`)
     }
-
-    const tag: Self['tag'] = (name = protocolName, extractId) => Tag(name, extractId)
 
     const createJSONForAnalysis: Self['createJSONForAnalysis'] = (initial) =>
       MachineAnalysisResource.fromMachineInternals(protocol, initial)
@@ -180,7 +220,6 @@ export namespace Machine {
     return {
       designState,
       designEmpty,
-      tag,
       createJSONForAnalysis,
     }
   }

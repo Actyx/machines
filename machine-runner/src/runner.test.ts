@@ -7,7 +7,7 @@ import { StateFactory, StateMechanism } from './design/state.js'
 import { deepCopy } from './utils/object-utils.js'
 import { NOP } from './utils/index.js'
 import { NotAnyOrUnknown } from './utils/type-utils.js'
-import { MachineAnalysisResource } from './design/protocol.js'
+import { MachineAnalysisResource, SwarmProtocol } from './design/protocol.js'
 
 class Unreachable extends Error {
   constructor() {
@@ -22,10 +22,12 @@ const Two = MachineEvent.design('Two').withPayload<{ y: number }>()
 
 // Machine and States
 
-const protocol = Machine.make('testMachine', [One, Two])
+const protocol = SwarmProtocol.make('TestSwarm', ['testMachine'], [One, Two])
+
+const machine = protocol.makeMachine('TestMachine')
 
 const XCommandParam = [true, 1, '', { specificField: 'literal-a' }, Symbol()] as const
-const Initial = protocol
+const Initial = machine
   .designState('Initial')
   .withPayload<{ transitioned: boolean }>()
   .command(
@@ -43,7 +45,7 @@ const Initial = protocol
   )
   .finish()
 
-const Second = protocol
+const Second = machine
   .designState('Second')
   .withPayload<{ x: number; y: number }>()
   .command('Y', [Two], () => [Two.make({ y: 2 })])
@@ -360,11 +362,13 @@ describe('machine runner', () => {
 describe('machine as async generator', () => {
   const Toggle = MachineEvent.design('Toggle').withoutPayload()
 
-  const protocol = Machine.make('switch', [Toggle])
+  const protocol = SwarmProtocol.make('switch', ['switch'], [Toggle])
+
+  const machine = protocol.makeMachine('switch')
 
   type StatePayload = { toggleCount: number }
-  const On = protocol.designState('On').withPayload<StatePayload>().finish()
-  const Off = protocol.designState('Off').withPayload<StatePayload>().finish()
+  const On = machine.designState('On').withPayload<StatePayload>().finish()
+  const Off = machine.designState('Off').withPayload<StatePayload>().finish()
 
   On.react([Toggle], Off, ({ self }) => ({ toggleCount: self.toggleCount + 1 }))
   Off.react([Toggle], On, ({ self }) => ({ toggleCount: self.toggleCount + 1 }))
@@ -864,8 +868,12 @@ describe('deepCopy', () => {
 
 describe('MachineAnalysisResource.syntheticEventName', () => {
   it('should be as formatted in the test', () => {
-    expect(MachineAnalysisResource.syntheticEventName(Initial, [One, Two])).toBe('§Initial§One§Two')
-    expect(MachineAnalysisResource.syntheticEventName(Second, [One])).toBe('§Second§One')
+    expect(MachineAnalysisResource.syntheticEventName(Initial, [One, Two])).toBe(
+      '§TestSwarm.TestMachine.Initial§One§Two',
+    )
+    expect(MachineAnalysisResource.syntheticEventName(Second, [One])).toBe(
+      '§TestSwarm.TestMachine.Second§One',
+    )
   })
 })
 
@@ -873,7 +881,7 @@ const nameOf = (m: StateMechanism.Any | StateFactory.Any | string): string =>
   typeof m === 'string' ? m : ('mechanism' in m ? m.mechanism : m).name
 
 const expectExecute = (
-  analysisData: ReturnType<typeof protocol['createJSONForAnalysis']>,
+  analysisData: ReturnType<typeof machine['createJSONForAnalysis']>,
   factory: StateMechanism.Any | StateFactory.Any,
   commandName: string,
   logType: { type: string }[],
@@ -892,7 +900,7 @@ const expectExecute = (
 }
 
 const extractInput = (
-  analysisData: ReturnType<typeof protocol['createJSONForAnalysis']>,
+  analysisData: ReturnType<typeof machine['createJSONForAnalysis']>,
   source: string | StateMechanism.Any | StateFactory.Any,
   eventType: { type: string },
   target: string | StateMechanism.Any | StateFactory.Any,
@@ -908,12 +916,13 @@ const extractInput = (
 describe('protocol.createJSONForAnalysis', () => {
   const E1 = MachineEvent.design('E1').withoutPayload()
   const E2 = MachineEvent.design('E2').withoutPayload()
-  const protocol = Machine.make('example', [E1, E2])
-  const S1 = protocol
+  const protocol = SwarmProtocol.make('example', ['example'], [E1, E2])
+  const machine = protocol.makeMachine('example')
+  const S1 = machine
     .designEmpty('S1')
     .command('a', [E1], () => [E1.make({})])
     .finish()
-  const S2 = protocol
+  const S2 = machine
     .designEmpty('S2')
     .command('b', [E2], () => [E2.make({})])
     .finish()
@@ -923,7 +932,7 @@ describe('protocol.createJSONForAnalysis', () => {
   S2.react([E1], S1, () => S1.make())
 
   it('should have all required data', () => {
-    const analysisData = protocol.createJSONForAnalysis(S1)
+    const analysisData = machine.createJSONForAnalysis(S1)
 
     expect(analysisData.initial).toBe(S1.mechanism.name)
     // 2 commands
@@ -969,7 +978,8 @@ describe('typings', () => {
     if (!commands) return
     // This will fail to compile if `as` function returns nothing other than
     // "Initial", including if it returns any
-    const supposedStateName: NotAnyOrUnknown<State.NameOf<typeof state>> = 'Initial'
+    const supposedStateName: NotAnyOrUnknown<State.NameOf<typeof state>> =
+      'TestSwarm.TestMachine.Initial'
     NOP(supposedStateName)
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

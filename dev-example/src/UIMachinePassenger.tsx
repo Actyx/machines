@@ -1,8 +1,12 @@
 import { State } from '@actyx/machine-runner'
 import { useState } from 'react'
-import { AuctionP, BidData, InitialP, RideP } from './machines.js'
+import { BidData, Passenger } from './machines/index.js'
 
-export const UIInitialP = ({ state: state }: { state: State.Of<typeof InitialP> }) => {
+export const UIPassengerInitial = ({
+  state: state,
+}: {
+  state: State.Of<typeof Passenger.Initial>
+}) => {
   const [pickup, setPickup] = useState('')
   const [destination, setDestination] = useState('')
   const buttonEnabled =
@@ -37,7 +41,11 @@ export const UIInitialP = ({ state: state }: { state: State.Of<typeof InitialP> 
   )
 }
 
-export const UIAuctionP = ({ state: state }: { state: State.Of<typeof AuctionP> }) => {
+export const UIPassengerAuction = ({
+  state: state,
+}: {
+  state: State.Of<typeof Passenger.Auction>
+}) => {
   const [selection, setSelection] = useState<BidData | null>(state.payload.bids[0] || null)
   const buttonEnabled = selection !== null && state.commands !== undefined
 
@@ -74,7 +82,7 @@ export const UIAuctionP = ({ state: state }: { state: State.Of<typeof AuctionP> 
   )
 }
 
-export const UIRideP = ({ state: state }: { state: State.Of<typeof RideP> }) => {
+export const UIPassengerRide = ({ state: state }: { state: State.Of<typeof Passenger.Ride> }) => {
   const buttonEnabled = state.commands !== undefined
   return (
     <div>
