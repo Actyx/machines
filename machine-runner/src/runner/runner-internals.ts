@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { ActyxEvent, Metadata } from '@actyx/sdk'
 import { deepCopy } from '../utils/object-utils.js'
 import { CommandDefinerMap } from '../design/command.js'

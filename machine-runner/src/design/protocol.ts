@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Tag, Tags } from '@actyx/sdk'
 import {
   StateMechanism,

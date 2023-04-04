@@ -6,6 +6,7 @@ export type NonZeroTuple<T> = [T, ...T[]]
 
 export type ExtendsThenTransform<A, B, T = true, F = false> = A extends B ? T : F
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type NotAnyOrUnknown<T> = ExtendsThenTransform<any, T, never, T>
 
 type SerializablePrimitive = number | string | boolean | null | undefined

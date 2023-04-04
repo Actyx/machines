@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { ActyxEvent } from '@actyx/sdk'
 import * as utils from '../utils/type-utils.js'
 import { CommandDefiner, CommandDefinerMap } from './command.js'
