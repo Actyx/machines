@@ -1,5 +1,4 @@
-import { Tag } from '@actyx/sdk'
-import { MachineEvent, Protocol } from '@actyx/machine-runner'
+import { MachineEvent, Machine } from '@actyx/machine-runner'
 
 /**
  * Actyx pub-sub is based on topics selected by tagging (which supports
@@ -51,7 +50,7 @@ export const Cancelled = MachineEvent.design('Path').withPayload<{ reason: strin
 
 export const Receipt = MachineEvent.design('Path').withPayload<{ amount: number }>()
 
-export const protocol = Protocol.make('taxiRide', [
+export const machine = Machine.make('taxiRide', [
   Requested,
   Bid,
   BidderID,
@@ -65,18 +64,18 @@ export const protocol = Protocol.make('taxiRide', [
   Receipt,
 ])
 
-export const TaxiTag = protocol.tag('taxi')
+export const TaxiTag = machine.tag('taxi')
 
 // States
 
-export const InitialP = protocol
+export const InitialP = machine
   .designEmpty('InitialP')
   .command('request', [Requested], (_, params: { pickup: string; destination: string }) => [
     Requested.make(params),
   ])
   .finish()
 
-export const AuctionP = protocol
+export const AuctionP = machine
   .designState('AuctionP')
   .withPayload<{
     pickup: string
@@ -96,15 +95,15 @@ export const AuctionP = protocol
   })
   .finish()
 
-export const RideP = protocol
+export const RideP = machine
   .designState('RideP')
   .withPayload<{ taxiID: string }>()
   .command('cancel', [Cancelled], () => [{ reason: "don't wanna" }])
   .finish()
 
-export const InitialT = protocol.designState('InitialT').withPayload<{ id: string }>().finish()
+export const InitialT = machine.designState('InitialT').withPayload<{ id: string }>().finish()
 
-export const FirstBidT = protocol
+export const FirstBidT = machine
   .designState('FirstBidT')
   .withPayload<{ id: string; pickup: string; destination: string }>()
   .command('bid', [Bid, BidderID], (context, { time, price }: { time: Date; price: number }) => [
@@ -113,7 +112,7 @@ export const FirstBidT = protocol
   ])
   .finish()
 
-export const AuctionT = protocol
+export const AuctionT = machine
   .designState('AuctionT')
   .withPayload<{ id: string; pickup: string; destination: string }>()
   .command('bid', [Bid, BidderID], (context, { time, price }: { time: Date; price: number }) => [
@@ -122,7 +121,7 @@ export const AuctionT = protocol
   ])
   .finish()
 
-export const RideT = protocol
+export const RideT = machine
   .designState('RideT')
   .withPayload<{ id: string; winner: string; passenger: string }>()
   .finish()

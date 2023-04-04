@@ -18,7 +18,7 @@ export type CommandCallback<F extends MachineEvent.Factory.NonZeroTuple> = (
 ) => Promise<CommandFiredAfterLocked | Metadata[]>
 
 export type RunnerInternals<
-  ProtocolName extends string,
+  MachineName extends string,
   RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
   StateName extends string,
   StatePayload,
@@ -26,11 +26,11 @@ export type RunnerInternals<
 > = {
   caughtUpFirstTime: boolean
   caughtUp: boolean
-  readonly initial: StateAndFactory<ProtocolName, RegisteredEventsFactoriesTuple, any, any, any>
+  readonly initial: StateAndFactory<MachineName, RegisteredEventsFactoriesTuple, any, any, any>
   commandEmitFn: CommandCallback<RegisteredEventsFactoriesTuple>
   queue: ActyxEvent<MachineEvent.Any>[]
   current: StateAndFactory<
-    ProtocolName,
+    MachineName,
     RegisteredEventsFactoriesTuple,
     StateName,
     StatePayload,
@@ -45,14 +45,14 @@ export namespace RunnerInternals {
   export type Any = RunnerInternals<any, any, any, any, any>
 
   export const make = <
-    ProtocolName extends string,
+    MachineName extends string,
     RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
     StateName extends string,
     StatePayload extends any,
     Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
   >(
     factory: StateFactory<
-      ProtocolName,
+      MachineName,
       RegisteredEventsFactoriesTuple,
       StateName,
       StatePayload,
@@ -62,7 +62,7 @@ export namespace RunnerInternals {
     commandCallback: CommandCallback<RegisteredEventsFactoriesTuple>,
   ) => {
     const initial: StateAndFactory<
-      ProtocolName,
+      MachineName,
       RegisteredEventsFactoriesTuple,
       StateName,
       StatePayload,
@@ -75,7 +75,7 @@ export namespace RunnerInternals {
       },
     }
     const internals: RunnerInternals<
-      ProtocolName,
+      MachineName,
       RegisteredEventsFactoriesTuple,
       StateName,
       StatePayload,
@@ -195,14 +195,14 @@ export namespace RunnerInternals {
 }
 
 export type StateAndFactory<
-  ProtocolName extends string,
+  MachineName extends string,
   RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
   StateName extends string,
   StatePayload extends any,
   Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
 > = {
   factory: StateFactory<
-    ProtocolName,
+    MachineName,
     RegisteredEventsFactoriesTuple,
     StateName,
     StatePayload,

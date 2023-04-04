@@ -2,28 +2,28 @@ import { Tag } from '@actyx/sdk'
 import {
   StateMechanism,
   MachineEvent,
-  ProtocolInternals,
+  MachineProtocol,
   ReactionMap,
   StateFactory,
 } from './state.js'
 
 /**
- * A protocol is the entry point for designing machine states and transitions.
+ * A machine is the entry point for designing machine states and transitions.
  * Its name should correspond to a role definition in a machine-check swarm
  * protocol. The resulting states are constrained to only be able to interact
  * with the events listed in the protocol design step. It accumulates
  * information on states and reactions. This information can be passed to
  * checkProjection to verify that the machine fits into a given swarm protocol.
  */
-export type Protocol<
-  ProtocolName extends string,
+export type Machine<
+  MachineName extends string,
   RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
 > = {
   /**
    * Starts the design process for a state with a payload. Payload data will be
    * required when constructing this state.
    * @example
-   * const HangarControlIncomingShip = protocol
+   * const HangarControlIncomingShip = machine
    *   .designState("HangarControlIncomingShip")
    *   .withPayload<{
    *     shipId: string,
@@ -32,19 +32,19 @@ export type Protocol<
    */
   designState: <StateName extends string>(
     stateName: StateName,
-  ) => DesignStateIntermediate<ProtocolName, RegisteredEventsFactoriesTuple, StateName>
+  ) => DesignStateIntermediate<MachineName, RegisteredEventsFactoriesTuple, StateName>
 
   /**
    * Starts a design process for a state without a payload.
    * @example
-   * const HangarControlIdle = protocol
+   * const HangarControlIdle = machine
    *   .designEmpty("HangarControlIdle")
    *   .finish()
    */
   designEmpty: <StateName extends string>(
     stateName: StateName,
   ) => StateMechanism<
-    ProtocolName,
+    MachineName,
     RegisteredEventsFactoriesTuple,
     StateName,
     void,
@@ -52,7 +52,7 @@ export type Protocol<
   >
 
   /**
-   * Create an Actyx event tag for this protocol. The resulting tag is typed to
+   * Create an Actyx event tag for this machine protocol. The resulting tag is typed to
    * permit the protocol's events. This tag type definition is required by
    * `createMachineRunner`
    * @param rawTagString - optional string that is when not supplied defaults to
@@ -68,12 +68,12 @@ export type Protocol<
   ) => Tag<MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>>
 
   createJSONForAnalysis: (
-    initial: StateFactory<ProtocolName, RegisteredEventsFactoriesTuple, any, any, any>,
-  ) => ProtocolAnalysisResource
+    initial: StateFactory<MachineName, RegisteredEventsFactoriesTuple, any, any, any>,
+  ) => MachineAnalysisResource
 }
 
 type DesignStateIntermediate<
-  ProtocolName extends string,
+  MachineName extends string,
   RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
   StateName extends string,
 > = {
@@ -81,7 +81,7 @@ type DesignStateIntermediate<
    * Declare payload type for a state.
    */
   withPayload: <StatePayload extends any>() => StateMechanism<
-    ProtocolName,
+    MachineName,
     RegisteredEventsFactoriesTuple,
     StateName,
     StatePayload,
@@ -91,26 +91,26 @@ type DesignStateIntermediate<
 
 /**
  * A collection of utilities for designing a protocol.
- * @see Protocol.make for getting started with using MachineRunner Protocol.
+ * @see Machine.make for getting started with using MachineRunner Machine Protocol.
  */
-export namespace Protocol {
-  export type Any = Protocol<any, any>
+export namespace Machine {
+  export type Any = Machine<any, any>
 
   /**
-   * Extract the type of registered MachineEvent of a protocol in the form of a
-   * union type.
+   * Extract the type of registered MachineEvent of a machine protocol in the
+   * form of a union type.
    * @example
    * const E1 = MachineEvent.design("E1").withoutPayload();
    * const E2 = MachineEvent.design("E2").withoutPayload();
    * const E3 = MachineEvent.design("E3").withoutPayload();
    *
-   * const protocol = Protocol.make("somename", [E1, E2, E3]);
+   * const machine = Machine.make("somename", [E1, E2, E3]);
    *
-   * type AllEvents = Protocol.EventsOf<typeof protocol>;
+   * type AllEvents = Machine.EventsOf<typeof machine>;
    * // Equivalent of:
    * // MachineEvent.Of<typeof E1> | MachineEvent.Of<typeof E2> | MachineEvent.Of<typeof E3>
    */
-  export type EventsOf<T extends Protocol.Any> = T extends Protocol<
+  export type EventsOf<T extends Machine.Any> = T extends Machine<
     any,
     infer RegisteredEventsFactoriesTuple
   >
@@ -118,25 +118,25 @@ export namespace Protocol {
     : never
 
   /**
-   * Create a protocol with a specific name and event factories.
-   * @param protocolName - name of the protocol.
+   * Create a machine protocol with a specific name and event factories.
+   * @param protocolName - name of the machine protocol.
    * @param registeredEventFactories - tuple of MachineEventFactories.
    * @see MachineEvent.design to get started on creating MachineEventFactories
    * for the registeredEventFactories parameter.
    * @example
-   * const hangarBay = Protocol.make("hangarBay")
+   * const hangarBay = Machine.make("hangarBay")
    */
   export const make = <
-    ProtocolName extends string,
+    MachineName extends string,
     RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
   >(
-    protocolName: ProtocolName,
+    protocolName: MachineName,
     registeredEventFactories: RegisteredEventsFactoriesTuple,
-  ): Protocol<ProtocolName, RegisteredEventsFactoriesTuple> => {
-    type Self = Protocol<ProtocolName, RegisteredEventsFactoriesTuple>
-    type Internals = ProtocolInternals<ProtocolName, RegisteredEventsFactoriesTuple>
+  ): Machine<MachineName, RegisteredEventsFactoriesTuple> => {
+    type Self = Machine<MachineName, RegisteredEventsFactoriesTuple>
+    type Protocol = MachineProtocol<MachineName, RegisteredEventsFactoriesTuple>
 
-    const protocolInternal: Internals = {
+    const protocol: Protocol = {
       name: protocolName,
       registeredEvents: registeredEventFactories,
       reactionMap: ReactionMap.make(),
@@ -148,34 +148,34 @@ export namespace Protocol {
     }
 
     const markStateNameAsUsed = (stateName: string) => {
-      if (stateName.includes(ProtocolAnalysisResource.SyntheticDelimiter)) {
+      if (stateName.includes(MachineAnalysisResource.SyntheticDelimiter)) {
         throw new Error(
-          `Name should not contain character '${ProtocolAnalysisResource.SyntheticDelimiter}'`,
+          `Name should not contain character '${MachineAnalysisResource.SyntheticDelimiter}'`,
         )
       }
 
-      if (protocolInternal.states.registeredNames.has(stateName)) {
+      if (protocol.states.registeredNames.has(stateName)) {
         throw new Error(`State "${stateName}" already registered within this protocol`)
       }
-      protocolInternal.states.registeredNames.add(stateName)
+      protocol.states.registeredNames.add(stateName)
     }
 
     const designState: Self['designState'] = (stateName) => {
       markStateNameAsUsed(stateName)
       return {
-        withPayload: () => StateMechanism.make(protocolInternal, stateName),
+        withPayload: () => StateMechanism.make(protocol, stateName),
       }
     }
 
     const designEmpty: Self['designEmpty'] = (stateName) => {
       markStateNameAsUsed(stateName)
-      return StateMechanism.make(protocolInternal, stateName)
+      return StateMechanism.make(protocol, stateName)
     }
 
     const tag: Self['tag'] = (name = protocolName, extractId) => Tag(name, extractId)
 
     const createJSONForAnalysis: Self['createJSONForAnalysis'] = (initial) =>
-      ProtocolAnalysisResource.fromProtocolInternals(protocolInternal, initial)
+      MachineAnalysisResource.fromMachineInternals(protocol, initial)
 
     return {
       designState,
@@ -186,7 +186,7 @@ export namespace Protocol {
   }
 }
 
-export type ProtocolAnalysisResource = {
+export type MachineAnalysisResource = {
   initial: string
   subscriptions: string[]
   transitions: {
@@ -196,7 +196,7 @@ export type ProtocolAnalysisResource = {
   }[]
 }
 
-export namespace ProtocolAnalysisResource {
+export namespace MachineAnalysisResource {
   export const SyntheticDelimiter = '§' as const
 
   export const syntheticEventName = (
@@ -208,13 +208,13 @@ export namespace ProtocolAnalysisResource {
       ...modifyingEvents.map((f) => f.type),
     ].join(SyntheticDelimiter)}`
 
-  export const fromProtocolInternals = <
-    ProtocolName extends string,
+  export const fromMachineInternals = <
+    MachineName extends string,
     RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
   >(
-    protocolInternals: ProtocolInternals<ProtocolName, RegisteredEventsFactoriesTuple>,
-    initial: StateFactory<ProtocolName, RegisteredEventsFactoriesTuple, any, any, any>,
-  ): ProtocolAnalysisResource => {
+    protocolInternals: MachineProtocol<MachineName, RegisteredEventsFactoriesTuple>,
+    initial: StateFactory<MachineName, RegisteredEventsFactoriesTuple, any, any, any>,
+  ): MachineAnalysisResource => {
     if (!protocolInternals.states.allFactories.has(initial)) {
       throw new Error('Initial state supplied not found')
     }
@@ -233,9 +233,9 @@ export namespace ProtocolAnalysisResource {
       ),
     )
 
-    const transitionsFromReactions: ProtocolAnalysisResource['transitions'] =
+    const transitionsFromReactions: MachineAnalysisResource['transitions'] =
       reactionMapEntries.reduce(
-        (accumulated: ProtocolAnalysisResource['transitions'], [ofState, reactions]) => {
+        (accumulated: MachineAnalysisResource['transitions'], [ofState, reactions]) => {
           for (const reaction of reactions.values()) {
             // This block converts a reaction into a chain of of transitions of states and synthetic states
             // Example:
@@ -271,8 +271,8 @@ export namespace ProtocolAnalysisResource {
         [],
       )
 
-    const transitionsFromCommands: ProtocolAnalysisResource['transitions'] =
-      protocolInternals.commands.map((item): ProtocolAnalysisResource['transitions'][0] => ({
+    const transitionsFromCommands: MachineAnalysisResource['transitions'] =
+      protocolInternals.commands.map((item): MachineAnalysisResource['transitions'][0] => ({
         source: item.ofState,
         target: item.ofState,
         label: {
@@ -282,7 +282,7 @@ export namespace ProtocolAnalysisResource {
         },
       }))
 
-    const resource: ProtocolAnalysisResource = {
+    const resource: MachineAnalysisResource = {
       initial: initial.mechanism.name,
       subscriptions,
       transitions: [...transitionsFromCommands, ...transitionsFromReactions],
