@@ -2,23 +2,24 @@ import { createMachineRunner, MachineRunner, utils } from '@actyx/machine-runner
 import { AuditMachines } from '@actyx/machine-visual'
 import { Actyx } from '@actyx/sdk'
 import { useEffect, useMemo, useState } from 'react'
-import { InitialP, InitialT, TaxiTag } from './machines.js'
 
 import { UIMachine } from './UIMachine.js'
+import { protocol } from './machines/protocol.js'
+import { Passenger, Taxi } from './machines/index.js'
 
 export const AppImpl = ({ actyx }: { actyx: Actyx }) => {
   const [id, setId] = useState('1')
 
-  const where = TaxiTag.withId(id)
+  const where = protocol.tags
 
   const passengerMachine = useMachine(
-    () => createMachineRunner(actyx, where, InitialP, void 0),
+    () => createMachineRunner(actyx, where, Passenger.Initial, void 0),
     [actyx, id],
   )
 
   const taxi1Machine: MachineRunner = useMachine(
     () =>
-      createMachineRunner(actyx, where, InitialT, {
+      createMachineRunner(actyx, where, Taxi.Initial, {
         id: 'one',
       }),
     [actyx, id],
@@ -26,7 +27,7 @@ export const AppImpl = ({ actyx }: { actyx: Actyx }) => {
 
   const taxi2Machine: MachineRunner = useMachine(
     () =>
-      createMachineRunner(actyx, where, InitialT, {
+      createMachineRunner(actyx, where, Taxi.Initial, {
         id: 'two',
       }),
     [actyx, id],

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { ActyxEvent } from '@actyx/sdk'
 import * as utils from '../utils/type-utils.js'
 
@@ -48,7 +49,7 @@ export namespace MachineEvent {
    *   .withoutPayload()
    *
    * // Creates a protocol that can make use of these three event types
-   * const protocol = Protocol.make("hangardoor", [
+   * const protocol = SwarmProtocol.make("HangarBayExchange", ["HangarBayExchange"], [
    *  HangarDoorTransitioning,
    *  HangarDoorClosed,
    *  HangarDoorOpen,

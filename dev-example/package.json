@@ -5,6 +5,10 @@
   "description": "asymmetric replicated state machines: dev example",
   "source": "./src/index.html",
   "exports": null,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Actyx/machines"
+  },
   "scripts": {
     "prepare": "cd ../machine-visual && npm install && npm run build",
     "check": "machine-check src/proto.ts",

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import {
   Actyx,
   CancelSubscription,
@@ -28,10 +29,10 @@ import {
 import { MachineEmitter, MachineEmitterEventMap } from './runner-utils.js'
 
 /**
- * Contains and manages the state of a protocol by subscribing and publishing
+ * Contains and manages the state of a machine by subscribing and publishing
  * events via an active connection to Actyx. A MachineRunner manages state
  * reactions and transitions when incoming events from Actyx match one of the
- * reactions of the MachineRunner's state as defined by the user via the
+ * reactions of the MachineRunner's state as defined by the user via the machine
  * protocol.
  *
  * MachineRunner can be used as an async-iterator. However, if used as an
@@ -690,7 +691,7 @@ export namespace State {
    * Extract the typed state from a StateFactory.
    *
    * @example
-   * const Active = protocol
+   * const Active = machine
    *   .designEmpty("Active")
    *   .command("deactivate", [Deactivate], () => [Deactivate.make()])
    *   .finish();

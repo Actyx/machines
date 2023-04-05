@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { ActyxEvent } from '@actyx/sdk'
 import * as utils from '../utils/type-utils.js'
 import { CommandDefiner, CommandDefinerMap } from './command.js'
@@ -84,11 +85,11 @@ export namespace ReactionMap {
   }
 }
 
-export type ProtocolInternals<
-  ProtocolName extends string,
+export type MachineProtocol<
+  MachineName extends string,
   RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
 > = {
-  readonly name: ProtocolName
+  readonly name: MachineName
   readonly registeredEvents: RegisteredEventsFactoriesTuple
   readonly reactionMap: ReactionMap
   readonly commands: { ofState: string; commandName: string; events: string[] }[]
@@ -98,18 +99,18 @@ export type ProtocolInternals<
   }
 }
 
-export namespace ProtocolInternals {
-  export type Any = ProtocolInternals<string, any>
+export namespace MachineProtocol {
+  export type Any = MachineProtocol<string, any>
 }
 
 export type StateMechanism<
-  ProtocolName extends string,
+  MachineName extends string,
   RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
   StateName extends string,
   StatePayload,
   Commands extends CommandDefinerMap<object, unknown[], MachineEvent.Any[]>,
 > = {
-  readonly protocol: ProtocolInternals<ProtocolName, RegisteredEventsFactoriesTuple>
+  readonly protocol: MachineProtocol<MachineName, RegisteredEventsFactoriesTuple>
   readonly name: StateName
   readonly commands: Commands
   /**
@@ -152,7 +153,7 @@ export type StateMechanism<
       MachineEvent.Factory.MapToPayload<AcceptedEventFactories>
     >,
   ) => StateMechanism<
-    ProtocolName,
+    MachineName,
     RegisteredEventsFactoriesTuple,
     StateName,
     StatePayload,
@@ -170,7 +171,7 @@ export type StateMechanism<
    * @returns a StateFactory
    */
   readonly finish: () => StateFactory<
-    ProtocolName,
+    MachineName,
     RegisteredEventsFactoriesTuple,
     StateName,
     StatePayload,
@@ -181,27 +182,27 @@ export type StateMechanism<
 export namespace StateMechanism {
   export type Any = StateMechanism<any, any, any, any, any>
   export const make = <
-    ProtocolName extends string,
+    MachineName extends string,
     RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
     StateName extends string,
     StatePayload,
     Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
   >(
-    protocol: ProtocolInternals<ProtocolName, RegisteredEventsFactoriesTuple>,
+    protocol: MachineProtocol<MachineName, RegisteredEventsFactoriesTuple>,
     stateName: StateName,
     props?: {
       commands?: Commands
       commandDataForAnalytics: { commandName: string; events: string[] }[]
     },
   ): StateMechanism<
-    ProtocolName,
+    MachineName,
     RegisteredEventsFactoriesTuple,
     StateName,
     StatePayload,
     Commands
   > => {
     type Self = StateMechanism<
-      ProtocolName,
+      MachineName,
       RegisteredEventsFactoriesTuple,
       StateName,
       StatePayload,
@@ -290,7 +291,7 @@ export namespace StateMechanism {
  * a reaction.
  */
 export type StateFactory<
-  ProtocolName extends string,
+  MachineName extends string,
   RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
   StateName extends string,
   StatePayload,
@@ -305,7 +306,7 @@ export type StateFactory<
   symbol: () => symbol
 
   readonly mechanism: StateMechanism<
-    ProtocolName,
+    MachineName,
     RegisteredEventsFactoriesTuple,
     StateName,
     StatePayload,
@@ -338,7 +339,7 @@ export type StateFactory<
     NextPayload,
   >(
     eventChainTrigger: EventFactoriesChain,
-    nextFactory: StateFactory<ProtocolName, RegisteredEventsFactoriesTuple, any, NextPayload, any>,
+    nextFactory: StateFactory<MachineName, RegisteredEventsFactoriesTuple, any, NextPayload, any>,
     handler: ReactionHandler<
       MachineEvent.Factory.MapToActyxEvent<EventFactoriesChain>,
       ReactionContext<StatePayload>,
@@ -368,14 +369,14 @@ export namespace StateFactory {
     : never
 
   export const fromMechanism = <
-    ProtocolName extends string,
+    MachineName extends string,
     RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
     StateName extends string,
     StatePayload,
     Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
   >(
     mechanism: StateMechanism<
-      ProtocolName,
+      MachineName,
       RegisteredEventsFactoriesTuple,
       StateName,
       StatePayload,
@@ -383,7 +384,7 @@ export namespace StateFactory {
     >,
   ) => {
     type Self = StateFactory<
-      ProtocolName,
+      MachineName,
       RegisteredEventsFactoriesTuple,
       StateName,
       StatePayload,
