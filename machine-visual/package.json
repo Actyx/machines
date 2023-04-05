@@ -8,9 +8,9 @@
     ".": "./lib/index.js"
   },
   "scripts": {
-    "prepare:machine-check": "cd ../machine-check && npm install && npm run build",
-    "prepare:machine-runner": "cd ../machine-runner && npm install && npm run build",
-    "prepare": "npm run prepare:machine-runner && npm run prepare:machine-check",
+    "prepare:machine-runner": "cd ../machine-runner && npm install && npm run lint && npm run build && npm run test",
+    "prepare": "npm run prepare:machine-runner",
+    "clean": "rimraf ./lib",
     "build": "tsc"
   },
   "keywords": [
@@ -36,7 +36,7 @@
     "@rjsf/utils": "^5.1.0",
     "@rjsf/validator-ajv8": "^5.1.0",
     "react-konva": "^18.2.5",
-    "konva": "git://github.com/Kelerchian/konva.git#ada-fix-esm-typescript-make-importable"
+    "konva": "^8.4.3"
   },
   "peerDependencies": {
     "react": "^18.2.0"
