@@ -98,6 +98,7 @@ impl Error {
     }
 }
 
+/// helper for printing a transition
 struct Edge<'a, N: StateName>(&'a petgraph::Graph<N, SwarmLabel>, EdgeId);
 
 impl<'a, N: StateName> fmt::Display for Edge<'a, N> {
@@ -115,7 +116,14 @@ impl<'a, N: StateName> fmt::Display for Edge<'a, N> {
 #[derive(Debug)]
 struct Node {
     name: State,
+    /**
+     * All roles that have an enabled command in this state
+     */
     active: BTreeSet<Role>,
+    /**
+     * All roles that subscribe to at least one event emitted by a transition reachable
+     * from this state.
+     */
     roles: BTreeSet<Role>,
 }
 
@@ -143,7 +151,7 @@ pub fn check(
 ) -> (super::Graph, Option<NodeId>, Vec<Error>) {
     let (graph, initial, mut errors) = match prepare_graph(proto, &subs) {
         (g, Some(i), e) => (g, i, e),
-        (g, None, e) => return (g.map(|_, n| n.name.clone(), |_, x| x.clone()), None, e),
+        (g, None, e) => return (to_swarm(&g), None, e),
     };
     errors.extend(well_formed(&graph, initial, subs));
     (to_swarm(&graph), Some(initial), errors)
@@ -155,8 +163,10 @@ fn to_swarm(graph: &Graph) -> super::Graph {
 
 fn well_formed(graph: &Graph, initial: NodeId, subs: &Subscriptions) -> Vec<Error> {
     let mut errors = Vec::new();
-    let empty = BTreeSet::new();
+    let empty = BTreeSet::new(); // just for `sub` but needs its own lifetime
     let sub = |r: &Role| subs.get(r).unwrap_or(&empty);
+
+    // visit all reachable nodes of the graph to check their prescribed conditions; order doesn’t matter
     for node in Dfs::new(&graph, initial).iter(&graph) {
         let mut guards = BTreeMap::new();
         let mut commands = BTreeSet::new();
