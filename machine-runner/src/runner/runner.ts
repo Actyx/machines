@@ -97,8 +97,26 @@ export type MachineRunner<
 } & MachineRunnerIterableIterator<SwarmProtocolName, MachineName, RegisteredEventsFactoriesTuple>
 
 export namespace MachineRunner {
+  /**
+   * The widest type of MachineRunner. Any other MachineRunner extends this type
+   */
   export type Any = MachineRunner<string, string, any[]>
 
+  /**
+   * Extract MachineRunner event emitter map type from a MachineRunner
+   * @example
+   * const machineRunner = createMachineRunner(actyx, where, Passenger.Initial, void 0);
+   *
+   * type EventMap = MachineRunner.EventMapOf<typeof machineRunner>
+   * type OnChange = EventMap['change']
+   *
+   * const onChange: EventMap['change'] = () =>
+   *  console.log(label, 'state after caughtUp', utils.deepCopy(machine.get()))
+   * machine.events.on('change', onChange)
+   *
+   * // later
+   * machine.events.off('change', onChange)
+   */
   export type EventMapOf<M extends MachineRunner<any, any, any>> = M extends MachineRunner<
     infer S,
     infer N,
@@ -107,9 +125,22 @@ export namespace MachineRunner {
     ? MachineEmitterEventMap<S, N, E>
     : never
 
+  /**
+   * Extract MachineRunner type from SwarmProtocol or Machine
+   * @example
+   * const HangarBay = SwarmProtocol.make('HangarBay', ['hangar-bay'], Events.all)
+   * const Door = HangarBay.makeMachine('door')
+   * const Initial = Door.designEmpty().finish()
+   *
+   * // refers to any MachineRunner derived from HangarBay protocol
+   * type ThisMachineRunner = MachineRunner.Of<typeof HangarBay>
+   *
+   * // refers to any MachineRunner derived from HangarBay protocol and Door machine
+   * type ThisMachineRunner = MachineRunner.Of<typeof Door>
+   */
   export type Of<S extends SwarmProtocol<any, any, any> | Machine<any, any, any>> =
     S extends SwarmProtocol<infer S, any, infer E>
-      ? MachineRunner<S, any, E>
+      ? MachineRunner<S, string, E>
       : S extends Machine<infer S, infer N, infer E>
       ? MachineRunner<S, N, E>
       : never
@@ -617,13 +648,14 @@ export interface StateOpaque<
    * }
    */
   is<
+    DeductMachineName extends MachineName,
     DeductStateName extends string,
     DeductPayload,
     DeductCommands extends CommandDefinerMap<object, any, MachineEvent.Any[]> = object,
   >(
     factory: StateFactory<
       SwarmProtocolName,
-      MachineName,
+      DeductMachineName,
       RegisteredEventsFactoriesTuple,
       DeductStateName,
       DeductPayload,
@@ -631,7 +663,7 @@ export interface StateOpaque<
     >,
   ): this is StateOpaque<
     SwarmProtocolName,
-    MachineName,
+    DeductMachineName,
     RegisteredEventsFactoriesTuple,
     DeductStateName,
     DeductPayload,
@@ -668,13 +700,14 @@ export interface StateOpaque<
    *  .as(HangarControlIdle, (state) => state.dockingRequests.at(0))
    */
   as<
+    DeductMachineName extends MachineName,
     StateName extends string,
     StatePayload extends any,
     Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
   >(
     factory: StateFactory<
       SwarmProtocolName,
-      MachineName,
+      DeductMachineName,
       RegisteredEventsFactoriesTuple,
       StateName,
       StatePayload,
@@ -712,6 +745,7 @@ export interface StateOpaque<
    *  .as(HangarControlIdle, (state) => state.dockingRequests.at(0))
    */
   as<
+    DeductMachineName extends MachineName,
     StateName extends string,
     StatePayload extends any,
     Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
@@ -719,7 +753,7 @@ export interface StateOpaque<
   >(
     factory: StateFactory<
       SwarmProtocolName,
-      MachineName,
+      DeductMachineName,
       RegisteredEventsFactoriesTuple,
       StateName,
       StatePayload,
@@ -746,6 +780,27 @@ export interface StateOpaque<
 }
 
 export namespace StateOpaque {
+  /**
+   * The widest type of StateOpaque. Any other StateOpaque extends this type
+   */
+  export type Any = StateOpaque<string, string, any[], string, any, object>
+
+  /**
+   * Derive StateOpaque type from a SwarmProtocol, a Machine, or a MachineRunner
+   * @example
+   *
+   * const HangarBay = SwarmProtocol.make('HangarBay', ['hangar-bay'], Events.all)
+   * const Door = HangarBay.makeMachine('door')
+   * const Initial = Door.designEmpty().finish()
+   * const machineRunner = createMachineRunner(actyx, where, Passenger.Initial, void 0);
+   *
+   * // Two types below refers to any StateOpaque coming from Door machine, HangarBay protocol
+   * type ThisStateOpaque1 = StateOpaque.Of<typeof machineRunner>;
+   * type ThisStateOpaque2 = StateOpaque.Of<typeof Door>;
+   *
+   * // The type below refers to any StateOpaque coming from HangarBay protocol
+   * type ThisStateOpaque3 = StateOpaque.Of<typeof HangarBay>;
+   */
   export type Of<
     M extends
       | MachineRunner.Any

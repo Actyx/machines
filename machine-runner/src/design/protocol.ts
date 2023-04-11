@@ -42,7 +42,18 @@ export namespace SwarmProtocol {
    * @param registeredEventFactories - MachineEvent.Factories that are allowed
    * to be used for communications in the scope of this SwarmProtocol
    * @example
-   * const protocol = SwarmProtocol.make("")
+   * const HangarDoorTransitioning = MachineEvent
+   *   .design("HangarDoorTransitioning")
+   *   .withPayload<{ fractionOpen: number }>()
+   * const HangarDoorClosed = MachineEvent
+   *   .design("HangarDoorClosed")
+   *   .withoutPayload()
+   * const HangarDoorOpen = MachineEvent
+   *   .design("HangarDoorOpen")
+   *   .withoutPayload()
+   *
+   * // Creates a protocol
+   * const HangarBay = SwarmProtocol.make('HangarBay', ['hangar-bay'], Events.all)
    */
   export const make = <
     SwarmProtocolName extends string,
