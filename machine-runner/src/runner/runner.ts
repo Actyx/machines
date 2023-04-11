@@ -17,6 +17,7 @@ import {
   CommandDefinerMap,
   ToCommandSignatureMap,
   convertCommandMapToCommandSignatureMap,
+  MachineProtocol,
 } from '../design/state.js'
 import { Destruction } from '../utils/destruction.js'
 import { NOP } from '../utils/index.js'
@@ -27,6 +28,7 @@ import {
   StateAndFactory,
 } from './runner-internals.js'
 import { MachineEmitter, MachineEmitterEventMap } from './runner-utils.js'
+import { Machine, SwarmProtocol } from '../design/protocol.js'
 
 /**
  * Contains and manages the state of a machine by subscribing and publishing
@@ -46,9 +48,13 @@ import { MachineEmitter, MachineEmitterEventMap } from './runner-utils.js'
  * }
  * machine.isDestroyed() // returns true
  */
-export type MachineRunner = {
+export type MachineRunner<
+  SwarmProtocolName extends string,
+  MachineName extends string,
+  RegisteredEventsFactoriesTuple extends MachineEvent.Factory.Any[],
+> = {
   id: symbol
-  events: MachineEmitter
+  events: MachineEmitter<SwarmProtocolName, MachineName, RegisteredEventsFactoriesTuple>
 
   /**
    * Disconnect from Actyx and disable future reactions and commands.
@@ -66,13 +72,13 @@ export type MachineRunner = {
    * @returns null if the MachineRunner has not processed all incoming events
    * for the first time.
    */
-  get: () => StateOpaque | null
+  get: () => StateOpaque<SwarmProtocolName, MachineName, RegisteredEventsFactoriesTuple> | null
 
   /**
    * @returns a snapshot of the MachineRunner's initial state in the form of
    * StateOpaque.
    */
-  initial: () => StateOpaque
+  initial: () => StateOpaque<SwarmProtocolName, MachineName, RegisteredEventsFactoriesTuple>
 
   /**
    * @returns a copy of the MachineRunner referring to its parent's state that
@@ -83,23 +89,40 @@ export type MachineRunner = {
    * }
    * machine.isDestroyed() // returns false
    */
-  noAutoDestroy: () => MachineRunnerIterableIterator
-} & MachineRunnerIterableIterator
+  noAutoDestroy: () => MachineRunnerIterableIterator<
+    SwarmProtocolName,
+    MachineName,
+    RegisteredEventsFactoriesTuple
+  >
+} & MachineRunnerIterableIterator<SwarmProtocolName, MachineName, RegisteredEventsFactoriesTuple>
 
 export namespace MachineRunner {
-  type AllEventMap = MachineEmitterEventMap
-  export type EventListener<Key extends keyof AllEventMap> = AllEventMap[Key]
+  export type Any = MachineRunner<string, string, any[]>
+
+  export type EventMapOf<M extends MachineRunner<any, any, any>> = M extends MachineRunner<
+    infer S,
+    infer N,
+    infer E
+  >
+    ? MachineEmitterEventMap<S, N, E>
+    : never
+
+  export type Of<S extends SwarmProtocol<any, any, any> | Machine<any, any, any>> =
+    S extends SwarmProtocol<infer S, any, infer E>
+      ? MachineRunner<S, any, E>
+      : S extends Machine<infer S, infer N, infer E>
+      ? MachineRunner<S, N, E>
+      : never
 }
 
-export type SubscribeFn<RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple> =
-  (
-    callback: (
-      data: EventsOrTimetravel<MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>>,
-    ) => Promise<void>,
-    onCompleteOrErr?: OnCompleteOrErr,
-  ) => CancelSubscription
+export type SubscribeFn<RegisteredEventsFactoriesTuple extends MachineEvent.Factory.Any[]> = (
+  callback: (
+    data: EventsOrTimetravel<MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>>,
+  ) => Promise<void>,
+  onCompleteOrErr?: OnCompleteOrErr,
+) => CancelSubscription
 
-export type PersistFn<RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple> = (
+export type PersistFn<RegisteredEventsFactoriesTuple extends MachineEvent.Factory.Any[]> = (
   events: MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>[],
 ) => Promise<Metadata[]>
 
@@ -112,12 +135,21 @@ export type PersistFn<RegisteredEventsFactoriesTuple extends MachineEvent.Factor
  * @returns a MachineRunner instance.
  */
 export const createMachineRunner = <
-  RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
+  SwarmProtocolName extends string,
+  MachineName extends string,
+  RegisteredEventsFactoriesTuple extends MachineEvent.Factory.Any[],
   Payload,
 >(
   sdk: Actyx,
   tags: Tags<MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>>,
-  initialFactory: StateFactory<any, RegisteredEventsFactoriesTuple, any, Payload, any>,
+  initialFactory: StateFactory<
+    SwarmProtocolName,
+    MachineName,
+    RegisteredEventsFactoriesTuple,
+    any,
+    Payload,
+    any
+  >,
   initialPayload: Payload,
 ) => {
   const subscribeMonotonicQuery = {
@@ -139,15 +171,31 @@ export const createMachineRunner = <
 }
 
 export const createMachineRunnerInternal = <
-  RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
+  SwarmProtocolName extends string,
+  MachineName extends string,
+  RegisteredEventsFactoriesTuple extends MachineEvent.Factory.Any[],
   Payload,
 >(
   subscribe: SubscribeFn<RegisteredEventsFactoriesTuple>,
   persist: PersistFn<RegisteredEventsFactoriesTuple>,
-  factory: StateFactory<any, RegisteredEventsFactoriesTuple, any, Payload, any>,
-  payload: Payload,
-): MachineRunner => {
-  const internals = RunnerInternals.make(factory, payload, (events) => {
+  initialFactory: StateFactory<
+    SwarmProtocolName,
+    MachineName,
+    RegisteredEventsFactoriesTuple,
+    any,
+    Payload,
+    any
+  >,
+  initialPayload: Payload,
+): MachineRunner<SwarmProtocolName, MachineName, RegisteredEventsFactoriesTuple> => {
+  type ThisStateOpaque = StateOpaque<SwarmProtocolName, MachineName, RegisteredEventsFactoriesTuple>
+  type ThisMachineRunner = MachineRunner<
+    SwarmProtocolName,
+    MachineName,
+    RegisteredEventsFactoriesTuple
+  >
+
+  const internals = RunnerInternals.make(initialFactory, initialPayload, (events) => {
     if (internals.commandLock) {
       console.error('Command issued after locked')
       return Promise.resolve(CommandFiredAfterLocked)
@@ -180,7 +228,11 @@ export const createMachineRunnerInternal = <
   const destruction = Destruction.make()
 
   // Actyx Subscription management
-  const emitter = new EventEmitter() as MachineEmitter
+  const emitter = new EventEmitter() as MachineEmitter<
+    SwarmProtocolName,
+    MachineName,
+    RegisteredEventsFactoriesTuple
+  >
   destruction.addDestroyHook(() => emitter.emit('destroyed'))
 
   let refToUnsubFunction = null as null | (() => void)
@@ -278,14 +330,14 @@ export const createMachineRunnerInternal = <
 
   // Self API construction
 
-  const getSnapshot = (): StateOpaque | null =>
+  const getSnapshot = (): ThisStateOpaque | null =>
     internals.caughtUpFirstTime ? ImplStateOpaque.make(internals, internals.current) : null
 
   const api = {
     id: Symbol(),
     events: emitter,
     get: getSnapshot,
-    initial: (): StateOpaque => ImplStateOpaque.make(internals, internals.initial),
+    initial: (): ThisStateOpaque => ImplStateOpaque.make(internals, internals.initial),
     destroy: destruction.destroy,
     isDestroyed: destruction.isDestroyed,
     noAutoDestroy: () =>
@@ -294,12 +346,16 @@ export const createMachineRunnerInternal = <
       }),
   }
 
-  const defaultIterator: MachineRunnerIterableIterator = MachineRunnerIterableIterator.make({
+  const defaultIterator: MachineRunnerIterableIterator<
+    SwarmProtocolName,
+    MachineName,
+    RegisteredEventsFactoriesTuple
+  > = MachineRunnerIterableIterator.make({
     events: emitter,
     inheritedDestruction: destruction,
   })
 
-  const self: MachineRunner = {
+  const self: ThisMachineRunner = {
     ...api,
     ...defaultIterator,
   }
@@ -307,20 +363,42 @@ export const createMachineRunnerInternal = <
   return self
 }
 
-export type MachineRunnerIterableIterator = AsyncIterable<StateOpaque> &
-  AsyncIterableIterator<StateOpaque> &
-  AsyncIterator<StateOpaque, null> & {
-    peek: () => Promise<IteratorResult<StateOpaque, null>>
+export type MachineRunnerIterableIterator<
+  SwarmProtocolName extends string,
+  MachineName extends string,
+  RegisteredEventsFactoriesTuple extends MachineEvent.Factory.Any[],
+> = AsyncIterable<StateOpaque<SwarmProtocolName, MachineName, RegisteredEventsFactoriesTuple>> &
+  AsyncIterableIterator<
+    StateOpaque<SwarmProtocolName, MachineName, RegisteredEventsFactoriesTuple>
+  > &
+  AsyncIterator<
+    StateOpaque<SwarmProtocolName, MachineName, RegisteredEventsFactoriesTuple>,
+    null
+  > & {
+    peek: () => Promise<
+      IteratorResult<
+        StateOpaque<SwarmProtocolName, MachineName, RegisteredEventsFactoriesTuple>,
+        null
+      >
+    >
   }
 
 namespace MachineRunnerIterableIterator {
-  export const make = ({
+  export const make = <
+    SwarmProtocolName extends string,
+    MachineName extends string,
+    RegisteredEventsFactoriesTuple extends MachineEvent.Factory.Any[],
+  >({
     events,
     inheritedDestruction: inheritedDestruction,
   }: {
-    events: MachineEmitter
+    events: MachineEmitter<SwarmProtocolName, MachineName, RegisteredEventsFactoriesTuple>
     inheritedDestruction?: Destruction
-  }): MachineRunnerIterableIterator => {
+  }): MachineRunnerIterableIterator<
+    SwarmProtocolName,
+    MachineName,
+    RegisteredEventsFactoriesTuple
+  > => {
     const destruction =
       inheritedDestruction ||
       (() => {
@@ -341,17 +419,32 @@ namespace MachineRunnerIterableIterator {
       destruction,
     })
 
-    const onThrowOrReturn = async (): Promise<IteratorResult<StateOpaque, null>> => {
+    const onThrowOrReturn = async (): Promise<
+      IteratorResult<
+        StateOpaque<SwarmProtocolName, MachineName, RegisteredEventsFactoriesTuple>,
+        null
+      >
+    > => {
       destruction.destroy()
       return nextValueAwaiter.consume()
     }
 
-    const iterator: MachineRunnerIterableIterator = {
-      peek: (): Promise<IteratorResult<StateOpaque>> => nextValueAwaiter.peek(),
-      next: (): Promise<IteratorResult<StateOpaque>> => nextValueAwaiter.consume(),
+    const iterator: MachineRunnerIterableIterator<
+      SwarmProtocolName,
+      MachineName,
+      RegisteredEventsFactoriesTuple
+    > = {
+      peek: (): Promise<
+        IteratorResult<StateOpaque<SwarmProtocolName, MachineName, RegisteredEventsFactoriesTuple>>
+      > => nextValueAwaiter.peek(),
+      next: (): Promise<
+        IteratorResult<StateOpaque<SwarmProtocolName, MachineName, RegisteredEventsFactoriesTuple>>
+      > => nextValueAwaiter.consume(),
       return: onThrowOrReturn,
       throw: onThrowOrReturn,
-      [Symbol.asyncIterator]: (): AsyncIterableIterator<StateOpaque> => iterator,
+      [Symbol.asyncIterator]: (): AsyncIterableIterator<
+        StateOpaque<SwarmProtocolName, MachineName, RegisteredEventsFactoriesTuple>
+      > => iterator,
     }
 
     return iterator
@@ -364,16 +457,34 @@ namespace MachineRunnerIterableIterator {
 export type NextValueAwaiter = ReturnType<typeof NextValueAwaiter['make']>
 
 namespace NextValueAwaiter {
-  export const make = ({
+  export const make = <
+    SwarmProtocolName extends string,
+    MachineName extends string,
+    RegisteredEventsFactoriesTuple extends MachineEvent.Factory.Any[],
+  >({
     events,
     destruction,
   }: {
-    events: MachineEmitter
+    events: MachineEmitter<SwarmProtocolName, MachineName, RegisteredEventsFactoriesTuple>
     destruction: Destruction
   }) => {
-    let store: null | StateOpaque | RequestedPromisePair = null
+    type ThisStateOpaque = StateOpaque<
+      SwarmProtocolName,
+      MachineName,
+      RegisteredEventsFactoriesTuple
+    >
+    type ThisMachineEmitterEventMap = MachineEmitterEventMap<
+      SwarmProtocolName,
+      MachineName,
+      RegisteredEventsFactoriesTuple
+    >
 
-    const onChange: MachineEmitterEventMap['change'] = (state) => {
+    let store:
+      | null
+      | ThisStateOpaque
+      | RequestedPromisePair<SwarmProtocolName, MachineName, RegisteredEventsFactoriesTuple> = null
+
+    const onChange: ThisMachineEmitterEventMap['change'] = (state) => {
       if (destruction.isDestroyed()) return
 
       if (Array.isArray(store)) {
@@ -395,7 +506,7 @@ namespace NextValueAwaiter {
     })
 
     return {
-      consume: (): Promise<IteratorResult<StateOpaque, null>> => {
+      consume: (): Promise<IteratorResult<ThisStateOpaque, null>> => {
         if (destruction.isDestroyed()) return Promise.resolve(Done)
 
         if (store && !Array.isArray(store)) {
@@ -409,7 +520,7 @@ namespace NextValueAwaiter {
         }
       },
 
-      peek: (): Promise<IteratorResult<StateOpaque, null>> => {
+      peek: (): Promise<IteratorResult<ThisStateOpaque, null>> => {
         if (destruction.isDestroyed()) return Promise.resolve(Done)
 
         if (store && !Array.isArray(store)) {
@@ -424,23 +535,57 @@ namespace NextValueAwaiter {
     }
   }
 
-  type RequestedPromisePair = [
-    Promise<IteratorResult<StateOpaque, null>>,
-    (_: IteratorResult<StateOpaque, null>) => unknown,
+  type RequestedPromisePair<
+    SwarmProtocolName extends string,
+    MachineName extends string,
+    RegisteredEventsFactoriesTuple extends MachineEvent.Factory.Any[],
+  > = [
+    Promise<
+      IteratorResult<
+        StateOpaque<SwarmProtocolName, MachineName, RegisteredEventsFactoriesTuple>,
+        null
+      >
+    >,
+    (
+      _: IteratorResult<
+        StateOpaque<SwarmProtocolName, MachineName, RegisteredEventsFactoriesTuple>,
+        null
+      >,
+    ) => unknown,
   ]
 
-  const createPromisePair = (): RequestedPromisePair => {
-    const pair: RequestedPromisePair = [undefined as any, NOP]
-    pair[0] = new Promise<IteratorResult<StateOpaque, null>>((resolve) => (pair[1] = resolve))
+  const createPromisePair = <
+    SwarmProtocolName extends string,
+    MachineName extends string,
+    RegisteredEventsFactoriesTuple extends MachineEvent.Factory.Any[],
+  >(): RequestedPromisePair<SwarmProtocolName, MachineName, RegisteredEventsFactoriesTuple> => {
+    type Ret = RequestedPromisePair<SwarmProtocolName, MachineName, RegisteredEventsFactoriesTuple>
+    type ThisStateOpaque = StateOpaque<
+      SwarmProtocolName,
+      MachineName,
+      RegisteredEventsFactoriesTuple
+    >
+
+    const pair: Ret = [undefined as any, NOP]
+    pair[0] = new Promise<IteratorResult<ThisStateOpaque, null>>((resolve) => (pair[1] = resolve))
     return pair
   }
 
-  const intoIteratorResult = (value: StateOpaque): IteratorResult<StateOpaque, null> => ({
+  const intoIteratorResult = <
+    SwarmProtocolName extends string,
+    MachineName extends string,
+    RegisteredEventsFactoriesTuple extends MachineEvent.Factory.Any[],
+  >(
+    value: StateOpaque<SwarmProtocolName, MachineName, RegisteredEventsFactoriesTuple>,
+  ): IteratorResult<
+    StateOpaque<SwarmProtocolName, MachineName, RegisteredEventsFactoriesTuple>,
+    null
+  > => ({
     done: false,
     value,
   })
 
-  export const Done: IteratorResult<StateOpaque, null> = { done: true, value: null }
+  export const Done: IteratorResult<StateOpaque<any, any, any>, null> = { done: true, value: null }
 }
 
 /**
@@ -450,6 +595,9 @@ namespace NextValueAwaiter {
  * particular typed State.
  */
 export interface StateOpaque<
+  SwarmProtocolName extends string,
+  MachineName extends string,
+  RegisteredEventsFactoriesTuple extends MachineEvent.Factory.Any[],
   StateName extends string = string,
   Payload = unknown,
   Commands extends CommandDefinerMap<object, any, MachineEvent.Any[]> = object,
@@ -473,8 +621,22 @@ export interface StateOpaque<
     DeductPayload,
     DeductCommands extends CommandDefinerMap<object, any, MachineEvent.Any[]> = object,
   >(
-    factory: StateFactory<any, any, DeductStateName, DeductPayload, DeductCommands>,
-  ): this is StateOpaque<DeductStateName, DeductPayload, DeductCommands>
+    factory: StateFactory<
+      SwarmProtocolName,
+      MachineName,
+      RegisteredEventsFactoriesTuple,
+      DeductStateName,
+      DeductPayload,
+      DeductCommands
+    >,
+  ): this is StateOpaque<
+    SwarmProtocolName,
+    MachineName,
+    RegisteredEventsFactoriesTuple,
+    DeductStateName,
+    DeductPayload,
+    DeductCommands
+  >
 
   /**
    * Attempt to cast the StateOpaque into a specific StateFactory and optionally
@@ -510,7 +672,14 @@ export interface StateOpaque<
     StatePayload extends any,
     Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
   >(
-    factory: StateFactory<any, any, StateName, StatePayload, Commands>,
+    factory: StateFactory<
+      SwarmProtocolName,
+      MachineName,
+      RegisteredEventsFactoriesTuple,
+      StateName,
+      StatePayload,
+      Commands
+    >,
   ): State<StateName, StatePayload, Commands> | undefined
 
   /**
@@ -548,7 +717,14 @@ export interface StateOpaque<
     Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
     Then extends (arg: State<StateName, StatePayload, Commands>) => any,
   >(
-    factory: StateFactory<any, any, StateName, StatePayload, Commands>,
+    factory: StateFactory<
+      SwarmProtocolName,
+      MachineName,
+      RegisteredEventsFactoriesTuple,
+      StateName,
+      StatePayload,
+      Commands
+    >,
     then: Then,
   ): ReturnType<Then> | undefined
 
@@ -569,6 +745,21 @@ export interface StateOpaque<
   cast(): State<StateName, Payload, Commands>
 }
 
+export namespace StateOpaque {
+  export type Of<
+    M extends
+      | MachineRunner.Any
+      | Machine.Any
+      | SwarmProtocol<string, [any, ...any[]], [any, ...any[]]>,
+  > = M extends MachineRunner<infer S, infer N, infer E>
+    ? StateOpaque<S, N, E>
+    : M extends Machine<infer S, infer N, infer E>
+    ? StateOpaque<S, N, E>
+    : M extends SwarmProtocol<infer S, any, infer E>
+    ? StateOpaque<S, any, E>
+    : never
+}
+
 namespace ImplStateOpaque {
   export const isExpired = (
     internals: RunnerInternals.Any,
@@ -580,10 +771,27 @@ namespace ImplStateOpaque {
   export const isCommandLocked = (internals: RunnerInternals.Any): boolean =>
     !!internals.commandLock
 
-  export const make = (
+  export const make = <
+    SwarmProtocolName extends string,
+    MachineName extends string,
+    RegisteredEventsFactoriesTuple extends MachineEvent.Factory.Any[],
+  >(
     internals: RunnerInternals.Any,
-    stateAndFactoryForSnapshot: StateAndFactory.Any,
-  ): StateOpaque => {
+    stateAndFactoryForSnapshot: StateAndFactory<
+      SwarmProtocolName,
+      MachineName,
+      RegisteredEventsFactoriesTuple,
+      any,
+      any,
+      any
+    >,
+  ): StateOpaque<SwarmProtocolName, MachineName, RegisteredEventsFactoriesTuple> => {
+    type ThisStateOpaque = StateOpaque<
+      SwarmProtocolName,
+      MachineName,
+      RegisteredEventsFactoriesTuple
+    >
+
     // Captured data at snapshot call-time
     const commandLockAtSnapshot = internals.commandLock
     const stateAtSnapshot = stateAndFactoryForSnapshot.data
@@ -600,14 +808,21 @@ namespace ImplStateOpaque {
     // TODO: write unit test on expiry
     const isExpired = () => ImplStateOpaque.isExpired(internals, stateAndFactoryForSnapshot)
 
-    const is: StateOpaque['is'] = (factory) => factoryAtSnapshot.mechanism === factory.mechanism
+    const is: ThisStateOpaque['is'] = (factory) => factoryAtSnapshot.mechanism === factory.mechanism
 
-    const as: StateOpaque['as'] = <
+    const as: ThisStateOpaque['as'] = <
       StateName extends string,
       StatePayload,
       Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
     >(
-      factory: StateFactory<any, any, StateName, StatePayload, Commands>,
+      factory: StateFactory<
+        SwarmProtocolName,
+        MachineName,
+        RegisteredEventsFactoriesTuple,
+        StateName,
+        StatePayload,
+        Commands
+      >,
       then?: any,
     ) => {
       if (factoryAtSnapshot.mechanism === factory.mechanism) {
@@ -623,7 +838,7 @@ namespace ImplStateOpaque {
       return undefined
     }
 
-    const cast: StateOpaque['cast'] = () =>
+    const cast: ThisStateOpaque['cast'] = () =>
       ImplState.makeForSnapshot({
         factory: factoryAtSnapshot,
         commandEmitFn: internals.commandEmitFn,
@@ -709,6 +924,7 @@ export namespace State {
   export type Of<T extends StateFactory.Any> = T extends StateFactory<
     any,
     any,
+    any,
     infer StateName,
     infer StatePayload,
     infer Commands
@@ -719,7 +935,9 @@ export namespace State {
 
 namespace ImplState {
   export const makeForSnapshot = <
-    RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
+    SwarmProtocolName extends string,
+    MachineName extends string,
+    RegisteredEventsFactoriesTuple extends MachineEvent.Factory.Any[],
     StateName extends string,
     StatePayload extends any,
     Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
@@ -730,7 +948,14 @@ namespace ImplState {
     commandEmitFn,
     stateAtSnapshot,
   }: {
-    factory: StateFactory<any, RegisteredEventsFactoriesTuple, StateName, StatePayload, Commands>
+    factory: StateFactory<
+      SwarmProtocolName,
+      MachineName,
+      RegisteredEventsFactoriesTuple,
+      StateName,
+      StatePayload,
+      Commands
+    >
     isExpired: () => boolean
     commandEnabledAtSnapshot: boolean
     commandEmitFn: CommandCallback<RegisteredEventsFactoriesTuple>
@@ -738,18 +963,19 @@ namespace ImplState {
   }) => {
     const mechanism = factory.mechanism
     const commands = commandEnabledAtSnapshot
-      ? convertCommandMapToCommandSignatureMap<any, StatePayload, MachineEvent.Any[]>(
-          mechanism.commands,
-          {
-            isExpired,
-            getActualContext: () => ({
-              self: stateAtSnapshot.payload,
-            }),
-            onReturn: async (events) => {
-              await commandEmitFn(events)
-            },
+      ? convertCommandMapToCommandSignatureMap<
+          any,
+          StatePayload,
+          MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>[]
+        >(mechanism.commands, {
+          isExpired,
+          getActualContext: () => ({
+            self: stateAtSnapshot.payload,
+          }),
+          onReturn: async (events) => {
+            await commandEmitFn(events)
           },
-        )
+        })
       : undefined
 
     const snapshot = {

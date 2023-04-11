@@ -41,7 +41,7 @@ export type ReactionMapPerMechanism<Payload> = Map<string, Reaction<ReactionCont
 
 export type ReactionMap = {
   get: <Payload>(
-    mechanism: StateMechanism<any, any, any, Payload, any>,
+    mechanism: StateMechanism<any, any, any, any, Payload, any>,
   ) => ReactionMapPerMechanism<Payload>
   getAll: () => Map<StateMechanism.Any, ReactionMapPerMechanism<any>>
   add: (
@@ -86,9 +86,11 @@ export namespace ReactionMap {
 }
 
 export type MachineProtocol<
+  SwarmProtocolName extends string,
   MachineName extends string,
-  RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
+  RegisteredEventsFactoriesTuple extends MachineEvent.Factory.Any[],
 > = {
+  readonly swarmName: SwarmProtocolName
   readonly name: MachineName
   readonly registeredEvents: RegisteredEventsFactoriesTuple
   readonly reactionMap: ReactionMap
@@ -100,17 +102,18 @@ export type MachineProtocol<
 }
 
 export namespace MachineProtocol {
-  export type Any = MachineProtocol<string, any>
+  export type Any = MachineProtocol<string, string, any>
 }
 
 export type StateMechanism<
+  SwarmProtocolName extends string,
   MachineName extends string,
-  RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
+  RegisteredEventsFactoriesTuple extends MachineEvent.Factory.Any[],
   StateName extends string,
   StatePayload,
   Commands extends CommandDefinerMap<object, unknown[], MachineEvent.Any[]>,
 > = {
-  readonly protocol: MachineProtocol<MachineName, RegisteredEventsFactoriesTuple>
+  readonly protocol: MachineProtocol<SwarmProtocolName, MachineName, RegisteredEventsFactoriesTuple>
   readonly name: StateName
   readonly commands: Commands
   /**
@@ -153,6 +156,7 @@ export type StateMechanism<
       MachineEvent.Factory.MapToPayload<AcceptedEventFactories>
     >,
   ) => StateMechanism<
+    SwarmProtocolName,
     MachineName,
     RegisteredEventsFactoriesTuple,
     StateName,
@@ -171,6 +175,7 @@ export type StateMechanism<
    * @returns a StateFactory
    */
   readonly finish: () => StateFactory<
+    SwarmProtocolName,
     MachineName,
     RegisteredEventsFactoriesTuple,
     StateName,
@@ -180,21 +185,23 @@ export type StateMechanism<
 }
 
 export namespace StateMechanism {
-  export type Any = StateMechanism<any, any, any, any, any>
+  export type Any = StateMechanism<string, string, any[], string, any, any>
   export const make = <
+    SwarmProtocolName extends string,
     MachineName extends string,
-    RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
+    RegisteredEventsFactoriesTuple extends MachineEvent.Factory.Any[],
     StateName extends string,
     StatePayload,
     Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
   >(
-    protocol: MachineProtocol<MachineName, RegisteredEventsFactoriesTuple>,
+    protocol: MachineProtocol<SwarmProtocolName, MachineName, RegisteredEventsFactoriesTuple>,
     stateName: StateName,
     props?: {
       commands?: Commands
       commandDataForAnalytics: { commandName: string; events: string[] }[]
     },
   ): StateMechanism<
+    SwarmProtocolName,
     MachineName,
     RegisteredEventsFactoriesTuple,
     StateName,
@@ -202,6 +209,7 @@ export namespace StateMechanism {
     Commands
   > => {
     type Self = StateMechanism<
+      SwarmProtocolName,
       MachineName,
       RegisteredEventsFactoriesTuple,
       StateName,
@@ -291,8 +299,9 @@ export namespace StateMechanism {
  * a reaction.
  */
 export type StateFactory<
+  SwarmProtocolName extends string,
   MachineName extends string,
-  RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
+  RegisteredEventsFactoriesTuple extends MachineEvent.Factory.Any[],
   StateName extends string,
   StatePayload,
   Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
@@ -306,6 +315,7 @@ export type StateFactory<
   symbol: () => symbol
 
   readonly mechanism: StateMechanism<
+    SwarmProtocolName,
     MachineName,
     RegisteredEventsFactoriesTuple,
     StateName,
@@ -336,10 +346,17 @@ export type StateFactory<
     EventFactoriesChain extends utils.NonZeroTuple<
       MachineEvent.Factory.Reduce<RegisteredEventsFactoriesTuple>
     >,
-    NextPayload,
+    NextPayload extends any,
   >(
     eventChainTrigger: EventFactoriesChain,
-    nextFactory: StateFactory<MachineName, RegisteredEventsFactoriesTuple, any, NextPayload, any>,
+    nextFactory: StateFactory<
+      SwarmProtocolName,
+      MachineName,
+      RegisteredEventsFactoriesTuple,
+      string,
+      NextPayload,
+      any
+    >,
     handler: ReactionHandler<
       MachineEvent.Factory.MapToActyxEvent<EventFactoriesChain>,
       ReactionContext<StatePayload>,
@@ -351,14 +368,16 @@ export type StateFactory<
 export namespace StateFactory {
   export type Minim = StateFactory<
     any,
-    MachineEvent.Factory.NonZeroTuple,
+    any,
+    [],
     string,
     any[],
     CommandDefinerMap<any, any, MachineEvent.Any[]>
   >
-  export type Any = StateFactory<any, any, any, any, any>
+  export type Any = StateFactory<any, any, any, any, any, any>
 
   export type PayloadOf<T extends StateFactory.Any> = T extends StateFactory<
+    any,
     any,
     any,
     any,
@@ -369,13 +388,15 @@ export namespace StateFactory {
     : never
 
   export const fromMechanism = <
+    SwarmProtocolName extends string,
     MachineName extends string,
-    RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
+    RegisteredEventsFactoriesTuple extends MachineEvent.Factory.Any[],
     StateName extends string,
     StatePayload,
     Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
   >(
     mechanism: StateMechanism<
+      SwarmProtocolName,
       MachineName,
       RegisteredEventsFactoriesTuple,
       StateName,
@@ -384,6 +405,7 @@ export namespace StateFactory {
     >,
   ) => {
     type Self = StateFactory<
+      SwarmProtocolName,
       MachineName,
       RegisteredEventsFactoriesTuple,
       StateName,

@@ -1,12 +1,23 @@
 import { EventsOrTimetravel, Metadata, MsgType, OnCompleteOrErr } from '@actyx/sdk'
 import { describe, expect, it } from '@jest/globals'
-import { createMachineRunnerInternal, State, StateOpaque, SubscribeFn } from './runner/runner.js'
+import {
+  createMachineRunnerInternal,
+  MachineRunner,
+  State,
+  StateOpaque,
+  SubscribeFn,
+} from './runner/runner.js'
 import { MachineEvent } from './design/event.js'
-import { Machine } from './index.js'
 import { StateFactory, StateMechanism } from './design/state.js'
 import { deepCopy } from './utils/object-utils.js'
 import { NOP } from './utils/index.js'
-import { NotAnyOrUnknown } from './utils/type-utils.js'
+import {
+  Equal,
+  Expect,
+  ExtendsThenTransform,
+  NotAnyOrUnknown,
+  NotEqual,
+} from './utils/type-utils.js'
 import { MachineAnalysisResource, SwarmProtocol } from './design/protocol.js'
 
 class Unreachable extends Error {
@@ -66,17 +77,26 @@ Initial.react([One, Two], Second, (c, one, two) => {
 type CommandPromisePair = [Promise<Metadata[]>, { resolve: () => void; reject: () => void }]
 
 class Runner<
-  RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
+  SwarmProtocolName extends string,
+  MachineName extends string,
+  RegisteredEventsFactoriesTuple extends MachineEvent.Factory.Any[],
   Payload,
   E extends MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>,
 > {
   private cb: null | ((data: EventsOrTimetravel<E>) => Promise<void>) = null
   private err: null | OnCompleteOrErr = null
-  private persisted: E[] = []
+  private persisted: MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>[] = []
   private cancelCB
   private unhandled: MachineEvent.Any[] = []
-  private caughtUpHistory: StateOpaque[] = []
-  private stateChangeHistory: { state: StateOpaque; unhandled: MachineEvent.Any[] }[] = []
+  private caughtUpHistory: StateOpaque<
+    SwarmProtocolName,
+    MachineName,
+    RegisteredEventsFactoriesTuple
+  >[] = []
+  private stateChangeHistory: {
+    state: StateOpaque<SwarmProtocolName, MachineName, RegisteredEventsFactoriesTuple>
+    unhandled: MachineEvent.Any[]
+  }[] = []
   private commandsDelay: {
     isDelaying: boolean
     delayedCommands: CommandPromisePair[]
@@ -87,7 +107,14 @@ class Runner<
   public machine
 
   constructor(
-    factory: StateFactory<any, RegisteredEventsFactoriesTuple, any, Payload, any>,
+    factory: StateFactory<
+      SwarmProtocolName,
+      MachineName,
+      RegisteredEventsFactoriesTuple,
+      any,
+      Payload,
+      any
+    >,
     payload: Payload,
   ) {
     this.cancelCB = () => {
@@ -107,7 +134,7 @@ class Runner<
       subscribe,
       async (events) => {
         this.persisted.push(...events)
-        const commandPromisePair = this.createDelayedCommandPair(events)
+        const commandPromisePair = this.createDelayedCommandPair(events as E[])
         if (this.commandsDelay.isDelaying) {
           this.commandsDelay.delayedCommands.push(commandPromisePair)
         } else {
@@ -218,7 +245,16 @@ class Runner<
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  assertLastStateChange<Factory extends StateFactory<any, any, any, any, any>>(
+  assertLastStateChange<
+    Factory extends StateFactory<
+      SwarmProtocolName,
+      MachineName,
+      RegisteredEventsFactoriesTuple,
+      any,
+      any,
+      any
+    >,
+  >(
     factory: Factory,
     assertStateFurther?: (params: {
       snapshot: State.Of<Factory>
@@ -238,10 +274,16 @@ class Runner<
     // expect(cmd0).toBe(cmd)
   }
 
-  assertLastCaughtUp<Factory extends StateFactory<any, any, any, any, any>>(
-    factory: Factory,
-    assertStateFurther?: (params: { snapshot: State.Of<Factory> }) => void,
-  ) {
+  assertLastCaughtUp<
+    Factory extends StateFactory<
+      SwarmProtocolName,
+      MachineName,
+      RegisteredEventsFactoriesTuple,
+      any,
+      any,
+      any
+    >,
+  >(factory: Factory, assertStateFurther?: (params: { snapshot: State.Of<Factory> }) => void) {
     const state = this.caughtUpHistory.at(0)
     if (!state) throw new Unreachable()
 
@@ -1021,5 +1063,23 @@ describe('typings', () => {
     snapshot.as(Second)
 
     r.machine.destroy()
+  })
+
+  describe('different-machines', () => {
+    const E1 = MachineEvent.design('E1').withoutPayload()
+    const E2 = MachineEvent.design('E2').withoutPayload()
+    const protocol = SwarmProtocol.make('swarm', ['swarm'], [E1, E2])
+
+    const M1 = protocol.makeMachine('machine1')
+    const M2 = protocol.makeMachine('machine2')
+
+    const M1S = M1.designEmpty('m1s').finish()
+    const M2S = M2.designEmpty('m2s').finish()
+
+    it('should expect error from ', () => {
+      type ExpectedFactory = Parameters<typeof M1S.react>[1]
+      true as Expect<Equal<ExpectedFactory['mechanism']['protocol']['name'], 'machine1'>>
+      true as Expect<Equal<ExpectedFactory['mechanism']['protocol']['swarmName'], 'swarm'>>
+    })
   })
 })
