@@ -1,12 +1,6 @@
 import { EventsOrTimetravel, Metadata, MsgType, OnCompleteOrErr } from '@actyx/sdk'
 import { describe, expect, it } from '@jest/globals'
-import {
-  createMachineRunnerInternal,
-  MachineRunner,
-  State,
-  StateOpaque,
-  SubscribeFn,
-} from './runner/runner.js'
+import { createMachineRunnerInternal, State, StateOpaque, SubscribeFn } from './runner/runner.js'
 import { MachineEvent } from './design/event.js'
 import { StateFactory, StateMechanism } from './design/state.js'
 import { deepCopy } from './utils/object-utils.js'
@@ -81,11 +75,16 @@ class Runner<
   MachineName extends string,
   RegisteredEventsFactoriesTuple extends MachineEvent.Factory.Any[],
   Payload,
-  E extends MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>,
 > {
-  private cb: null | ((data: EventsOrTimetravel<E>) => Promise<void>) = null
+  private cb:
+    | null
+    | ((
+        data: EventsOrTimetravel<
+          MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>
+        >,
+      ) => Promise<void>) = null
   private err: null | OnCompleteOrErr = null
-  private persisted: MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>[] = []
+  private persisted: MachineEvent.Any[] = []
   private cancelCB
   private unhandled: MachineEvent.Any[] = []
   private caughtUpHistory: StateOpaque<
@@ -134,7 +133,7 @@ class Runner<
       subscribe,
       async (events) => {
         this.persisted.push(...events)
-        const commandPromisePair = this.createDelayedCommandPair(events as E[])
+        const commandPromisePair = this.createDelayedCommandPair(events)
         if (this.commandsDelay.isDelaying) {
           this.commandsDelay.delayedCommands.push(commandPromisePair)
         } else {
@@ -183,7 +182,9 @@ class Runner<
     }
   }
 
-  private createDelayedCommandPair(events: E[]): CommandPromisePair {
+  private createDelayedCommandPair(
+    events: MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>[],
+  ): CommandPromisePair {
     const pair: CommandPromisePair = [undefined as any, undefined as any]
     pair[0] = new Promise<void>((resolve, reject) => {
       pair[1] = {
@@ -220,7 +221,10 @@ class Runner<
     this.commandsDelay.delayedCommands = []
   }
 
-  feed(ev: E[], caughtUp: boolean) {
+  feed(
+    ev: MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>[],
+    caughtUp: boolean,
+  ) {
     if (this.cb === null) throw new Error('not subscribed')
     return this.cb({
       type: MsgType.events,
@@ -311,7 +315,7 @@ class Runner<
     }
   }
 
-  assertPersisted(...e: E[]) {
+  assertPersisted(...e: MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>[]) {
     expect(this.persisted).toEqual(e)
     this.persisted.length = 0
   }

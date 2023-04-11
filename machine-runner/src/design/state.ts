@@ -346,7 +346,7 @@ export type StateFactory<
     EventFactoriesChain extends utils.NonZeroTuple<
       MachineEvent.Factory.Reduce<RegisteredEventsFactoriesTuple>
     >,
-    NextPayload extends any,
+    NextPayload,
   >(
     eventChainTrigger: EventFactoriesChain,
     nextFactory: StateFactory<
