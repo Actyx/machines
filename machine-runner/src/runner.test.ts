@@ -1076,10 +1076,45 @@ describe('typings', () => {
     const M1S = M1.designEmpty('m1s').finish()
     const M2S = M2.designEmpty('m2s').finish()
 
-    it('should expect error from ', () => {
+    it("should err when the wrong StateFactory is passed on react's NextFactory parameter", () => {
       type ExpectedFactory = Parameters<typeof M1S.react>[1]
+      type IncorrectFactory = typeof M2S
       true as Expect<Equal<ExpectedFactory['mechanism']['protocol']['name'], 'machine1'>>
       true as Expect<Equal<ExpectedFactory['mechanism']['protocol']['swarmName'], 'swarm'>>
+      true as Expect<
+        NotEqual<
+          ExpectedFactory['mechanism']['protocol']['name'],
+          IncorrectFactory['mechanism']['protocol']['name']
+        >
+      >
+    })
+
+    it('should err when the wrong parameter is passed on `is`', () => {
+      const runner = new Runner(M1S, undefined)
+      const state = runner.machine.get()
+      if (!state) return
+      type ExpectedFactory = Parameters<typeof state.is>[0]
+      type IncorrectFactory = typeof M2S
+      true as Expect<
+        NotEqual<
+          ExpectedFactory['mechanism']['protocol']['name'],
+          IncorrectFactory['mechanism']['protocol']['name']
+        >
+      >
+    })
+
+    it('should err when the wrong parameter is passed on `as`', () => {
+      const runner = new Runner(M1S, undefined)
+      const state = runner.machine.get()
+      if (!state) return
+      type ExpectedFactory = Parameters<typeof state.as>[0]
+      type IncorrectFactory = typeof M2S
+      true as Expect<
+        NotEqual<
+          ExpectedFactory['mechanism']['protocol']['name'],
+          IncorrectFactory['mechanism']['protocol']['name']
+        >
+      >
     })
   })
 })
