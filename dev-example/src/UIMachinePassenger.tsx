@@ -86,8 +86,12 @@ export type UIPassengerRideProps = {
   state: State.Of<typeof Passenger.Ride>
 }
 
+// Extracted for unit test demo
+export const isTaxiRideCancelEnabled = (state: UIPassengerRideProps['state']) =>
+  state.commands !== undefined
+
 export const UIPassengerRide = ({ state }: UIPassengerRideProps) => {
-  const buttonEnabled = state.commands !== undefined
+  const buttonEnabled = isTaxiRideCancelEnabled(state)
   return (
     <div>
       <button

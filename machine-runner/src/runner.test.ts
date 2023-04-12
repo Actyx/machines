@@ -5,13 +5,7 @@ import { MachineEvent } from './design/event.js'
 import { StateFactory, StateMechanism } from './design/state.js'
 import { deepCopy } from './utils/object-utils.js'
 import { NOP } from './utils/index.js'
-import {
-  Equal,
-  Expect,
-  ExtendsThenTransform,
-  NotAnyOrUnknown,
-  NotEqual,
-} from './utils/type-utils.js'
+import { Equal, Expect, NotAnyOrUnknown, NotEqual } from './utils/type-utils.js'
 import { MachineAnalysisResource, SwarmProtocol } from './design/protocol.js'
 
 class Unreachable extends Error {
@@ -856,25 +850,6 @@ describe('StateOpaque', () => {
   })
 })
 
-// describe('exec wrapper', () => {
-//   it('should persist', () => {
-//     const r = new Runner(new Initial())
-//     r.feed([], true)
-//     const s = r.getState()
-//     if (!(s instanceof Initial)) throw new Error('not Initial')
-//     expect(s.execX().events).toEqual([{ type: 'One', x: 42 }])
-//     r.assertPersisted({ type: 'One', x: 42 })
-//   })
-//   it('should panic', () => {
-//     const r = new Runner(new Initial())
-//     r.feed([], true)
-//     const s = r.getState()
-//     if (!(s instanceof Initial)) throw new Error('not Initial')
-//     s.execX()
-//     expect(() => s.execX()).toThrow()
-//   })
-// })
-
 describe('deepCopy', () => {
   it('should copy the basics', () => {
     expect(deepCopy(null)).toBe(null)
@@ -885,14 +860,6 @@ describe('deepCopy', () => {
     expect({ a: '5' }).not.toEqual({ a: 5 }) // just double-checking jest here
     expect(deepCopy({ 0: true, a: '5' })).toEqual({ '0': true, a: '5' }) // JS only has string keys
   })
-
-  // it('should copy prototypes', () => {
-  //   const i = new Initial()
-  //   const c = deepCopy(i)
-  //   expect(i).toEqual(c)
-  //   expect(i.constructor).toBe(c.constructor)
-  //   expect(Object.getPrototypeOf(i)).toBe(Object.getPrototypeOf(c))
-  // })
 
   it('should copy functions', () => {
     let v = 42

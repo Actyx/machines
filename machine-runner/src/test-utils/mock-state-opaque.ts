@@ -1,0 +1,62 @@
+import { MachineEvent } from '../index.js'
+import { CommandDefinerMap, StateFactory } from '../design/state.js'
+import { RunnerInternals } from '../runner/runner-internals.js'
+import { ImplStateOpaque } from '../runner/runner.js'
+
+type Options = {
+  disableCommands: boolean
+}
+
+export const createMockStateOpaque = <
+  SwarmProtocolName extends string,
+  MachineName extends string,
+  RegisteredEventsFactoriesTuple extends MachineEvent.Factory.Any[],
+  StateName extends string,
+  StatePayload,
+  Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
+>(
+  factory: StateFactory<
+    SwarmProtocolName,
+    MachineName,
+    RegisteredEventsFactoriesTuple,
+    StateName,
+    StatePayload,
+    Commands
+  >,
+  payload: StatePayload,
+  options?: Options,
+) => {
+  const internals = RunnerInternals.make(factory, payload, async () => [])
+  return ImplStateOpaque.make(
+    {
+      ...internals,
+      caughtUp: !options?.disableCommands,
+      caughtUpFirstTime: true,
+    },
+    internals.current,
+  )
+}
+
+export const createMockState = <
+  SwarmProtocolName extends string,
+  MachineName extends string,
+  RegisteredEventsFactoriesTuple extends MachineEvent.Factory.Any[],
+  StateName extends string,
+  StatePayload,
+  Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
+>(
+  factory: StateFactory<
+    SwarmProtocolName,
+    MachineName,
+    RegisteredEventsFactoriesTuple,
+    StateName,
+    StatePayload,
+    Commands
+  >,
+  payload: StatePayload,
+  options?: Options,
+) => {
+  const state = createMockStateOpaque(factory, payload, options).as(factory)
+  if (!state) throw new Error('never')
+  return state
+}
