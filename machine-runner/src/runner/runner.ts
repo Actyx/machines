@@ -815,7 +815,7 @@ export namespace StateOpaque {
     : never
 }
 
-namespace ImplStateOpaque {
+export namespace ImplStateOpaque {
   export const isExpired = (
     internals: RunnerInternals.Any,
     stateAndFactoryForSnapshot: StateAndFactory.Any,
