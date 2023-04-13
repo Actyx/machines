@@ -22,6 +22,7 @@
     "prepack": "npm run clean && npm run build"
   },
   "devDependencies": {
+    "@actyx/machine-runner": "^0.1.0",
     "@typescript-eslint/eslint-plugin": "^5.45.0",
     "@typescript-eslint/parser": "^5.45.0",
     "eslint": "^8.28.0",

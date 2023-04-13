@@ -1,5 +1,6 @@
-import { SwarmProtocol } from './src/design/protocol.js'
-import { MachineEvent } from './src/index.js'
+/* eslint-disable @typescript-eslint/no-namespace */
+import { MachineEvent } from '@actyx/machine-runner'
+import { SwarmProtocol } from '@actyx/machine-runner/lib/design/protocol.js'
 
 const mkTuple = <T extends unknown[]>(...args: T) => args
 
@@ -21,7 +22,7 @@ export namespace Door {
   export const Closing = Door.designState('Closing')
     .withPayload<{ fractionOpen: number }>()
     .command('update', [Events.Closing], (_ctx, fractionOpen: number) => [{ fractionOpen }])
-    .command('closed', [Events.Closed], (_ctx) => [{}])
+    .command('close', [Events.Closed], (_ctx) => [{}])
     .finish()
   export const Closed = Door.designEmpty('Closed').finish()
   export const Opening = Door.designState('Opening')

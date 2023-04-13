@@ -24,6 +24,15 @@ pub fn project(
     role: Role,
 ) -> (Graph, NodeId) {
     let _span = tracing::debug_span!("project", %role).entered();
+    /*
+     * Machine will be a graph containing:
+     * - nodes which are corresponding nodes of "interesting" edges (but not the edges themselves);
+     * - self-loop edges from/to each node of the above nodes, representing commands
+     * - intermediate nodes and edges which is derived from log_types of each of the "interesting edges"
+     *
+     * Note:
+     * - "interesting edges": edges which the log_type of intersect with sub.get(role)
+     */
     let mut machine = Graph::new();
     let sub = BTreeSet::new();
     let sub = subs.get(&role).unwrap_or(&sub);

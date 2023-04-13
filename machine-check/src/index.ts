@@ -14,14 +14,14 @@ export type MachineLabel =
   | { tag: 'Execute'; cmd: string; logType: string[] }
   | { tag: 'Input'; eventType: string }
 
-export type SwarmProtocol = Protocol<SwarmLabel>
-export type Machine = Protocol<MachineLabel>
+export type SwarmProtocolType = Protocol<SwarmLabel>
+export type MachineType = Protocol<MachineLabel>
 
 export type Subscriptions = Record<string, string[]>
 
 export type Result = { type: 'OK' } | { type: 'ERROR'; errors: string[] }
 
-export function checkSwarmProtocol(proto: SwarmProtocol, subscriptions: Subscriptions): Result {
+export function checkSwarmProtocol(proto: SwarmProtocolType, subscriptions: Subscriptions): Result {
   const p = JSON.stringify(proto)
   const s = JSON.stringify(subscriptions)
   const result = check_swarm(p, s)
@@ -29,10 +29,10 @@ export function checkSwarmProtocol(proto: SwarmProtocol, subscriptions: Subscrip
 }
 
 export function checkProjection(
-  swarm: SwarmProtocol,
+  swarm: SwarmProtocolType,
   subscriptions: Subscriptions,
   role: string,
-  machine: Machine,
+  machine: MachineType,
 ): Result {
   const sw = JSON.stringify(swarm)
   const sub = JSON.stringify(subscriptions)

@@ -143,6 +143,20 @@ impl StateName for Node {
     }
 }
 
+#[derive(Clone, Copy, Default, Debug, PartialEq)]
+enum Variance {
+    #[default]
+    Absent,
+    Invariant(NodeId),
+    Variant,
+}
+
+impl Variance {
+    pub fn is_variant(self) -> bool {
+        matches!(self, Self::Variant)
+    }
+}
+
 type Graph = petgraph::Graph<Node, SwarmLabel>;
 
 pub fn check(
@@ -219,9 +233,8 @@ fn well_formed(graph: &Graph, initial: NodeId, subs: &Subscriptions) -> Vec<Erro
             }
 
             // choice determinacy
-            let first_event = &log[0];
             for later in &graph[target].roles {
-                if !sub(later).contains(first_event) {
+                if !sub(later).contains(guard) {
                     errors.push(Error::LaterInvolvedNotGuarded(edge.id(), later.clone()));
                 }
             }
@@ -236,6 +249,28 @@ pub fn from_json(
 ) -> (super::Graph, Option<NodeId>, Vec<String>) {
     let (g, i, e) = prepare_graph(proto, subs);
     (to_swarm(&g), i, e.map(Error::convert(&g)))
+}
+
+/// unfortunately there is no walker for neighbors, so we need to handroll it
+struct Neighbors(NodeId, Option<EdgeId>);
+impl Neighbors {
+    pub fn new(node: NodeId) -> Self {
+        Self(node, None)
+    }
+
+    pub fn next(&mut self, g: &Graph) -> Option<NodeId> {
+        loop {
+            let next = match self.1 {
+                Some(edge) => g.next_edge(edge, Incoming),
+                None => g.first_edge(self.0, Incoming),
+            }?;
+            self.1 = Some(next);
+            let node = g.edge_endpoints(next)?.0;
+            if node != self.0 {
+                return Some(node);
+            }
+        }
+    }
 }
 
 fn prepare_graph(
@@ -272,41 +307,39 @@ fn prepare_graph(
     // - first post-order walk to propagate non-loop roles back
     // - then keep fixing loop-ends until graph is stable
     let mut walk = DfsPostOrder::new(&graph, initial);
-    let mut loop_end = HashSet::new();
     let mut guards = HashSet::new();
-    let mut events = HashMap::new();
+    let mut events = HashMap::<EventType, Variance>::new();
+
+    // list of nodes that (will) have been changed and whose change needs to be propagated back
+    let mut change_nodes = BTreeSet::new();
+
     while let Some(node_id) = walk.next(&graph) {
         let active = active(&graph, node_id);
         graph[node_id].active = active;
-        let roles = involved(&graph, node_id, &subs, &mut loop_end);
-        // FIXME: transition into final state without any subscription will make final state a loop end!
+        let roles = involved(&graph, node_id, &subs, &mut change_nodes);
         graph[node_id].roles = roles;
         mark_events(&graph, node_id, &mut guards, &mut events);
     }
-    tracing::debug!("post-order traversal done, {} loop ends", loop_end.len());
-    loop {
-        let mut modified = false;
-        for node_id in loop_end.iter().copied() {
-            let mut roles = take(&mut graph[node_id].roles);
-            let num_roles = roles.len();
-            for edge in graph.edges_directed(node_id, Outgoing) {
-                roles.extend(graph[edge.target()].roles.iter().cloned());
-            }
-            let changed = roles.len() > num_roles;
-            graph[node_id].roles = roles;
-            if changed {
-                propagate_back(&mut graph, node_id);
-                modified = true;
+
+    tracing::debug!("post-order traversal done");
+
+    while let Some(node_id) = change_nodes.pop_last() {
+        let mut neighbors = Neighbors::new(node_id);
+        let roles = take(&mut graph[node_id].roles);
+        while let Some(neighbor) = neighbors.next(&graph) {
+            let neighbor_roles = &mut graph[neighbor].roles;
+            let num_roles = neighbor_roles.len();
+            neighbor_roles.extend(roles.iter().cloned());
+            if num_roles != neighbor_roles.len() {
+                change_nodes.insert(neighbor);
             }
         }
-        if !modified {
-            break;
-        }
+        graph[node_id].roles = roles;
     }
 
     // confusion-freeness
     for guard in guards {
-        if events[&guard].is_none() {
+        if events.get(&guard).copied().unwrap_or_default().is_variant() {
             errors.push(Error::GuardNotInvariant(guard));
         }
     }
@@ -315,41 +348,12 @@ fn prepare_graph(
     (graph, initial, errors)
 }
 
-fn propagate_back(g: &mut Graph, node: NodeId) {
-    let _span = tracing::debug_span!("propagate_back", node = %g[node].name).entered();
-    let mut queue = vec![node];
-    rec(g, &mut queue);
-    fn rec(g: &mut Graph, q: &mut Vec<NodeId>) {
-        let Some(node_id) = q.pop() else { return };
-        tracing::debug!("visiting {} ({} to go)", g[node_id].name, q.len());
-        let target_roles = take(&mut g[node_id].roles);
-        let mut walk = g.neighbors_directed(node_id, Incoming).detach();
-        while let Some(source) = walk.next_node(g) {
-            let source_roles = &mut g[source].roles;
-            let num_roles = source_roles.len();
-            source_roles.extend(target_roles.iter().cloned());
-            let num_roles_now = source_roles.len();
-            if num_roles_now > num_roles {
-                tracing::debug!(
-                    "{} roles grew {}->{}",
-                    g[source].name,
-                    num_roles,
-                    num_roles_now
-                );
-                q.push(source);
-            }
-        }
-        g[node_id].roles = target_roles;
-        rec(g, q);
-    }
-}
-
 /// compute a first approximation of Node::roles assuming to be called in DfsPostOrder
 fn involved(
     g: &Graph,
     node: NodeId,
     subs: &Subscriptions,
-    loop_end: &mut HashSet<NodeId>,
+    change_nodes: &mut BTreeSet<NodeId>,
 ) -> BTreeSet<Role> {
     let _span = tracing::debug_span!("involved", node = %g[node].name).entered();
     let mut roles = BTreeSet::new();
@@ -359,7 +363,7 @@ fn involved(
         let target_roles = &g[target].roles;
         if target_roles.is_empty() {
             tracing::debug!("loop end towards {}", g[target].name);
-            loop_end.insert(node);
+            change_nodes.insert(target);
         } else {
             tracing::debug!("propagating {:?} from {}", target_roles, g[target].name);
             roles.extend(target_roles.iter().cloned());
@@ -394,7 +398,7 @@ fn mark_events(
     g: &Graph,
     node: NodeId,
     guards: &mut HashSet<EventType>,
-    events: &mut HashMap<EventType, Option<NodeId>>,
+    events: &mut HashMap<EventType, Variance>,
 ) {
     let _span = tracing::debug_span!("mark_events", node = %g[node].name).entered();
     for edge in g.edges_directed(node, Outgoing) {
@@ -407,11 +411,11 @@ fn mark_events(
             events
                 .entry(e.clone())
                 .and_modify(|n| {
-                    if *n != Some(node) {
-                        *n = None;
+                    if *n != Variance::Invariant(node) {
+                        *n = Variance::Variant;
                     }
                 })
-                .or_insert(Some(node));
+                .or_insert(Variance::Invariant(node));
         }
     }
 }
