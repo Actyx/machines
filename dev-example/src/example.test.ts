@@ -3,9 +3,11 @@ import {
   createMockState,
   createMockStateOpaque,
 } from '@actyx/machine-runner/lib/test-utils'
-import { Bid, BidderID, Passenger, Requested } from './machines/index.js'
+import { Bid, BidData, BidderID, Cancelled, Passenger, Requested } from './machines/index.js'
 import { toPrettyJSONString } from './UIMachineCommon.js'
 import { isTaxiRideCancelEnabled } from './UIMachinePassenger.js'
+import { Machine, MachineEvent } from '@actyx/machine-runner'
+import { createEventCaptureArray } from '@actyx/machine-runner/lib/test-utils/mock-state-opaque.js'
 
 describe('State transformation tests', () => {
   it('should verify if state transformation as written by the consumer code is correct', () => {
@@ -16,6 +18,7 @@ describe('State transformation tests', () => {
     const bidderId = 'bidderId'
 
     const machineRunner = createMockMachineRunner(Passenger.Initial, void 0)
+
     machineRunner.test.feed([
       Requested.make({
         destination: requestDestination,
@@ -30,14 +33,13 @@ describe('State transformation tests', () => {
       }),
     ])
 
-    const auction = machineRunner.get()?.as(Passenger.Auction)
-    expect(auction).toBeTruthy()
-    if (!auction) throw new Error('no auction')
-    const firstBid = auction.payload.bids.at(0)
-    if (!firstBid) throw new Error('no first bid')
-    expect(firstBid.time).toEqual(bidTime)
-    expect(firstBid.price).toEqual(bidPrice)
-    expect(firstBid.bidderID).toEqual(bidderId)
+    machineRunner.test.assertAs(Passenger.Auction, (auction) => {
+      expect(auction.payload.bids.at(0)).toEqual({
+        bidderID: bidderId,
+        time: bidTime,
+        price: bidPrice,
+      } as BidData)
+    })
 
     // Comparing arrays of objects that has a Date member is broken in jest. This doesn't work.
     // expect(auction.payload.bids)
@@ -67,5 +69,12 @@ describe('State mocking', () => {
       { disableCommands: true },
     )
     expect(isTaxiRideCancelEnabled(state)).toBe(false)
+  })
+
+  it('should support capturing events from commands', () => {
+    const capturedEvents = createEventCaptureArray()
+    const state = createMockState(Passenger.Ride, { taxiID: 'someTaxiID' }, { capturedEvents })
+    state.commands?.cancel()
+    expect(capturedEvents).toEqual([Cancelled.make({ reason: "don't wanna" })])
   })
 })

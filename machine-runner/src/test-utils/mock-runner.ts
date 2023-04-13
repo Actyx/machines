@@ -1,7 +1,7 @@
 import { MsgType } from '@actyx/sdk'
 import { MachineEvent } from '../index.js'
-import { SubscribeFn } from '../runner/runner.js'
-import { StateFactory } from '../design/state.js'
+import { State, SubscribeFn } from '../runner/runner.js'
+import { CommandDefinerMap, StateFactory } from '../design/state.js'
 import { createMachineRunnerInternal } from '../runner/runner.js'
 
 const mockMeta = () => ({
@@ -138,6 +138,29 @@ export const createMockMachineRunner = <
     if (sub.cb === null) throw new Error('did not resubscribe')
   }
 
+  const assertAs = <
+    N extends string,
+    P,
+    C extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
+    Then extends (state: State<N, P, C>) => any,
+  >(
+    factory: StateFactory<SwarmProtocolName, MachineName, RegisteredEventsFactoriesTuple, N, P, C>,
+    then?: Then,
+  ) => {
+    const opaque = machine.get()
+    if (!opaque) {
+      throw new Error(`MachineRunnerTestError: opaque not retrievable yet`)
+    }
+    const snapshot = opaque.as(factory)
+    if (!snapshot) {
+      throw new Error(
+        `MachineRunnerTestError: expected type ${factory.mechanism.name} found ${opaque.type}`,
+      )
+    }
+    if (then) {
+      return then(snapshot)
+    }
+  }
   // Below: public
 
   const delay = {
@@ -168,6 +191,7 @@ export const createMockMachineRunner = <
       delay,
       feed,
       timeTravel,
+      assertAs,
     },
   }
 }

@@ -38,18 +38,18 @@ export const PassengerID = MachineEvent.design('PassengerID').withPayload<{ id: 
 
 export const Arrived = MachineEvent.design('Arrived').withPayload<{ taxiID: string }>()
 
-export const Started = MachineEvent.design('Arrived').withoutPayload()
+export const Started = MachineEvent.design('Started').withoutPayload()
 
 export const Path = MachineEvent.design('Path').withPayload<{
   lat: number
   lon: number
 }>()
 
-export const Finished = MachineEvent.design('Path').withoutPayload()
+export const Finished = MachineEvent.design('Finished').withoutPayload()
 
-export const Cancelled = MachineEvent.design('Path').withPayload<{ reason: string }>()
+export const Cancelled = MachineEvent.design('Cancelled').withPayload<{ reason: string }>()
 
-export const Receipt = MachineEvent.design('Path').withPayload<{ amount: number }>()
+export const Receipt = MachineEvent.design('Receipt').withPayload<{ amount: number }>()
 
 export const protocol = SwarmProtocol.make(
   'taxiRide',

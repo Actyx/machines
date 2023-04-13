@@ -4,7 +4,8 @@ import { RunnerInternals } from '../runner/runner-internals.js'
 import { ImplStateOpaque } from '../runner/runner.js'
 
 type Options = {
-  disableCommands: boolean
+  disableCommands?: boolean
+  capturedEvents?: MachineEvent.Any[]
 }
 
 export const createMockStateOpaque = <
@@ -32,6 +33,10 @@ export const createMockStateOpaque = <
       ...internals,
       caughtUp: !options?.disableCommands,
       caughtUpFirstTime: true,
+      commandEmitFn: async (events) => {
+        options?.capturedEvents?.push(...events)
+        return []
+      },
     },
     internals.current,
   )
@@ -60,3 +65,8 @@ export const createMockState = <
   if (!state) throw new Error('never')
   return state
 }
+
+/**
+ * Creates an empty MachineEvent.Any[]
+ */
+export const createEventCaptureArray = () => [] as MachineEvent.Any[]
