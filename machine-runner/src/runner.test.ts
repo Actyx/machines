@@ -87,13 +87,9 @@ class Runner<
   private persisted: MachineEvent.Any[] = []
   private cancelCB
   private unhandled: MachineEvent.Any[] = []
-  private caughtUpHistory: StateOpaque<
-    SwarmProtocolName,
-    MachineName,
-    RegisteredEventsFactoriesTuple
-  >[] = []
+  private caughtUpHistory: StateOpaque<SwarmProtocolName, MachineName>[] = []
   private stateChangeHistory: {
-    state: StateOpaque<SwarmProtocolName, MachineName, RegisteredEventsFactoriesTuple>
+    state: StateOpaque<SwarmProtocolName, MachineName>
     unhandled: MachineEvent.Any[]
   }[] = []
   private commandsDelay: {
