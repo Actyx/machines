@@ -118,7 +118,11 @@ export namespace MachineRunner {
   /**
    * Extract MachineRunner type from SwarmProtocol or Machine
    * @example
-   * const HangarBay = SwarmProtocol.make('HangarBay', ['hangar-bay'], Events.all)
+   * const HangarBay = SwarmProtocol.make(
+   *   'HangarBay',
+   *   ['hangar-bay'],
+   *   [HangarDoorTransitioning, HangarDoorClosed, HangarDoorOpen]
+   * )
    * const Door = HangarBay.makeMachine('door')
    * const Initial = Door.designEmpty().finish()
    *
@@ -443,11 +447,7 @@ namespace MachineRunnerIterableIterator {
 export type NextValueAwaiter = ReturnType<typeof NextValueAwaiter['make']>
 
 namespace NextValueAwaiter {
-  export const make = <
-    SwarmProtocolName extends string,
-    MachineName extends string,
-    RegisteredEventsFactoriesTuple extends MachineEvent.Factory.Any[],
-  >({
+  export const make = <SwarmProtocolName extends string, MachineName extends string>({
     events,
     destruction,
   }: {
@@ -569,25 +569,25 @@ export interface StateOpaque<
    * }
    */
   is<
-    DeductMachineName extends MachineName,
-    DeductStateName extends string,
-    DeductPayload,
-    DeductCommands extends CommandDefinerMap<object, any, MachineEvent.Any[]> = object,
+    DeduceMachineName extends MachineName,
+    DeduceStateName extends string,
+    DeducePayload,
+    DeduceCommands extends CommandDefinerMap<object, any, MachineEvent.Any[]> = object,
   >(
     factory: StateFactory<
       SwarmProtocolName,
-      DeductMachineName,
+      DeduceMachineName,
       any,
-      DeductStateName,
-      DeductPayload,
-      DeductCommands
+      DeduceStateName,
+      DeducePayload,
+      DeduceCommands
     >,
   ): this is StateOpaque<
     SwarmProtocolName,
-    DeductMachineName,
-    DeductStateName,
-    DeductPayload,
-    DeductCommands
+    DeduceMachineName,
+    DeduceStateName,
+    DeducePayload,
+    DeduceCommands
   >
 
   /**
@@ -620,14 +620,14 @@ export interface StateOpaque<
    *  .as(HangarControlIdle, (state) => state.dockingRequests.at(0))
    */
   as<
-    DeductMachineName extends MachineName,
+    DeduceMachineName extends MachineName,
     StateName extends string,
     StatePayload extends any,
     Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
   >(
     factory: StateFactory<
       SwarmProtocolName,
-      DeductMachineName,
+      DeduceMachineName,
       any,
       StateName,
       StatePayload,
@@ -665,8 +665,8 @@ export interface StateOpaque<
    *  .as(HangarControlIdle, (state) => state.dockingRequests.at(0))
    */
   as<
-    DeductMachineName extends MachineName,
-    DeductFactories extends MachineEvent.Factory.Any[],
+    DeduceMachineName extends MachineName,
+    DeduceFactories extends MachineEvent.Factory.Any[],
     StateName extends string,
     StatePayload extends any,
     Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
@@ -674,8 +674,8 @@ export interface StateOpaque<
   >(
     factory: StateFactory<
       SwarmProtocolName,
-      DeductMachineName,
-      DeductFactories,
+      DeduceMachineName,
+      DeduceFactories,
       StateName,
       StatePayload,
       Commands
@@ -710,7 +710,11 @@ export namespace StateOpaque {
    * Derive StateOpaque type from a SwarmProtocol, a Machine, or a MachineRunner
    * @example
    *
-   * const HangarBay = SwarmProtocol.make('HangarBay', ['hangar-bay'], Events.all)
+   * const HangarBay = SwarmProtocol.make(
+   *   'HangarBay',
+   *   ['hangar-bay'],
+   *   [HangarDoorTransitioning, HangarDoorClosed, HangarDoorOpen]
+   * )
    * const Door = HangarBay.makeMachine('door')
    * const Initial = Door.designEmpty().finish()
    * const machineRunner = createMachineRunner(actyx, where, Passenger.Initial, void 0);

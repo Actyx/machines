@@ -53,7 +53,11 @@ export namespace SwarmProtocol {
    *   .withoutPayload()
    *
    * // Creates a protocol
-   * const HangarBay = SwarmProtocol.make('HangarBay', ['hangar-bay'], Events.all)
+   * const HangarBay = SwarmProtocol.make(
+   *   'HangarBay',
+   *   ['hangar-bay'],
+   *   [HangarDoorTransitioning, HangarDoorClosed, HangarDoorOpen]
+   * )
    */
   export const make = <
     SwarmProtocolName extends string,
