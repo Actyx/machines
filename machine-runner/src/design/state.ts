@@ -148,7 +148,7 @@ export type StateMechanism<
     >,
     CommandArgs extends unknown[],
   >(
-    name: CommandName,
+    name: CommandName extends `_${string}` ? never : CommandName,
     events: AcceptedEventFactories,
     handler: CommandDefiner<
       StatePayload,
@@ -224,6 +224,10 @@ export namespace StateMechanism {
       //
       // commandDefinition now is supposed to be returning event payload and the
       // patched commandDefinition here
+
+      if (name.startsWith('_')) {
+        throw new Error("Command name cannot start with '_'")
+      }
 
       type Params = Parameters<typeof commandDefinition>
 

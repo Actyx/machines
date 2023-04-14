@@ -17,7 +17,6 @@ import {
   CommandDefinerMap,
   ToCommandSignatureMap,
   convertCommandMapToCommandSignatureMap,
-  MachineProtocol,
 } from '../design/state.js'
 import { Destruction } from '../utils/destruction.js'
 import { NOP } from '../utils/index.js'
