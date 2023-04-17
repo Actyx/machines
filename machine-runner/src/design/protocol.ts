@@ -26,7 +26,7 @@ export type SwarmProtocol<
 > = {
   makeMachine: <MachineName extends string>(
     machineName: MachineName,
-  ) => Machine<MachineName, RegisteredEventsFactoriesTuple>
+  ) => Machine<SwarmProtocolName, MachineName, RegisteredEventsFactoriesTuple>
   tags: Tags<MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>>
 }
 
@@ -37,25 +37,41 @@ export type SwarmProtocol<
 export namespace SwarmProtocol {
   /**
    * Construct a SwarmProtocol
-   * @param swarmProtocolName - The name of the swarm protocol
+   * @param swarmName - The name of the swarm protocol
    * @param tags - the tags used to mark the events passed to Actyx
    * @param registeredEventFactories - MachineEvent.Factories that are allowed
    * to be used for communications in the scope of this SwarmProtocol
    * @example
-   * const protocol = SwarmProtocol.make("")
+   * const HangarDoorTransitioning = MachineEvent
+   *   .design("HangarDoorTransitioning")
+   *   .withPayload<{ fractionOpen: number }>()
+   * const HangarDoorClosed = MachineEvent
+   *   .design("HangarDoorClosed")
+   *   .withoutPayload()
+   * const HangarDoorOpen = MachineEvent
+   *   .design("HangarDoorOpen")
+   *   .withoutPayload()
+   *
+   * // Creates a protocol
+   * const HangarBay = SwarmProtocol.make(
+   *   'HangarBay',
+   *   ['hangar-bay'],
+   *   [HangarDoorTransitioning, HangarDoorClosed, HangarDoorOpen]
+   * )
    */
   export const make = <
     SwarmProtocolName extends string,
     TagString extends NonZeroTuple<string>,
     RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
   >(
-    swarmProtocolName: SwarmProtocolName,
+    swarmName: SwarmProtocolName,
     tags: TagString,
     registeredEventFactories: RegisteredEventsFactoriesTuple,
   ): SwarmProtocol<SwarmProtocolName, TagString, RegisteredEventsFactoriesTuple> => {
     return {
       tags: Tags(...tags),
-      makeMachine: (machineName) => ImplMachine.make(machineName, registeredEventFactories),
+      makeMachine: (machineName) =>
+        ImplMachine.make(swarmName, machineName, registeredEventFactories),
     }
   }
 }
@@ -69,8 +85,9 @@ export namespace SwarmProtocol {
  * checkProjection to verify that the machine fits into a given swarm protocol.
  */
 export type Machine<
+  SwarmProtocolName extends string,
   MachineName extends string,
-  RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
+  RegisteredEventsFactoriesTuple extends MachineEvent.Factory.Any[],
 > = {
   /**
    * Starts the design process for a state with a payload. Payload data will be
@@ -85,7 +102,12 @@ export type Machine<
    */
   designState: <StateName extends string>(
     stateName: StateName,
-  ) => DesignStateIntermediate<MachineName, RegisteredEventsFactoriesTuple, StateName>
+  ) => DesignStateIntermediate<
+    SwarmProtocolName,
+    MachineName,
+    RegisteredEventsFactoriesTuple,
+    StateName
+  >
 
   /**
    * Starts a design process for a state without a payload.
@@ -97,6 +119,7 @@ export type Machine<
   designEmpty: <StateName extends string>(
     stateName: StateName,
   ) => StateMechanism<
+    SwarmProtocolName,
     MachineName,
     RegisteredEventsFactoriesTuple,
     StateName,
@@ -105,19 +128,28 @@ export type Machine<
   >
 
   createJSONForAnalysis: (
-    initial: StateFactory<MachineName, RegisteredEventsFactoriesTuple, any, any, any>,
+    initial: StateFactory<
+      SwarmProtocolName,
+      MachineName,
+      RegisteredEventsFactoriesTuple,
+      any,
+      any,
+      any
+    >,
   ) => MachineAnalysisResource
 }
 
 type DesignStateIntermediate<
+  SwarmProtocolName extends string,
   MachineName extends string,
-  RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
+  RegisteredEventsFactoriesTuple extends MachineEvent.Factory.Any[],
   StateName extends string,
 > = {
   /**
    * Declare payload type for a state.
    */
   withPayload: <StatePayload extends any>() => StateMechanism<
+    SwarmProtocolName,
     MachineName,
     RegisteredEventsFactoriesTuple,
     StateName,
@@ -130,7 +162,7 @@ type DesignStateIntermediate<
  * A collection of type utilities around Machine.
  */
 export namespace Machine {
-  export type Any = Machine<any, any>
+  export type Any = Machine<string, string, any[]>
 
   /**
    * Extract the type of registered MachineEvent of a machine protocol in the
@@ -151,6 +183,7 @@ export namespace Machine {
    */
   export type EventsOf<T extends Machine.Any> = T extends Machine<
     any,
+    any,
     infer RegisteredEventsFactoriesTuple
   >
     ? MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>
@@ -168,16 +201,19 @@ namespace ImplMachine {
    * const hangarBay = Machine.make("hangarBay")
    */
   export const make = <
+    SwarmProtocolName extends string,
     MachineName extends string,
-    RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
+    RegisteredEventsFactoriesTuple extends MachineEvent.Factory.Any[],
   >(
+    swarmName: SwarmProtocolName,
     machineName: MachineName,
     registeredEventFactories: RegisteredEventsFactoriesTuple,
-  ): Machine<MachineName, RegisteredEventsFactoriesTuple> => {
-    type Self = Machine<MachineName, RegisteredEventsFactoriesTuple>
-    type Protocol = MachineProtocol<MachineName, RegisteredEventsFactoriesTuple>
+  ): Machine<SwarmProtocolName, MachineName, RegisteredEventsFactoriesTuple> => {
+    type Self = Machine<SwarmProtocolName, MachineName, RegisteredEventsFactoriesTuple>
+    type Protocol = MachineProtocol<SwarmProtocolName, MachineName, RegisteredEventsFactoriesTuple>
 
     const protocol: Protocol = {
+      swarmName: swarmName,
       name: machineName,
       registeredEvents: registeredEventFactories,
       reactionMap: ReactionMap.make(),
@@ -247,11 +283,23 @@ export namespace MachineAnalysisResource {
     ].join(SyntheticDelimiter)}`
 
   export const fromMachineInternals = <
+    SwarmProtocolName extends string,
     MachineName extends string,
-    RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
+    RegisteredEventsFactoriesTuple extends MachineEvent.Factory.Any[],
   >(
-    protocolInternals: MachineProtocol<MachineName, RegisteredEventsFactoriesTuple>,
-    initial: StateFactory<MachineName, RegisteredEventsFactoriesTuple, any, any, any>,
+    protocolInternals: MachineProtocol<
+      SwarmProtocolName,
+      MachineName,
+      RegisteredEventsFactoriesTuple
+    >,
+    initial: StateFactory<
+      SwarmProtocolName,
+      MachineName,
+      RegisteredEventsFactoriesTuple,
+      any,
+      any,
+      any
+    >,
   ): MachineAnalysisResource => {
     if (!protocolInternals.states.allFactories.has(initial)) {
       throw new Error('Initial state supplied not found')

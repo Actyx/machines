@@ -6,7 +6,7 @@ import { Stage, Layer, Circle, Line, Label, Tag, Text, Rect } from 'react-konva'
 type Ev = { type: string }
 type Props = {
   actyx: Actyx
-  machines: { name: string; machine: MachineRunner }[]
+  machines: { name: string; machine: MachineRunner.Any }[]
   className?: string
 }
 
@@ -32,7 +32,7 @@ type States = {
   split: MachinePoint[][]
 }
 
-function init(mach: { name: string; machine: MachineRunner }[]): States {
+function init(mach: { name: string; machine: MachineRunner.Any }[]): States {
   const split = mach.map(() => [])
   return { merged: [], split }
 }
@@ -196,6 +196,8 @@ export function AuditMachines({ actyx, machines }: Props) {
   }>()
 
   useEffect(() => {
+    type EventMap = MachineRunner.EventMapOf<MachineRunner.Any>
+
     let timer: ReturnType<typeof setTimeout> | null = null
     const recompute = () => {
       if (timer === null) {
@@ -209,25 +211,22 @@ export function AuditMachines({ actyx, machines }: Props) {
 
     const subscriptions = machines
       .map(({ machine }, machineNumber) => {
-        const onReset: MachineRunner.EventListener<'audit.reset'> = () => {
+        const onReset: EventMap['audit.reset'] = () => {
           states.split[machineNumber].length = 0
           recompute()
         }
 
-        const onStateChange: MachineRunner.EventListener<'audit.state'> = ({ events, state }) => {
+        const onStateChange: EventMap['audit.state'] = ({ events, state }) => {
           states.split[machineNumber].push({ type: 'state', events, state: { ...state } })
           recompute()
         }
 
-        const onDroppedEvents: MachineRunner.EventListener<'audit.dropped'> = ({
-          event,
-          state,
-        }) => {
+        const onDroppedEvents: EventMap['audit.dropped'] = ({ event, state }) => {
           states.split[machineNumber].push({ type: 'unhandled', event, state: { ...state } })
           recompute()
         }
 
-        const onError: MachineRunner.EventListener<'audit.error'> = ({ error, events, state }) => {
+        const onError: EventMap['audit.error'] = ({ error, events, state }) => {
           states.split[machineNumber].push({
             type: 'error',
             events,

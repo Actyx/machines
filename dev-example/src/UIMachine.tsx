@@ -4,13 +4,22 @@ import { useEffect, useState } from 'react'
 import { PrintState } from './UIMachineCommon.js'
 import { UIPassengerAuction, UIPassengerInitial, UIPassengerRide } from './UIMachinePassenger.js'
 import { UITaxiAuction, UITaxiFirstBid, UITaxiInitial, UITaxiRide } from './UIMachineTaxi.js'
-import { Passenger, Taxi } from './machines/index.js'
+import { Passenger, Taxi, protocol } from './machines/index.js'
 
-export const UIMachine = ({ machine, name }: { name: string; machine: MachineRunner }) => {
+type ThisMachineRunner = MachineRunner.Of<typeof protocol>
+type EventMap = MachineRunner.EventMapOf<ThisMachineRunner>
+
+export const UIMachine = ({
+  machine,
+  name,
+}: {
+  name: string
+  machine: MachineRunner.Of<typeof protocol>
+}) => {
   const [state, setState] = useState(machine.get())
 
   useEffect(() => {
-    const onChange: MachineEmitterEventMap['change'] = (state) => setState(state)
+    const onChange: EventMap['change'] = (state) => setState(state)
     machine.events.on('change', onChange)
     return () => {
       machine.events.off('change', onChange)

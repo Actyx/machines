@@ -17,7 +17,7 @@ export const AppImpl = ({ actyx }: { actyx: Actyx }) => {
     [actyx, id],
   )
 
-  const taxi1Machine: MachineRunner = useMachine(
+  const taxi1Machine = useMachine(
     () =>
       createMachineRunner(actyx, where, Taxi.Initial, {
         id: 'one',
@@ -25,7 +25,7 @@ export const AppImpl = ({ actyx }: { actyx: Actyx }) => {
     [actyx, id],
   )
 
-  const taxi2Machine: MachineRunner = useMachine(
+  const taxi2Machine = useMachine(
     () =>
       createMachineRunner(actyx, where, Taxi.Initial, {
         id: 'two',
@@ -59,12 +59,15 @@ export const AppImpl = ({ actyx }: { actyx: Actyx }) => {
   )
 }
 
-export const useMachineDebug = (machine: MachineRunner, label: string) => {
+type ThisMachineRunner = MachineRunner.Of<typeof protocol>
+type EventMap = MachineRunner.EventMapOf<ThisMachineRunner>
+
+export const useMachineDebug = (machine: ThisMachineRunner, label: string) => {
   useEffect(() => {
-    const onPrevState: MachineRunner.EventListener<'debug.eventHandlingPrevState'> = (prevstate) =>
+    const onPrevState: EventMap['debug.eventHandlingPrevState'] = (prevstate) =>
       console.log(label, 'prevstate', utils.deepCopy(prevstate))
 
-    const onDebug: MachineRunner.EventListener<'debug.eventHandling'> = ({
+    const onDebug: EventMap['debug.eventHandling'] = ({
       event,
       factory,
       handlingReport,
@@ -79,13 +82,13 @@ export const useMachineDebug = (machine: MachineRunner, label: string) => {
         nextState: utils.deepCopy(nextState),
       })
 
-    const onChange: MachineRunner.EventListener<'change'> = () =>
+    const onChange: EventMap['change'] = () =>
       console.log(label, 'state after caughtUp', utils.deepCopy(machine.get()))
 
-    const onAuditState: MachineRunner.EventListener<'audit.state'> = (x) =>
+    const onAuditState: EventMap['audit.state'] = (x) =>
       console.log(label, 'state change to ', utils.deepCopy(x.state))
 
-    const onLog: MachineRunner.EventListener<'log'> = (x) => console.log(label, `log`, x)
+    const onLog: EventMap['log'] = (x) => console.log(label, `log`, x)
 
     machine.events.on('debug.eventHandlingPrevState', onPrevState)
     machine.events.on('debug.eventHandling', onDebug)
@@ -116,7 +119,7 @@ export function App() {
   return actyx ? <AppImpl actyx={actyx} /> : <h1>loading …</h1>
 }
 
-export const useMachine = (factoryFn: () => MachineRunner, deps: unknown[]) => {
+export const useMachine = <M extends MachineRunner.Any>(factoryFn: () => M, deps: unknown[]) => {
   const memoized = useMemo(factoryFn, deps)
   useEffect(() => {
     return () => {

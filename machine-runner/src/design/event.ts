@@ -26,7 +26,7 @@ import * as utils from '../utils/type-utils.js'
  * @see MachineEvent.Factory.make for more information regarding instantiating
  * MachineEvent
  */
-export type MachineEvent<Key extends string, Payload extends utils.SerializableObject> = {
+export type MachineEvent<Key extends string, Payload extends object> = {
   type: Key
 } & Payload
 
@@ -80,7 +80,7 @@ export namespace MachineEvent {
     withoutPayload: () => Factory<Key, Record<never, never>>
   }
 
-  export type Any = MachineEvent<string, any>
+  export type Any = MachineEvent<string, object>
 
   export type Of<T extends Factory.Any> = T extends Factory<infer Key, infer Payload>
     ? MachineEvent<Key, Payload>
@@ -96,7 +96,7 @@ export namespace MachineEvent {
    * @see MachineEvent.Factory.make for more information regarding instantiating
    * MachineEvent
    */
-  export type Factory<Key extends string, Payload extends utils.SerializableObject> = {
+  export type Factory<Key extends string, Payload extends object> = {
     type: Key
     /**
      * Create an event with the factory's type assigned to it.
@@ -171,7 +171,7 @@ export namespace MachineEvent {
     export type MapToMachineEvent<T extends MachineEvent.Factory.Any[]> = LooseMapToMachineEvent<T>
 
     // =====
-    type LooseMapToPayload<T, ACC extends utils.SerializableObject[] = []> = T extends [
+    type LooseMapToPayload<T, ACC extends object[] = []> = T extends [
       Factory<infer Key, infer Payload>,
       ...infer Rest,
     ]
