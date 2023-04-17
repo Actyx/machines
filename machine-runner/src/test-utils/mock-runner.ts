@@ -13,7 +13,7 @@ export type MockMachineRunner<
   SwarmProtocolName extends string,
   MachineName extends string,
   RegisteredEventsFactoriesTuple extends MachineEvent.Factory.Any[],
-> = MachineRunner<SwarmProtocolName, MachineName, RegisteredEventsFactoriesTuple> & {
+> = MachineRunner<SwarmProtocolName, MachineName> & {
   /**
    * Contains test utilities for MockMachineRunner
    * @see MockMachineRunnerTestUtils for more information
