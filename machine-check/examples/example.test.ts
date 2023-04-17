@@ -1,5 +1,10 @@
+import { describe, expect, it } from '@jest/globals'
 import { Door, Control, HangarBay } from './example-proto.js'
-import { SwarmProtocolType, checkProjection, checkSwarmProtocol } from './src/index.js'
+import { SwarmProtocolType, checkProjection, checkSwarmProtocol } from '../src/index.js'
+
+/*
+ * This file holds the code for the README, see there for a description of the protocol.
+ */
 
 const swarmProtocol: SwarmProtocolType = {
   initial: 'Closed',
@@ -42,20 +47,28 @@ const subscriptions = {
   Door: ['closing', 'closed', 'opening', 'opened'],
 }
 
-console.log(checkSwarmProtocol(swarmProtocol, subscriptions))
-console.log(
-  checkProjection(
-    swarmProtocol,
-    subscriptions,
-    'Control',
-    Control.Control.createJSONForAnalysis(Control.Closed),
-  ),
-)
-console.log(
-  checkProjection(
-    swarmProtocol,
-    subscriptions,
-    'Door',
-    Door.Door.createJSONForAnalysis(Door.Closed),
-  ),
-)
+describe('swarmProtocol', () => {
+  it('should be well-formed', () => {
+    expect(checkSwarmProtocol(swarmProtocol, subscriptions)).toEqual({ type: 'OK' })
+  })
+  it('should match Control', () => {
+    expect(
+      checkProjection(
+        swarmProtocol,
+        subscriptions,
+        'Control',
+        Control.Control.createJSONForAnalysis(Control.Closed),
+      ),
+    ).toEqual({ type: 'OK' })
+  })
+  it('should match Door', () => {
+    expect(
+      checkProjection(
+        swarmProtocol,
+        subscriptions,
+        'Door',
+        Door.Door.createJSONForAnalysis(Door.Closed),
+      ),
+    ).toEqual({ type: 'OK' })
+  })
+})

@@ -2,6 +2,10 @@
 import { MachineEvent } from '@actyx/machine-runner'
 import { SwarmProtocol } from '@actyx/machine-runner/lib/design/protocol.js'
 
+/*
+ * This file holds the code for the README, see there for a description of the protocol.
+ */
+
 const mkTuple = <T extends unknown[]>(...args: T) => args
 
 export namespace Events {

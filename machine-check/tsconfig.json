@@ -1,10 +1,12 @@
 {
   "include": ["src/**/*"],
   "compilerOptions": {
+    "allowJs": true,
     "alwaysStrict": true,
     "declaration": true,
-    "experimentalDecorators": true,
     "emitDecoratorMetadata": false,
+    "esModuleInterop": true,
+    "experimentalDecorators": true,
     "lib": ["dom", "es2019"],
     "module": "Node16",
     "moduleResolution": "Node16",

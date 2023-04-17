@@ -26,12 +26,12 @@ The short form for writing this down is `(Closed) --[open@Control<Opening>]--> (
 
 The machines from the [Hangar Door example](../machine-runner/README.md#example-usage) might follow this protocol:
 
-- `(Closed) --[open@Control<Opening>]--> (Opening)`
-- `(Opening) --[update@Door<Opening>]--> (Opening)`
-- `(Opening) --[open@Door<Opened>]--> (Open)`
-- `(Open) --[close@Control<Closing>]--> (Closing)`
-- `(Closing) --[update@Door<Closing>]--> (Closing)`
-- `(Closing) --[close@Door<Closed>]--> (Closed)`
+- `(Closed) --[open@Control<opening>]--> (Opening)`
+- `(Opening) --[update@Door<opening>]--> (Opening)`
+- `(Opening) --[open@Door<opened>]--> (Open)`
+- `(Open) --[close@Control<closing>]--> (Closing)`
+- `(Closing) --[update@Door<closing>]--> (Closing)`
+- `(Closing) --[close@Door<closed>]--> (Closed)`
 
 The Control can initiate opening and closing while the Door provides progress updates and states when each movement has been completed.
 
@@ -85,28 +85,41 @@ const subscriptions = {
   Control: ['closing', 'closed', 'opening', 'opened'],
   Door: ['closing', 'closed', 'opening', 'opened'],
 }
-
-console.log(checkSwarmProtocol(swarmProtocol, subscriptions))
-console.log(
-  checkProjection(
-    swarmProtocol,
-    subscriptions,
-    'Control',
-    Control.Control.createJSONForAnalysis(Control.Closed),
-  ),
-)
-console.log(
-  checkProjection(
-    swarmProtocol,
-    subscriptions,
-    'Door',
-    Door.Door.createJSONForAnalysis(Door.Closed),
-  ),
-)
 ```
 
-Instead of `console.log()` you’d normally assert that the result is `{"type":"OK"}`.
-In the example as given you’ll instead be notified that the overall protocol has a flaw:
+The `swarmProtocol` describes the expected flow of events, written down as if we had full oversight or all machines that will later implement it.
+And this is how we run the behaviour checker to first make sure that the swarm protocol is valid and then check that our machines implement it correctly:
+
+```ts
+describe('swarmProtocol', () => {
+  it('should be well-formed', () => {
+    expect(checkSwarmProtocol(swarmProtocol, subscriptions)).toEqual({ type: 'OK' })
+  })
+  it('should match Control', () => {
+    expect(
+      checkProjection(
+        swarmProtocol,
+        subscriptions,
+        'Control',
+        Control.Control.createJSONForAnalysis(Control.Closed),
+      ),
+    ).toEqual({ type: 'OK' })
+  })
+  it('should match Door', () => {
+    expect(
+      checkProjection(
+        swarmProtocol,
+        subscriptions,
+        'Door',
+        Door.Door.createJSONForAnalysis(Door.Closed),
+      ),
+    ).toEqual({ type: 'OK' })
+  })
+})
+```
+
+You can of course use any testing framework you like.
+In the example as given you’ll be notified that the overall protocol has a flaw:
 
 ```text
 {
@@ -118,6 +131,6 @@ In the example as given you’ll instead be notified that the overall protocol h
 }
 ```
 
-This means that our clever reuse of the `opening` and `closing` event types for dual purposes may not be so clever after all — the `update` commands should yield more specific `openingProgress` and `closingProgress` event types instead.
+This means that our clever reuse of the `opening` and `closing` event types for dual purposes (i.e. as transition to a moving door as well as progress update) may not be so clever after all — the `update` commands should yield more specific `openingProgress` and `closingProgress` event types instead.
 Other than that, our machines are implemented correctly.
 You can try to remove a command or reaction from the code to observe how this this pointed out by `checkProjection()`.

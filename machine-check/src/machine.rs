@@ -1,5 +1,5 @@
 use crate::{
-    types::{MachineLabel, Role, State},
+    types::{Command, EventType, MachineLabel, Role, State},
     EdgeId, Machine, NodeId, Subscriptions,
 };
 use itertools::Itertools;
@@ -122,6 +122,8 @@ pub enum Side {
 }
 
 pub enum Error {
+    /// The given edge’s label is not unique for this side: a machine can have only one reaction
+    /// to a given event or one handler for a given command
     NonDeterministic(Side, EdgeId),
     /// The given side in the given node is missing the edge from the OTHER side
     MissingTransition(Side, NodeId, EdgeId),
@@ -200,6 +202,21 @@ fn state_name(g: &Graph, mut n: NodeId) -> StatePrinter<'_> {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord)]
+enum DeterministicLabel {
+    Command(Command),
+    Event(EventType),
+}
+
+impl From<&MachineLabel> for DeterministicLabel {
+    fn from(label: &MachineLabel) -> Self {
+        match label {
+            MachineLabel::Execute { cmd, .. } => DeterministicLabel::Command(cmd.clone()),
+            MachineLabel::Input { event_type } => DeterministicLabel::Event(event_type.clone()),
+        }
+    }
+}
+
 /// error messages are designed assuming that `left` is the reference and `right` the tested
 pub fn equivalent(left: &Graph, li: NodeId, right: &Graph, ri: NodeId) -> Vec<Error> {
     use Side::*;
@@ -220,7 +237,7 @@ pub fn equivalent(left: &Graph, li: NodeId, right: &Graph, ri: NodeId) -> Vec<Er
         let mut l_out = BTreeMap::new();
         for edge in left.edges_directed(li, Outgoing) {
             l_out
-                .entry(edge.weight())
+                .entry(DeterministicLabel::from(edge.weight()))
                 .and_modify(|_| errors.push(Error::NonDeterministic(Left, edge.id())))
                 .or_insert(edge);
         }
@@ -228,7 +245,7 @@ pub fn equivalent(left: &Graph, li: NodeId, right: &Graph, ri: NodeId) -> Vec<Er
         let mut r_out = BTreeMap::new();
         for edge in right.edges_directed(ri, Outgoing) {
             r_out
-                .entry(edge.weight())
+                .entry(DeterministicLabel::from(edge.weight()))
                 .and_modify(|_| errors.push(Error::NonDeterministic(Right, edge.id())))
                 .or_insert(edge);
         }
@@ -237,28 +254,28 @@ pub fn equivalent(left: &Graph, li: NodeId, right: &Graph, ri: NodeId) -> Vec<Er
         // note that we have visited these nodes (to avoid putting self-loops onto the stack in the loop below)
         l2r[li.index()] = ri;
         r2l[ri.index()] = li;
-        // compare both sets
+        // compare both sets; iteration must be in order of weights (hence the BTreeMap above)
         let mut same = true;
-        let mut l_edges = l_out.into_iter().peekable();
-        let mut r_edges = r_out.into_iter().peekable();
+        let mut l_edges = l_out.into_values().peekable();
+        let mut r_edges = r_out.into_values().peekable();
         loop {
             let l = l_edges.peek();
             let r = r_edges.peek();
             match (l, r) {
                 (None, None) => break,
-                (None, Some((_, r_edge))) => {
+                (None, Some(r_edge)) => {
                     tracing::debug!("left missing {}", r_edge.weight());
                     errors.push(Error::MissingTransition(Left, li, r_edge.id()));
                     same = false;
                     r_edges.next();
                 }
-                (Some((_, l_edge)), None) => {
+                (Some(l_edge), None) => {
                     tracing::debug!("right missing {}", l_edge.weight());
                     errors.push(Error::MissingTransition(Right, ri, l_edge.id()));
                     same = false;
                     l_edges.next();
                 }
-                (Some((l, l_edge)), Some((r, r_edge))) => match l.cmp(r) {
+                (Some(l_edge), Some(r_edge)) => match l_edge.weight().cmp(r_edge.weight()) {
                     Ordering::Less => {
                         tracing::debug!("right missing {}", l_edge.weight());
                         errors.push(Error::MissingTransition(Right, ri, l_edge.id()));
@@ -266,7 +283,7 @@ pub fn equivalent(left: &Graph, li: NodeId, right: &Graph, ri: NodeId) -> Vec<Er
                         l_edges.next();
                     }
                     Ordering::Equal => {
-                        tracing::debug!("found match for {}", l);
+                        tracing::debug!("found match for {}", l_edge.weight());
                         let lt = l_edge.target();
                         let rt = r_edge.target();
                         if l2r[lt.index()] == NodeId::end() || r2l[rt.index()] == NodeId::end() {

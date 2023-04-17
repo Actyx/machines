@@ -28,6 +28,8 @@ You’ll use this library in your machine’s unit tests
 - to check that your designed swarm protocol is sound
 - to check that your machines follow their prescribed role in the swarm protocol
 
+For more information please refer to the [README](./machine-check/README.md).
+
 ## Machine Visualisation
 
 The third library provides React components for generically visualising your running machines and letting you interact with them.
