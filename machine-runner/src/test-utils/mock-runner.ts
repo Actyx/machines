@@ -275,8 +275,8 @@ export namespace Subscription {
 
   export const make = <RegisteredEventsFactoriesTuple extends MachineEvent.Factory.Any[]>() => {
     type Subscribe = SubscribeFn<RegisteredEventsFactoriesTuple>
-    type Cb = Parameters<Subscribe>[0]
-    type ErrCb = Parameters<Subscribe>[1]
+    type Callback = Parameters<Subscribe>[0]
+    type ErrorCallback = Parameters<Subscribe>[1]
 
     const cancel = () => {
       if (data.cb === null) throw new Error('not subscribed')
@@ -294,8 +294,8 @@ export namespace Subscription {
     }
 
     const data = {
-      cb: null as null | Cb,
-      err: null as null | Exclude<ErrCb, undefined>,
+      cb: null as null | Callback,
+      err: null as null | Exclude<ErrorCallback, undefined>,
       cancel,
       subscribe,
     }
