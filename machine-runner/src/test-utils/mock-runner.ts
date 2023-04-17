@@ -88,8 +88,6 @@ type MockMachineRunnerTestUtils<
           Then,
         ]
   ) => RetvalOrElse<typeof args[1], State<N, P, C>>
-
-  delay: MockMachineRunnerDelayUtils
 }
 
 export type MockMachineRunnerDelayUtils = {
@@ -160,10 +158,6 @@ export const createMockMachineRunner = <
   }
   // Below: public
 
-  const delay: Self['test']['delay'] = {
-    toggle: delayer.toggle,
-  }
-
   const machine = createMachineRunnerInternal(
     sub.subscribe,
     async (events) => {
@@ -187,7 +181,6 @@ export const createMockMachineRunner = <
     test: {
       assertAs,
       feed,
-      delay,
     },
   }
 }
@@ -206,8 +199,6 @@ export const mockMeta = () => ({
   stream: 'stream1',
   offset: 3,
 })
-
-// TODO: reuse in unit test
 
 type PromiseDelay = ReturnType<typeof PromiseDelay['make']>
 export namespace PromiseDelay {
@@ -266,8 +257,6 @@ export namespace PromiseDelay {
     }
   }
 }
-
-// TODO: reuse in unit test
 
 export namespace Subscription {
   export type CallbackFnOf<RegisteredEventsFactoriesTuple extends MachineEvent.Factory.Any[]> =
