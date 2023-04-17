@@ -4,6 +4,8 @@ export type DeepReadonly<T> = {
 
 export type NonZeroTuple<T> = [T, ...T[]]
 
+export type RetvalOrElse<T, Else> = T extends (...args: any[]) => infer Retval ? Retval : Else
+
 export type ExtendsThenTransform<A, B, T = true, F = false> = [A] extends [B] ? T : F
 
 // utilities from https://github.com/type-challenges/type-challenges

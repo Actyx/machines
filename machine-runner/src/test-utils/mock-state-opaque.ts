@@ -5,7 +5,7 @@ import { ImplStateOpaque } from '../runner/runner.js'
 
 type Options = {
   disableCommands?: boolean
-  capturedEvents?: MachineEvent.Any[]
+  capturedEvents?: unknown[]
 }
 
 export const createMockStateOpaque = <
@@ -65,8 +65,3 @@ export const createMockState = <
   if (!state) throw new Error('never')
   return state
 }
-
-/**
- * Creates an empty MachineEvent.Any[]
- */
-export const createEventCaptureArray = () => [] as MachineEvent.Any[]
