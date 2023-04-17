@@ -7,6 +7,7 @@ import { deepCopy } from './utils/object-utils.js'
 import { NOP } from './utils/index.js'
 import { Equal, Expect, NotAnyOrUnknown, NotEqual } from './utils/type-utils.js'
 import { MachineAnalysisResource, SwarmProtocol } from './design/protocol.js'
+import { PromiseDelay, Subscription, mockMeta } from './test-utils/mock-runner.js'
 
 class Unreachable extends Error {
   constructor() {
@@ -62,37 +63,21 @@ Initial.react([One, Two], Second, (c, one, two) => {
 
 // Mock Runner
 
-type CommandPromisePair = [Promise<Metadata[]>, { resolve: () => void; reject: () => void }]
-
 class Runner<
   SwarmProtocolName extends string,
   MachineName extends string,
   RegisteredEventsFactoriesTuple extends MachineEvent.Factory.Any[],
   Payload,
 > {
-  private cb:
-    | null
-    | ((
-        data: EventsOrTimetravel<
-          MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>
-        >,
-      ) => Promise<void>) = null
-  private err: null | OnCompleteOrErr = null
   private persisted: MachineEvent.Any[] = []
-  private cancelCB
   private unhandled: MachineEvent.Any[] = []
   private caughtUpHistory: StateOpaque<SwarmProtocolName, MachineName>[] = []
   private stateChangeHistory: {
     state: StateOpaque<SwarmProtocolName, MachineName>
     unhandled: MachineEvent.Any[]
   }[] = []
-  private commandsDelay: {
-    isDelaying: boolean
-    delayedCommands: CommandPromisePair[]
-  } = {
-    isDelaying: false,
-    delayedCommands: [],
-  }
+  private delayer = PromiseDelay.make()
+  private sub = Subscription.make<RegisteredEventsFactoriesTuple>()
   public machine
 
   constructor(
@@ -106,30 +91,16 @@ class Runner<
     >,
     payload: Payload,
   ) {
-    this.cancelCB = () => {
-      if (this.cb === null) throw new Error('not subscribed')
-      this.cb = null
-      this.err = null
-    }
-
-    const subscribe: SubscribeFn<RegisteredEventsFactoriesTuple> = (cb0, err0) => {
-      if (this.cb !== null) throw new Error('already subscribed')
-      this.cb = cb0
-      this.err = err0 || null
-      return this.cancelCB
-    }
-
     const machine = createMachineRunnerInternal(
-      subscribe,
+      this.sub.subscribe,
       async (events) => {
         this.persisted.push(...events)
-        const commandPromisePair = this.createDelayedCommandPair(events)
-        if (this.commandsDelay.isDelaying) {
-          this.commandsDelay.delayedCommands.push(commandPromisePair)
-        } else {
-          commandPromisePair[1].resolve()
-        }
-        return commandPromisePair[0]
+        const pair = this.delayer.make()
+        const retval = pair[0].then(() => {
+          this.feed(events, true)
+          return events.map((_) => mockMeta())
+        })
+        return retval
       },
       factory,
       payload,
@@ -158,84 +129,38 @@ class Runner<
   resetStateChangeHistory = () => (this.stateChangeHistory = [])
   resetCaughtUpHistory = () => (this.caughtUpHistory = [])
 
-  private mockMeta() {
-    return {
-      isLocalEvent: true,
-      tags: [],
-      timestampMicros: 0,
-      timestampAsDate: () => new Date(),
-      lamport: 1,
-      eventId: 'id1',
-      appId: 'test',
-      stream: 'stream1',
-      offset: 3,
-    }
-  }
-
-  private createDelayedCommandPair(
-    events: MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>[],
-  ): CommandPromisePair {
-    const pair: CommandPromisePair = [undefined as any, undefined as any]
-    pair[0] = new Promise<void>((resolve, reject) => {
-      pair[1] = {
-        resolve,
-        reject,
-      }
-    }).then(() => {
-      this.feed(events, true)
-      return events.map((_) => this.mockMeta())
-    })
-
-    return pair
-  }
-
   async toggleCommandDelay(
-    delayControl: { delaying: true } | { delaying: false; rejectAll?: boolean },
+    delayControl: { delaying: true } | { delaying: false; reject?: boolean },
   ): Promise<void> {
-    this.commandsDelay.isDelaying = delayControl.delaying
-
-    if (delayControl.delaying) return
-
-    await Promise.all(
-      this.commandsDelay.delayedCommands.map(([promise, control]) => {
-        if (delayControl.rejectAll) {
-          control.reject()
-        } else {
-          control.resolve()
-        }
-        // eslint-disable-next-line @typescript-eslint/no-empty-function
-        return promise.catch(() => {})
-      }),
-    )
-
-    this.commandsDelay.delayedCommands = []
+    await this.delayer.toggle(delayControl)
   }
 
   feed(
     ev: MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>[],
     caughtUp: boolean,
   ) {
-    if (this.cb === null) throw new Error('not subscribed')
-    return this.cb({
+    if (this.sub.cb === null) throw new Error('not subscribed')
+    return this.sub.cb({
       type: MsgType.events,
       caughtUp,
       events: ev.map((payload) => ({
-        meta: this.mockMeta(),
+        meta: mockMeta(),
         payload,
       })),
     })
   }
 
   timeTravel() {
-    if (this.cb === null) throw new Error('not subscribed')
-    const cb = this.cb
+    if (this.sub.cb === null) throw new Error('not subscribed')
+    const cb = this.sub.cb
     cb({ type: MsgType.timetravel, trigger: { lamport: 0, offset: 0, stream: 'stream' } })
-    if (this.cb === null) throw new Error('did not resubscribe')
+    if (this.sub.cb === null) throw new Error('did not resubscribe')
   }
 
   error() {
-    if (this.err === null) throw new Error('not subscribed')
-    this.err(new Error('boo!'))
+    const err = this.sub.err
+    if (!err) throw new Error('not subscribed')
+    err(new Error('boo!'))
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -297,11 +222,11 @@ class Runner<
 
   assertSubscribed(b: boolean) {
     if (b) {
-      expect(this.cb).not.toBeNull()
-      expect(this.err).not.toBeNull()
+      expect(this.sub.cb).not.toBeNull()
+      expect(this.sub.err).not.toBeNull()
     } else {
-      expect(this.cb).toBeNull()
-      expect(this.err).toBeNull()
+      expect(this.sub.cb).toBeNull()
+      expect(this.sub.err).toBeNull()
     }
   }
 
@@ -696,7 +621,7 @@ describe('StateOpaque', () => {
       commands.X(...XCommandParam).catch(() => (rejectionSwitch2 = true))
       r1.assertPersisted()
 
-      await r1.toggleCommandDelay({ delaying: false, rejectAll: true })
+      await r1.toggleCommandDelay({ delaying: false, reject: true })
 
       expect(rejectionSwitch1).toBe(true)
       expect(rejectionSwitch2).toBe(false) // second commmand should not be issued
