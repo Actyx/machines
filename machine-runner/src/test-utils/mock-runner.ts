@@ -141,13 +141,6 @@ export const createMockMachineRunner = <
     })
   }
 
-  // const timeTravel = () => {
-  //   if (sub.cb === null) throw new Error('not subscribed')
-  //   const cb = sub.cb
-  //   cb({ type: MsgType.timetravel, trigger: { lamport: 0, offset: 0, stream: 'stream' } })
-  //   if (sub.cb === null) throw new Error('did not resubscribe')
-  // }
-
   const assertAs: Self['test']['assertAs'] = (...args) => {
     const [factory, then] = args
     const opaque = machine.get()
@@ -202,7 +195,7 @@ export const createMockMachineRunner = <
 // Utilities
 // ===============
 
-const mockMeta = () => ({
+export const mockMeta = () => ({
   isLocalEvent: true,
   tags: [],
   timestampMicros: 0,
@@ -217,7 +210,7 @@ const mockMeta = () => ({
 // TODO: reuse in unit test
 
 type PromiseDelay = ReturnType<typeof PromiseDelay['make']>
-namespace PromiseDelay {
+export namespace PromiseDelay {
   type Pair = [
     Promise<void>,
     { resolve: () => void; reject: () => void; isFinished: () => boolean },
@@ -276,25 +269,33 @@ namespace PromiseDelay {
 
 // TODO: reuse in unit test
 
-namespace Subscription {
+export namespace Subscription {
   export type CallbackFnOf<RegisteredEventsFactoriesTuple extends MachineEvent.Factory.Any[]> =
     Parameters<SubscribeFn<RegisteredEventsFactoriesTuple>>[0]
 
   export const make = <RegisteredEventsFactoriesTuple extends MachineEvent.Factory.Any[]>() => {
     type Subscribe = SubscribeFn<RegisteredEventsFactoriesTuple>
     type Cb = Parameters<Subscribe>[0]
+    type ErrCb = Parameters<Subscribe>[1]
+
     const cancel = () => {
       if (data.cb === null) throw new Error('not subscribed')
+      if (data.err === null) throw new Error('not subscribed')
       data.cb = null
+      data.err = null
     }
-    const subscribe: Subscribe = (onEvent) => {
+
+    const subscribe: Subscribe = (onEvent, onError) => {
       if (data.cb !== null) throw new Error('already subscribed')
+      if (data.err !== null) throw new Error('already subscribed')
       data.cb = onEvent
+      data.err = onError || null
       return data.cancel
     }
 
     const data = {
       cb: null as null | Cb,
+      err: null as null | Exclude<ErrCb, undefined>,
       cancel,
       subscribe,
     }
