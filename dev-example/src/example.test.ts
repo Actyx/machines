@@ -6,8 +6,6 @@ import {
 import { Bid, BidData, BidderID, Cancelled, Passenger, Requested } from './machines/index.js'
 import { toPrettyJSONString } from './UIMachineCommon.js'
 import { isTaxiRideCancelEnabled } from './UIMachinePassenger.js'
-import { Machine, MachineEvent } from '@actyx/machine-runner'
-import { createEventCaptureArray } from '@actyx/machine-runner/lib/test-utils/mock-state-opaque.js'
 
 describe('State transformation tests', () => {
   it('should verify if state transformation as written by the consumer code is correct', () => {
@@ -33,13 +31,23 @@ describe('State transformation tests', () => {
       }),
     ])
 
-    machineRunner.test.assertAs(Passenger.Auction, (auction) => {
+    const auction1 = machineRunner.test.assertAs(Passenger.Auction, (auction) => {
       expect(auction.payload.bids.at(0)).toEqual({
         bidderID: bidderId,
         time: bidTime,
         price: bidPrice,
       } as BidData)
+
+      return auction
     })
+
+    // Alternative usage example of `assertAs`
+    const auction2 = machineRunner.test.assertAs(Passenger.Auction)
+    expect(auction2.payload.bids.at(0)).toEqual({
+      bidderID: bidderId,
+      time: bidTime,
+      price: bidPrice,
+    } as BidData)
 
     // Comparing arrays of objects that has a Date member is broken in jest. This doesn't work.
     // expect(auction.payload.bids)
@@ -72,7 +80,7 @@ describe('State mocking', () => {
   })
 
   it('should support capturing events from commands', () => {
-    const capturedEvents = createEventCaptureArray()
+    const capturedEvents = [] as unknown[]
     const state = createMockState(Passenger.Ride, { taxiID: 'someTaxiID' }, { capturedEvents })
     state.commands?.cancel()
     expect(capturedEvents).toEqual([Cancelled.make({ reason: "don't wanna" })])
