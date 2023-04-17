@@ -1,37 +1,39 @@
 {
   "name": "@actyx/machine-check",
   "version": "0.1.0",
-  "type": "module",
-  "description": "asymmetric replicated state machines: type checking",
-  "main": "./lib/index.js",
-  "types": "./lib/index.d.ts",
-  "bin": {
-    "machine-check": "bin/machine-check.js"
-  },
-  "scripts": {
-    "build": "tsc"
-  },
+  "description": "Behavioural typechecking for @actyx/machine-runner machines",
+  "repository": "https://github.com/Actyx/machines",
+  "author": "Actyx AG",
   "keywords": [
     "local-first"
   ],
-  "author": "Actyx AG",
   "license": "Apache-2.0",
-  "dependencies": {
-    "@types/glob": "^7.2.0",
-    "execa": "^6.1.0",
-    "glob": "^7.2.3",
-    "@actyx/machine-runner": "file:../machine-runner",
-    "path-equal": "^1.2.5",
-    "safe-stable-stringify": "^2.4.2",
-    "typescript": "~4.8.3"
+  "type": "module",
+  "files": [
+    "lib/**/*",
+    "pkg/machine*"
+  ],
+  "main": "./lib/index.js",
+  "scripts": {
+    "clean": "rimraf pkg lib",
+    "build:rs": "wasm-pack build --target nodejs --release",
+    "build:ts": "tsc",
+    "build": "npm run build:rs && npm run build:ts",
+    "prepack": "npm run clean && npm run build",
+    "test": "jest"
   },
   "devDependencies": {
+    "@actyx/machine-runner": "^0.1.0",
+    "@jest/globals": "^29.5.0",
     "@typescript-eslint/eslint-plugin": "^5.45.0",
     "@typescript-eslint/parser": "^5.45.0",
     "eslint": "^8.28.0",
     "eslint-config-prettier": "^8.5.0",
     "eslint-plugin-prettier": "^4.2.1",
+    "jest": "^29.5.0",
     "prettier": "^2.8.0",
-    "ts-node": "^10.9.1"
+    "rimraf": "^4.4.1",
+    "ts-jest": "^29.1.0",
+    "typescript": "^5.0.2"
   }
 }
