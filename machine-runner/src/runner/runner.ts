@@ -132,8 +132,8 @@ export namespace MachineRunner {
    * // refers to any MachineRunner derived from HangarBay protocol and Door machine
    * type ThisMachineRunner = MachineRunner.Of<typeof Door>
    */
-  export type Of<S extends SwarmProtocol<any, any, any> | Machine<any, any, any>> =
-    S extends SwarmProtocol<infer S, any, any>
+  export type Of<S extends SwarmProtocol<any, any> | Machine<any, any, any>> =
+    S extends SwarmProtocol<infer S, any>
       ? MachineRunner<S, string>
       : S extends Machine<infer S, infer N, any>
       ? MachineRunner<S, N>
@@ -727,15 +727,12 @@ export namespace StateOpaque {
    * type ThisStateOpaque3 = StateOpaque.Of<typeof HangarBay>;
    */
   export type Of<
-    M extends
-      | MachineRunner.Any
-      | Machine.Any
-      | SwarmProtocol<string, [any, ...any[]], [any, ...any[]]>,
+    M extends MachineRunner.Any | Machine.Any | SwarmProtocol<string, [any, ...any[]]>,
   > = M extends MachineRunner<infer S, infer N>
     ? StateOpaque<S, N>
     : M extends Machine<infer S, infer N, any>
     ? StateOpaque<S, N>
-    : M extends SwarmProtocol<infer S, any, any>
+    : M extends SwarmProtocol<infer S, any>
     ? StateOpaque<S, any>
     : never
 }

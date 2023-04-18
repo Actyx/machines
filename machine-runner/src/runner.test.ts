@@ -22,7 +22,7 @@ const Two = MachineEvent.design('Two').withPayload<{ y: number }>()
 
 // Machine and States
 
-const protocol = SwarmProtocol.make('TestSwarm', ['testMachine'], [One, Two])
+const protocol = SwarmProtocol.make('TestSwarm', [One, Two])
 
 const machine = protocol.makeMachine('TestMachine')
 
@@ -323,7 +323,7 @@ describe('machine runner', () => {
 describe('machine as async generator', () => {
   const Toggle = MachineEvent.design('Toggle').withoutPayload()
 
-  const protocol = SwarmProtocol.make('switch', ['switch'], [Toggle])
+  const protocol = SwarmProtocol.make('switch', [Toggle])
 
   const machine = protocol.makeMachine('switch')
 
@@ -846,7 +846,7 @@ const extractInput = (
 describe('protocol.createJSONForAnalysis', () => {
   const E1 = MachineEvent.design('E1').withoutPayload()
   const E2 = MachineEvent.design('E2').withoutPayload()
-  const protocol = SwarmProtocol.make('example', ['example'], [E1, E2])
+  const protocol = SwarmProtocol.make('example', [E1, E2])
   const machine = protocol.makeMachine('example')
   const S1 = machine
     .designEmpty('S1')
@@ -960,7 +960,7 @@ describe('typings', () => {
   describe('different-machines', () => {
     const E1 = MachineEvent.design('E1').withoutPayload()
     const E2 = MachineEvent.design('E2').withoutPayload()
-    const protocol = SwarmProtocol.make('swarm', ['swarm'], [E1, E2])
+    const protocol = SwarmProtocol.make('swarm', [E1, E2])
 
     const M1 = protocol.makeMachine('machine1')
     const M2 = protocol.makeMachine('machine2')
