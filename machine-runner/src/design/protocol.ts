@@ -21,13 +21,14 @@ import { NonZeroTuple } from '../utils/type-utils.js'
  */
 export type SwarmProtocol<
   SwarmProtocolName extends string,
-  TagString extends NonZeroTuple<string>,
   RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
 > = {
   makeMachine: <MachineName extends string>(
     machineName: MachineName,
   ) => Machine<SwarmProtocolName, MachineName, RegisteredEventsFactoriesTuple>
-  tags: Tags<MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>>
+  tagWithEntityId: (
+    id: string,
+  ) => Tags<MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>>
 }
 
 /**
@@ -38,7 +39,7 @@ export namespace SwarmProtocol {
   /**
    * Construct a SwarmProtocol
    * @param swarmName - The name of the swarm protocol
-   * @param tags - the tags used to mark the events passed to Actyx
+   * @param tagString - the tags used to mark the events passed to Actyx
    * @param registeredEventFactories - MachineEvent.Factories that are allowed
    * to be used for communications in the scope of this SwarmProtocol
    * @example
@@ -61,15 +62,14 @@ export namespace SwarmProtocol {
    */
   export const make = <
     SwarmProtocolName extends string,
-    TagString extends NonZeroTuple<string>,
     RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
   >(
     swarmName: SwarmProtocolName,
-    tags: TagString,
     registeredEventFactories: RegisteredEventsFactoriesTuple,
-  ): SwarmProtocol<SwarmProtocolName, TagString, RegisteredEventsFactoriesTuple> => {
+  ): SwarmProtocol<SwarmProtocolName, RegisteredEventsFactoriesTuple> => {
+    const tag = Tag<MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>>(swarmName)
     return {
-      tags: Tags(...tags),
+      tagWithEntityId: (id) => tag.withId(id),
       makeMachine: (machineName) =>
         ImplMachine.make(swarmName, machineName, registeredEventFactories),
     }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from '@jest/globals'
-import { Door, Control, HangarBay } from './example-proto.js'
+import { Door, Control } from './example-proto'
 import { SwarmProtocolType, checkProjection, checkSwarmProtocol } from '../src/index.js'
 
 /*

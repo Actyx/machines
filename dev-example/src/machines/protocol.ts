@@ -51,20 +51,16 @@ export const Cancelled = MachineEvent.design('Cancelled').withPayload<{ reason: 
 
 export const Receipt = MachineEvent.design('Receipt').withPayload<{ amount: number }>()
 
-export const protocol = SwarmProtocol.make(
-  'taxiRide',
-  ['taxiRide'],
-  [
-    Requested,
-    Bid,
-    BidderID,
-    Selected,
-    PassengerID,
-    Arrived,
-    Started,
-    Path,
-    Finished,
-    Cancelled,
-    Receipt,
-  ],
-)
+export const protocol = SwarmProtocol.make('taxiRide', [
+  Requested,
+  Bid,
+  BidderID,
+  Selected,
+  PassengerID,
+  Arrived,
+  Started,
+  Path,
+  Finished,
+  Cancelled,
+  Receipt,
+])
