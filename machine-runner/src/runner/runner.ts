@@ -120,7 +120,6 @@ export namespace MachineRunner {
    * @example
    * const HangarBay = SwarmProtocol.make(
    *   'HangarBay',
-   *   ['hangar-bay'],
    *   [HangarDoorTransitioning, HangarDoorClosed, HangarDoorOpen]
    * )
    * const Door = HangarBay.makeMachine('door')
@@ -712,7 +711,6 @@ export namespace StateOpaque {
    *
    * const HangarBay = SwarmProtocol.make(
    *   'HangarBay',
-   *   ['hangar-bay'],
    *   [HangarDoorTransitioning, HangarDoorClosed, HangarDoorOpen]
    * )
    * const Door = HangarBay.makeMachine('door')

@@ -12,7 +12,7 @@ export namespace Events {
   export const all = mkTuple(Opened, Closed, Opening, Closing)
 }
 
-export const HangarBay = SwarmProtocol.make('HangarBay', ['hangar-bay'], Events.all)
+export const HangarBay = SwarmProtocol.make('HangarBay', Events.all)
 
 export namespace Door {
   export const Door = HangarBay.makeMachine('door')
