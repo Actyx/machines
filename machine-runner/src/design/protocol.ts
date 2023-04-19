@@ -39,7 +39,7 @@ export namespace SwarmProtocol {
   /**
    * Construct a SwarmProtocol
    * @param swarmName - The name of the swarm protocol
-   * @param tagString - the tags used to mark the events passed to Actyx
+   * @param tagString - the base tag used to mark the events passed to Actyx
    * @param registeredEventFactories - MachineEvent.Factories that are allowed
    * to be used for communications in the scope of this SwarmProtocol
    * @example
