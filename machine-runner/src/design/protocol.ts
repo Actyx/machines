@@ -56,7 +56,6 @@ export namespace SwarmProtocol {
    * // Creates a protocol
    * const HangarBay = SwarmProtocol.make(
    *   'HangarBay',
-   *   ['hangar-bay'],
    *   [HangarDoorTransitioning, HangarDoorClosed, HangarDoorOpen]
    * )
    */
@@ -172,7 +171,7 @@ export namespace Machine {
    * const E2 = MachineEvent.design("E2").withoutPayload();
    * const E3 = MachineEvent.design("E3").withoutPayload();
    *
-   * const protocol = SwarmProtocol.make("HangarBayExchange", ["HangarBayExchange"], [E1, E2, E3]);
+   * const protocol = SwarmProtocol.make("HangarBayExchange", [E1, E2, E3]);
    *
    * const machine = protocol.makeMachine("somename");
    *

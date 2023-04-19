@@ -25,7 +25,7 @@ namespace Events {
 Then we can declare a swarm protocol using these events:
 
 ```typescript
-const HangarBay = SwarmProtocol.make('HangarBay', ['hangar-bay'], Events.all)
+const HangarBay = SwarmProtocol.make('HangarBay', Events.all)
 ```
 
 Now we build two machines that participate in this protocol: the `Control` will tell the door when to move, while the `Door` will register updates as to what it is doing.
