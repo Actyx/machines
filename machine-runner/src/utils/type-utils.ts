@@ -2,6 +2,7 @@ export type DeepReadonly<T> = {
   readonly [P in keyof T]: T[P] extends Record<string, unknown> ? DeepReadonly<T[P]> : T[P]
 }
 
+export type ReadonlyNonZeroTuple<T> = Readonly<[T, ...T[]]>
 export type NonZeroTuple<T> = [T, ...T[]]
 
 export type RetvalOrElse<T, Else> = T extends (...args: any[]) => infer Retval ? Retval : Else

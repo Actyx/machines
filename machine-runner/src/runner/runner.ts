@@ -139,16 +139,19 @@ export namespace MachineRunner {
       : never
 }
 
-export type SubscribeFn<RegisteredEventsFactoriesTuple extends MachineEvent.Factory.Any[]> = (
+export type SubscribeFn<
+  RegisteredEventsFactoriesTuple extends Readonly<MachineEvent.Factory.Any[]>,
+> = (
   callback: (
     data: EventsOrTimetravel<MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>>,
   ) => Promise<void>,
   onCompleteOrErr?: OnCompleteOrErr,
 ) => CancelSubscription
 
-export type PersistFn<RegisteredEventsFactoriesTuple extends MachineEvent.Factory.Any[]> = (
-  events: MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>[],
-) => Promise<Metadata[]>
+export type PersistFn<RegisteredEventsFactoriesTuple extends Readonly<MachineEvent.Factory.Any[]>> =
+  (
+    events: MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>[],
+  ) => Promise<Metadata[]>
 
 /**
  * @param sdk - An instance of Actyx.
@@ -161,7 +164,7 @@ export type PersistFn<RegisteredEventsFactoriesTuple extends MachineEvent.Factor
 export const createMachineRunner = <
   SwarmProtocolName extends string,
   MachineName extends string,
-  RegisteredEventsFactoriesTuple extends MachineEvent.Factory.Any[],
+  RegisteredEventsFactoriesTuple extends Readonly<MachineEvent.Factory.Any[]>,
   Payload,
 >(
   sdk: Actyx,
@@ -197,7 +200,7 @@ export const createMachineRunner = <
 export const createMachineRunnerInternal = <
   SwarmProtocolName extends string,
   MachineName extends string,
-  RegisteredEventsFactoriesTuple extends MachineEvent.Factory.Any[],
+  RegisteredEventsFactoriesTuple extends Readonly<MachineEvent.Factory.Any[]>,
   Payload,
 >(
   subscribe: SubscribeFn<RegisteredEventsFactoriesTuple>,
@@ -389,7 +392,7 @@ namespace MachineRunnerIterableIterator {
   export const make = <
     SwarmProtocolName extends string,
     MachineName extends string,
-    RegisteredEventsFactoriesTuple extends MachineEvent.Factory.Any[],
+    RegisteredEventsFactoriesTuple extends Readonly<MachineEvent.Factory.Any[]>,
   >({
     events,
     inheritedDestruction: inheritedDestruction,
@@ -529,7 +532,7 @@ namespace NextValueAwaiter {
   const intoIteratorResult = <
     SwarmProtocolName extends string,
     MachineName extends string,
-    RegisteredEventsFactoriesTuple extends MachineEvent.Factory.Any[],
+    RegisteredEventsFactoriesTuple extends Readonly<MachineEvent.Factory.Any[]>,
   >(
     value: StateOpaque<SwarmProtocolName, MachineName>,
   ): IteratorResult<StateOpaque<SwarmProtocolName, MachineName>, null> => ({
@@ -665,7 +668,7 @@ export interface StateOpaque<
    */
   as<
     DeduceMachineName extends MachineName,
-    DeduceFactories extends MachineEvent.Factory.Any[],
+    DeduceFactories extends Readonly<MachineEvent.Factory.Any[]>,
     StateName extends string,
     StatePayload extends any,
     Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
@@ -724,15 +727,14 @@ export namespace StateOpaque {
    * // The type below refers to any StateOpaque coming from HangarBay protocol
    * type ThisStateOpaque3 = StateOpaque.Of<typeof HangarBay>;
    */
-  export type Of<
-    M extends MachineRunner.Any | Machine.Any | SwarmProtocol<string, [any, ...any[]]>,
-  > = M extends MachineRunner<infer S, infer N>
-    ? StateOpaque<S, N>
-    : M extends Machine<infer S, infer N, any>
-    ? StateOpaque<S, N>
-    : M extends SwarmProtocol<infer S, any>
-    ? StateOpaque<S, any>
-    : never
+  export type Of<M extends MachineRunner.Any | Machine.Any | SwarmProtocol<string, any>> =
+    M extends MachineRunner<infer S, infer N>
+      ? StateOpaque<S, N>
+      : M extends Machine<infer S, infer N, any>
+      ? StateOpaque<S, N>
+      : M extends SwarmProtocol<infer S, any>
+      ? StateOpaque<S, any>
+      : never
 }
 
 export namespace ImplStateOpaque {
@@ -890,7 +892,7 @@ namespace ImplState {
   export const makeForSnapshot = <
     SwarmProtocolName extends string,
     MachineName extends string,
-    RegisteredEventsFactoriesTuple extends MachineEvent.Factory.Any[],
+    RegisteredEventsFactoriesTuple extends Readonly<MachineEvent.Factory.Any[]>,
     StateName extends string,
     StatePayload extends any,
     Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,

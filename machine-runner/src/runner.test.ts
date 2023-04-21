@@ -66,7 +66,7 @@ Initial.react([One, Two], Second, (c, one, two) => {
 class Runner<
   SwarmProtocolName extends string,
   MachineName extends string,
-  RegisteredEventsFactoriesTuple extends MachineEvent.Factory.Any[],
+  RegisteredEventsFactoriesTuple extends Readonly<MachineEvent.Factory.Any[]>,
   Payload,
 > {
   private persisted: MachineEvent.Any[] = []

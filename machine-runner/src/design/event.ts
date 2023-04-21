@@ -86,7 +86,7 @@ export namespace MachineEvent {
     ? MachineEvent<Key, Payload>
     : never
 
-  export type NonZeroTuple = utils.NonZeroTuple<Any>
+  export type NonZeroTuple = utils.ReadonlyNonZeroTuple<Any>
 
   /**
    * MachineEvent.Factory is a type definition for a constructor type that serves
@@ -130,17 +130,17 @@ export namespace MachineEvent {
   export namespace Factory {
     export type Any = Factory<string, any>
 
-    export type NonZeroTuple = utils.NonZeroTuple<Factory.Any>
+    export type ReadonlyNonZeroTuple = utils.ReadonlyNonZeroTuple<Factory.Any>
 
     export type Of<T extends MachineEvent.Any> = T extends MachineEvent<any, infer Payload>
       ? Payload
       : never
 
     // =====
-    type LooseMapToActyxEvent<T, ACC extends ActyxEvent<MachineEvent.Any>[] = []> = T extends [
-      Factory<infer Key, infer Payload>,
-      ...infer Rest,
-    ]
+    type LooseMapToActyxEvent<
+      T,
+      ACC extends ActyxEvent<MachineEvent.Any>[] = [],
+    > = T extends Readonly<[Factory<infer Key, infer Payload>, ...infer Rest]>
       ? LooseMapToActyxEvent<Rest, [...ACC, ActyxEvent<MachineEvent<Key, Payload>>]>
       : ACC
 
@@ -151,13 +151,13 @@ export namespace MachineEvent {
      * // where A and B are MachineEvent.Factory
      * // results in [ActyxEvent<MachineEvent.Of<A>>, ActyxEvent<MachineEvent.Of<B>>]
      */
-    export type MapToActyxEvent<T extends MachineEvent.Factory.Any[]> = LooseMapToActyxEvent<T>
+    export type MapToActyxEvent<T extends Readonly<MachineEvent.Factory.Any[]>> =
+      LooseMapToActyxEvent<T>
 
     // =====
-    type LooseMapToMachineEvent<T, ACC extends MachineEvent.Any[] = []> = T extends [
-      Factory<infer Key, infer Payload>,
-      ...infer Rest,
-    ]
+    type LooseMapToMachineEvent<T, ACC extends MachineEvent.Any[] = []> = T extends Readonly<
+      [Factory<infer Key, infer Payload>, ...infer Rest]
+    >
       ? LooseMapToMachineEvent<Rest, [...ACC, MachineEvent<Key, Payload>]>
       : ACC
 
@@ -168,13 +168,13 @@ export namespace MachineEvent {
      * // where A and B are MachineEvent.Factory
      * // results in [MachineEvent.Of<A>, MachineEvent.Of<B>]
      */
-    export type MapToMachineEvent<T extends MachineEvent.Factory.Any[]> = LooseMapToMachineEvent<T>
+    export type MapToMachineEvent<T extends Readonly<MachineEvent.Factory.Any[]>> =
+      LooseMapToMachineEvent<T>
 
     // =====
-    type LooseMapToPayload<T, ACC extends object[] = []> = T extends [
-      Factory<infer Key, infer Payload>,
-      ...infer Rest,
-    ]
+    type LooseMapToPayload<T, ACC extends object[] = []> = T extends Readonly<
+      [Factory<infer Key, infer Payload>, ...infer Rest]
+    >
       ? LooseMapToPayload<Rest, [...ACC, Payload]>
       : ACC
 
@@ -185,13 +185,12 @@ export namespace MachineEvent {
      * // where A and B are MachineEvent.Factory
      * // results in [MachineEvent.Payload.Of<A>, MachineEvent.Payload.Of<B>]
      */
-    export type MapToPayload<T extends Factory.Any[]> = LooseMapToPayload<T>
+    export type MapToPayload<T extends Readonly<Factory.Any[]>> = LooseMapToPayload<T>
 
     // =====
-    type LooseReduce<T, UNION extends MachineEvent.Factory.Any = never> = T extends [
-      Factory<infer Key, infer Payload>,
-      ...infer Rest,
-    ]
+    type LooseReduce<T, UNION extends MachineEvent.Factory.Any = never> = T extends Readonly<
+      [Factory<infer Key, infer Payload>, ...infer Rest]
+    >
       ? LooseReduce<Rest, UNION | Factory<Key, Payload>>
       : UNION
 
@@ -202,13 +201,12 @@ export namespace MachineEvent {
      * // where A and B are MachineEvent.Factory
      * // results in A | B
      */
-    export type Reduce<T extends Factory.Any[]> = LooseReduce<T>
+    export type Reduce<T extends Readonly<Factory.Any[]>> = LooseReduce<T>
 
     // =====
-    type LooseReduceToEvent<T, UNION extends MachineEvent.Any = never> = T extends [
-      Factory<infer Key, infer Payload>,
-      ...infer Rest,
-    ]
+    type LooseReduceToEvent<T, UNION extends MachineEvent.Any = never> = T extends Readonly<
+      [Factory<infer Key, infer Payload>, ...infer Rest]
+    >
       ? LooseReduceToEvent<Rest, UNION | MachineEvent<Key, Payload>>
       : UNION
 
@@ -220,6 +218,6 @@ export namespace MachineEvent {
      * // where A and B are MachineEvent.Factory
      * // results in MachineEvent.Of<A> | MachineEvent.Of<B>
      */
-    export type ReduceToEvent<T extends Factory.Any[]> = LooseReduceToEvent<T>
+    export type ReduceToEvent<T extends Readonly<Factory.Any[]>> = LooseReduceToEvent<T>
   }
 }
