@@ -1,3 +1,4 @@
+import { DeepReadonly } from '@actyx/machine-runner/lib/utils/type-utils.js'
 import { protocol, ProtocolEvents, BidData } from './protocol.js'
 const { Bid, BidderID, Cancelled, PassengerID, Requested, Selected } = ProtocolEvents
 
@@ -5,7 +6,8 @@ const machine = protocol.makeMachine('passenger')
 export const Initial = machine
   .designEmpty('Initial')
   .command('request', [Requested], (_, params: { pickup: string; destination: string }) => [
-    Requested.make(params),
+    // demonstrate that event payloads are allowed to be readonly
+    Requested.make(params as DeepReadonly<{ pickup: string; destination: string }>),
   ])
   .finish()
 
@@ -23,7 +25,8 @@ export const Auction = machine
     })
 
     if (matchingBid) {
-      return [{ taxiID: matchingBid.bidderID }, { id: 'me' }]
+      // demonstrate that event payloads are allowed to be readonly
+      return [{ taxiID: matchingBid.bidderID }, { id: 'me' } as { readonly id: string }]
     }
     throw new Error('unknown bidderId')
   })
