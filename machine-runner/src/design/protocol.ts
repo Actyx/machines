@@ -7,7 +7,7 @@ import {
   ReactionMap,
   StateFactory,
 } from './state.js'
-import { NonZeroTuple } from '../utils/type-utils.js'
+import { ReadonlyNonZeroTuple } from '../utils/type-utils.js'
 
 /**
  * SwarmProtocol is the entry point of designing a swarm of MachineRunners. A
@@ -21,7 +21,7 @@ import { NonZeroTuple } from '../utils/type-utils.js'
  */
 export type SwarmProtocol<
   SwarmProtocolName extends string,
-  RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
+  RegisteredEventsFactoriesTuple extends MachineEvent.Factory.ReadonlyNonZeroTuple,
 > = {
   makeMachine: <MachineName extends string>(
     machineName: MachineName,
@@ -61,7 +61,7 @@ export namespace SwarmProtocol {
    */
   export const make = <
     SwarmProtocolName extends string,
-    RegisteredEventsFactoriesTuple extends MachineEvent.Factory.NonZeroTuple,
+    RegisteredEventsFactoriesTuple extends MachineEvent.Factory.ReadonlyNonZeroTuple,
   >(
     swarmName: SwarmProtocolName,
     registeredEventFactories: RegisteredEventsFactoriesTuple,
@@ -86,7 +86,7 @@ export namespace SwarmProtocol {
 export type Machine<
   SwarmProtocolName extends string,
   MachineName extends string,
-  RegisteredEventsFactoriesTuple extends MachineEvent.Factory.Any[],
+  RegisteredEventsFactoriesTuple extends Readonly<MachineEvent.Factory.Any[]>,
 > = {
   /**
    * Starts the design process for a state with a payload. Payload data will be
@@ -141,7 +141,7 @@ export type Machine<
 type DesignStateIntermediate<
   SwarmProtocolName extends string,
   MachineName extends string,
-  RegisteredEventsFactoriesTuple extends MachineEvent.Factory.Any[],
+  RegisteredEventsFactoriesTuple extends Readonly<MachineEvent.Factory.Any[]>,
   StateName extends string,
 > = {
   /**
@@ -202,7 +202,7 @@ namespace ImplMachine {
   export const make = <
     SwarmProtocolName extends string,
     MachineName extends string,
-    RegisteredEventsFactoriesTuple extends MachineEvent.Factory.Any[],
+    RegisteredEventsFactoriesTuple extends Readonly<MachineEvent.Factory.Any[]>,
   >(
     swarmName: SwarmProtocolName,
     machineName: MachineName,
@@ -284,7 +284,7 @@ export namespace MachineAnalysisResource {
   export const fromMachineInternals = <
     SwarmProtocolName extends string,
     MachineName extends string,
-    RegisteredEventsFactoriesTuple extends MachineEvent.Factory.Any[],
+    RegisteredEventsFactoriesTuple extends Readonly<MachineEvent.Factory.Any[]>,
   >(
     protocolInternals: MachineProtocol<
       SwarmProtocolName,

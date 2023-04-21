@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-namespace */
+
 import { MachineEvent } from '@actyx/machine-runner'
 import { SwarmProtocol } from '@actyx/machine-runner/lib/design/protocol.js'
 
@@ -16,51 +18,55 @@ export type BidData = {
 
 // Events
 
-export const Requested = MachineEvent.design('Requested').withPayload<{
-  pickup: string
-  destination: string
-}>()
+export namespace ProtocolEvents {
+  export const Requested = MachineEvent.design('Requested').withPayload<{
+    pickup: string
+    destination: string
+  }>()
 
-export const Bid = MachineEvent.design('Bid').withPayload<{
-  price: number
-  time: string
-}>()
+  export const Bid = MachineEvent.design('Bid').withPayload<{
+    price: number
+    time: string
+  }>()
 
-export const BidderID = MachineEvent.design('BidderID').withPayload<{
-  id: string
-}>()
+  export const BidderID = MachineEvent.design('BidderID').withPayload<{
+    id: string
+  }>()
 
-export const Selected = MachineEvent.design('Selected').withPayload<{
-  taxiID: string
-}>()
+  export const Selected = MachineEvent.design('Selected').withPayload<{
+    taxiID: string
+  }>()
 
-export const PassengerID = MachineEvent.design('PassengerID').withPayload<{ id: string }>()
+  export const PassengerID = MachineEvent.design('PassengerID').withPayload<{ id: string }>()
 
-export const Arrived = MachineEvent.design('Arrived').withPayload<{ taxiID: string }>()
+  export const Arrived = MachineEvent.design('Arrived').withPayload<{ taxiID: string }>()
 
-export const Started = MachineEvent.design('Started').withoutPayload()
+  export const Started = MachineEvent.design('Started').withoutPayload()
 
-export const Path = MachineEvent.design('Path').withPayload<{
-  lat: number
-  lon: number
-}>()
+  export const Path = MachineEvent.design('Path').withPayload<{
+    lat: number
+    lon: number
+  }>()
 
-export const Finished = MachineEvent.design('Finished').withoutPayload()
+  export const Finished = MachineEvent.design('Finished').withoutPayload()
 
-export const Cancelled = MachineEvent.design('Cancelled').withPayload<{ reason: string }>()
+  export const Cancelled = MachineEvent.design('Cancelled').withPayload<{ reason: string }>()
 
-export const Receipt = MachineEvent.design('Receipt').withPayload<{ amount: number }>()
+  export const Receipt = MachineEvent.design('Receipt').withPayload<{ amount: number }>()
 
-export const protocol = SwarmProtocol.make('taxiRide', [
-  Requested,
-  Bid,
-  BidderID,
-  Selected,
-  PassengerID,
-  Arrived,
-  Started,
-  Path,
-  Finished,
-  Cancelled,
-  Receipt,
-])
+  export const All = [
+    Requested,
+    Bid,
+    BidderID,
+    Selected,
+    PassengerID,
+    Arrived,
+    Started,
+    Path,
+    Finished,
+    Cancelled,
+    Receipt,
+  ] as const
+}
+
+export const protocol = SwarmProtocol.make('taxiRide', ProtocolEvents.All)

@@ -3,7 +3,7 @@ import {
   createMockState,
   createMockStateOpaque,
 } from '@actyx/machine-runner/lib/test-utils'
-import { Bid, BidData, BidderID, Cancelled, Passenger, Requested } from './machines/index.js'
+import { BidData, Passenger, ProtocolEvents } from './machines/index.js'
 import { toPrettyJSONString } from './UIMachineCommon.js'
 import { isTaxiRideCancelEnabled } from './UIMachinePassenger.js'
 
@@ -18,15 +18,15 @@ describe('State transformation tests', () => {
     const machineRunner = createMockMachineRunner(Passenger.Initial, void 0)
 
     machineRunner.test.feed([
-      Requested.make({
+      ProtocolEvents.Requested.make({
         destination: requestDestination,
         pickup: requestPickup,
       }),
-      Bid.make({
+      ProtocolEvents.Bid.make({
         price: bidPrice,
         time: bidTime.toISOString(),
       }),
-      BidderID.make({
+      ProtocolEvents.BidderID.make({
         id: bidderId,
       }),
     ])
@@ -83,6 +83,6 @@ describe('State mocking', () => {
     const capturedEvents = [] as unknown[]
     const state = createMockState(Passenger.Ride, { taxiID: 'someTaxiID' }, { capturedEvents })
     state.commands?.cancel()
-    expect(capturedEvents).toEqual([Cancelled.make({ reason: "don't wanna" })])
+    expect(capturedEvents).toEqual([ProtocolEvents.Cancelled.make({ reason: "don't wanna" })])
   })
 })

@@ -1,13 +1,5 @@
-import {
-  Bid,
-  BidData,
-  BidderID,
-  Cancelled,
-  PassengerID,
-  Requested,
-  Selected,
-  protocol,
-} from './protocol.js'
+import { protocol, ProtocolEvents, BidData } from './protocol.js'
+const { Bid, BidderID, Cancelled, PassengerID, Requested, Selected } = ProtocolEvents
 
 const machine = protocol.makeMachine('passenger')
 export const Initial = machine

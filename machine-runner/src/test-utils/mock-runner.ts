@@ -12,7 +12,7 @@ import { RetvalOrElse } from '../utils/type-utils.js'
 export type MockMachineRunner<
   SwarmProtocolName extends string,
   MachineName extends string,
-  RegisteredEventsFactoriesTuple extends MachineEvent.Factory.Any[],
+  RegisteredEventsFactoriesTuple extends Readonly<MachineEvent.Factory.Any[]>,
 > = MachineRunner<SwarmProtocolName, MachineName> & {
   /**
    * Contains test utilities for MockMachineRunner
@@ -27,7 +27,7 @@ export type MockMachineRunner<
 type MockMachineRunnerTestUtils<
   SwarmProtocolName extends string,
   MachineName extends string,
-  RegisteredEventsFactoriesTuple extends MachineEvent.Factory.Any[],
+  RegisteredEventsFactoriesTuple extends Readonly<MachineEvent.Factory.Any[]>,
 > = {
   /**
    * Feed events into the MachineRunner.
@@ -107,7 +107,7 @@ export type MockMachineRunnerDelayUtils = {
 export const createMockMachineRunner = <
   SwarmProtocolName extends string,
   MachineName extends string,
-  RegisteredEventsFactoriesTuple extends MachineEvent.Factory.Any[],
+  RegisteredEventsFactoriesTuple extends Readonly<MachineEvent.Factory.Any[]>,
   Payload,
 >(
   factory: StateFactory<
@@ -259,10 +259,13 @@ export namespace PromiseDelay {
 }
 
 export namespace Subscription {
-  export type CallbackFnOf<RegisteredEventsFactoriesTuple extends MachineEvent.Factory.Any[]> =
-    Parameters<SubscribeFn<RegisteredEventsFactoriesTuple>>[0]
+  export type CallbackFnOf<
+    RegisteredEventsFactoriesTuple extends Readonly<MachineEvent.Factory.Any[]>,
+  > = Parameters<SubscribeFn<RegisteredEventsFactoriesTuple>>[0]
 
-  export const make = <RegisteredEventsFactoriesTuple extends MachineEvent.Factory.Any[]>() => {
+  export const make = <
+    RegisteredEventsFactoriesTuple extends Readonly<MachineEvent.Factory.Any[]>,
+  >() => {
     type Subscribe = SubscribeFn<RegisteredEventsFactoriesTuple>
     type Callback = Parameters<Subscribe>[0]
     type ErrorCallback = Parameters<Subscribe>[1]

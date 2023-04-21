@@ -1,4 +1,5 @@
-import { Bid, BidderID, Cancelled, PassengerID, Requested, Selected, protocol } from './protocol.js'
+import { ProtocolEvents, protocol } from './protocol.js'
+const { Bid, BidderID, Cancelled, PassengerID, Requested, Selected } = ProtocolEvents
 
 const machine = protocol.makeMachine('taxi')
 

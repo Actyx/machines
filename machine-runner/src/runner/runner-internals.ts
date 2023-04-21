@@ -14,14 +14,16 @@ import {
 export const CommandFiredAfterLocked: unique symbol = Symbol()
 type CommandFiredAfterLocked = typeof CommandFiredAfterLocked
 
-export type CommandCallback<RegisteredEventsFactoriesTuple extends MachineEvent.Factory.Any[]> = (
+export type CommandCallback<
+  RegisteredEventsFactoriesTuple extends Readonly<MachineEvent.Factory.Any[]>,
+> = (
   _: MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>[],
 ) => Promise<CommandFiredAfterLocked | Metadata[]>
 
 export type RunnerInternals<
   SwarmProtocolName extends string,
   MachineName extends string,
-  RegisteredEventsFactoriesTuple extends MachineEvent.Factory.Any[],
+  RegisteredEventsFactoriesTuple extends Readonly<MachineEvent.Factory.Any[]>,
   StateName extends string,
   StatePayload,
   Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
@@ -57,7 +59,7 @@ export namespace RunnerInternals {
   export const make = <
     SwarmProtocolName extends string,
     MachineName extends string,
-    RegisteredEventsFactoriesTuple extends MachineEvent.Factory.Any[],
+    RegisteredEventsFactoriesTuple extends Readonly<MachineEvent.Factory.Any[]>,
     StateName extends string,
     StatePayload extends any,
     Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
@@ -211,7 +213,7 @@ export namespace RunnerInternals {
 export type StateAndFactory<
   SwarmProtocolName extends string,
   MachineName extends string,
-  RegisteredEventsFactoriesTuple extends MachineEvent.Factory.Any[],
+  RegisteredEventsFactoriesTuple extends Readonly<MachineEvent.Factory.Any[]>,
   StateName extends string,
   StatePayload extends any,
   Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
