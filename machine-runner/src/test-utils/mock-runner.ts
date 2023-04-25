@@ -51,7 +51,7 @@ type MockMachineRunnerTestUtils<
   feed: (
     ev: MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>[],
     props?: { caughtUp: boolean },
-  ) => ReturnType<Subscription.CallbackFnOf<RegisteredEventsFactoriesTuple>>
+  ) => Promise<void>
 
   /**
    * Asserts the state of the machine as being in the state  of a particular
@@ -123,7 +123,7 @@ export const createMockMachineRunner = <
   type Self = MockMachineRunner<SwarmProtocolName, MachineName, RegisteredEventsFactoriesTuple>
 
   const delayer = PromiseDelay.make()
-  const sub = Subscription.make<RegisteredEventsFactoriesTuple>()
+  const sub = Subscription.make()
   const persisted: MachineEvent.Any[] = []
 
   const feed: Self['test']['feed'] = (ev, props) => {
@@ -164,7 +164,7 @@ export const createMockMachineRunner = <
       persisted.push(...events)
       const pair = delayer.make()
       const retval = pair[0].then(() => {
-        feed(events, { caughtUp: true })
+        feed(events as any, { caughtUp: true })
         return events.map((_) => mockMeta())
       })
       return retval
@@ -259,14 +259,8 @@ export namespace PromiseDelay {
 }
 
 export namespace Subscription {
-  export type CallbackFnOf<
-    RegisteredEventsFactoriesTuple extends Readonly<MachineEvent.Factory.Any[]>,
-  > = Parameters<SubscribeFn<RegisteredEventsFactoriesTuple>>[0]
-
-  export const make = <
-    RegisteredEventsFactoriesTuple extends Readonly<MachineEvent.Factory.Any[]>,
-  >() => {
-    type Subscribe = SubscribeFn<RegisteredEventsFactoriesTuple>
+  export const make = <AllowedEvents extends MachineEvent.Any>() => {
+    type Subscribe = SubscribeFn<AllowedEvents>
     type Callback = Parameters<Subscribe>[0]
     type ErrorCallback = Parameters<Subscribe>[1]
 

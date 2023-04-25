@@ -9,7 +9,7 @@ import {
 import { MachineEvent } from '../lib/design/event.js'
 import { StateFactory, StateMechanism } from '../lib/design/state.js'
 import { deepCopy } from '../lib/utils/object-utils.js'
-import { NOP } from '../lib/utils/index.js'
+import { NOP } from '../src/utils/fn-utils.js'
 import { Equal, Expect, NotAnyOrUnknown, NotEqual } from '../lib/utils/type-utils.js'
 import { MachineAnalysisResource, SwarmProtocol } from '../lib/design/protocol.js'
 import { PromiseDelay, Subscription, mockMeta } from '../lib/test-utils/mock-runner.js'
@@ -82,7 +82,7 @@ class Runner<
     unhandled: MachineEvent.Any[]
   }[] = []
   private delayer = PromiseDelay.make()
-  private sub = Subscription.make<RegisteredEventsFactoriesTuple>()
+  private sub = Subscription.make()
   public machine
 
   constructor(
@@ -102,7 +102,10 @@ class Runner<
         this.persisted.push(...events)
         const pair = this.delayer.make()
         const retval = pair[0].then(() => {
-          this.feed(events, true)
+          // NOTE:
+          // any is asserted as part of workaround to https://github.com/Actyx/machines/issues/37
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          this.feed(events as any, true)
           return events.map((_) => mockMeta())
         })
         return retval
@@ -901,6 +904,22 @@ describe('protocol.createJSONForAnalysis', () => {
  * Bad type definitions are expected to fail the compilation
  */
 describe('typings', () => {
+  const E1 = MachineEvent.design('E1').withoutPayload()
+  const E2 = MachineEvent.design('E2').withoutPayload()
+  const protocol = SwarmProtocol.make('example', [E1, E2])
+
+  it("tags parameter from protocol should match createMachineRunner's ", () => {
+    // Accepted parameter type
+    type TagsParamType = Parameters<typeof createMachineRunner<any, any, any>>[1]
+
+    // Argument type
+    type TagsArgType = ReturnType<typeof protocol['tagWithEntityId']>
+
+    NOP<[TagsParamType]>(undefined as any as TagsArgType)
+    NOP<[NotAnyOrUnknown<TagsParamType>]>(undefined as any)
+    NOP<[NotAnyOrUnknown<TagsArgType>]>(undefined as any)
+  })
+
   it("state.as should not return 'any'", () => {
     const r = new Runner(Initial, { transitioned: false })
     const snapshot = r.machine.get()
