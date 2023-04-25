@@ -1,0 +1,20 @@
+name: Clean Build
+run-name: ${{ github.actor }} runs clean build
+on: [push]
+jobs:
+  Run-Clean-Builds:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [19.x]
+    steps:
+      - uses: actions/checkout@v3
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ matrix.node-version }}
+      - uses: jetli/wasm-pack-action@v0.4.0
+        with:
+          version: "latest"
+      - run: npm i -g cross-env
+      - run: npm run clean-build

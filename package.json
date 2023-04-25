@@ -4,10 +4,10 @@
   "description": "This set of libraries provides a way of writing **fully decentralised** applications using **replicated state machines**, but without any form of blocking coordination.\r Furthermore, the machines you deploy work together in the scope of a swarm protocol while the machine instances may play **different roles**.\r These roles may differ in their business logic as well as in the events they are allowed to consume; in other words the work can be distributed across different machines and split into separate responsibilities.",
   "main": "index.js",
   "scripts": {
-    "machine-runner:clean-build": "cd machine-runner && npm install && npm run clean && npm run build && npm run test && npm run lint",
-    "machine-check:clean-build": "cd machine-check && npm install && npm run clean && npm run build",
-    "machine-visual:clean-build": "cd machine-visual && npm install && npm run clean && npm run build",
-    "dev-example:clean-build": "cd dev-example && npm install && npm run clean && npm run build && npm run test",
+    "machine-runner:clean-build": "cd machine-runner && npm ci && npm run clean && npm run build && npm run test && npm run lint",
+    "machine-check:clean-build": "cd machine-check && npm ci && npm run clean && npm run build",
+    "machine-visual:clean-build": "cd machine-visual && npm ci && npm run clean && npm run build",
+    "dev-example:clean-build": "cd dev-example && npm ci && npm run clean && npm run build && npm run test",
     "clean-build": "npm run machine-runner:clean-build && npm run machine-check:clean-build && npm run machine-visual:clean-build && npm run dev-example:clean-build"
   },
   "repository": {
