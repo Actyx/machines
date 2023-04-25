@@ -13,9 +13,9 @@
     "./lib/**/*"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc --build tsconfig.build.json",
     "clean": "rimraf ./lib",
-    "test": "jest",
+    "test": "cross-env NODE_OPTIONS=--experimental-vm-modules jest",
     "lint": "npx eslint src/**/*.ts",
     "lint:strict": "npm run lint -- --max-warnings 0",
     "prepublishOnly": "npm run clean && npm run build && npm run test && npm run lint"
@@ -41,6 +41,8 @@
     "@actyx/sdk": "^0.5.7",
     "@types/events": "^3.0.0",
     "events": "^3.3.0",
-    "typed-emitter": "^2.1.0"
+    "ts-node": "^10.9.1",
+    "typed-emitter": "^2.1.0",
+    "typescript": "^4.9.5"
   }
 }
