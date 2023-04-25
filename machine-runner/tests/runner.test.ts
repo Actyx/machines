@@ -1,13 +1,18 @@
-import { EventsOrTimetravel, Metadata, MsgType, OnCompleteOrErr } from '@actyx/sdk'
+import { MsgType } from '@actyx/sdk'
 import { describe, expect, it } from '@jest/globals'
-import { createMachineRunnerInternal, State, StateOpaque, SubscribeFn } from './runner/runner.js'
-import { MachineEvent } from './design/event.js'
-import { StateFactory, StateMechanism } from './design/state.js'
-import { deepCopy } from './utils/object-utils.js'
-import { NOP } from './utils/index.js'
-import { Equal, Expect, NotAnyOrUnknown, NotEqual } from './utils/type-utils.js'
-import { MachineAnalysisResource, SwarmProtocol } from './design/protocol.js'
-import { PromiseDelay, Subscription, mockMeta } from './test-utils/mock-runner.js'
+import {
+  createMachineRunner,
+  createMachineRunnerInternal,
+  State,
+  StateOpaque,
+} from '../lib/runner/runner.js'
+import { MachineEvent } from '../lib/design/event.js'
+import { StateFactory, StateMechanism } from '../lib/design/state.js'
+import { deepCopy } from '../lib/utils/object-utils.js'
+import { NOP } from '../lib/utils/index.js'
+import { Equal, Expect, NotAnyOrUnknown, NotEqual } from '../lib/utils/type-utils.js'
+import { MachineAnalysisResource, SwarmProtocol } from '../lib/design/protocol.js'
+import { PromiseDelay, Subscription, mockMeta } from '../lib/test-utils/mock-runner.js'
 
 class Unreachable extends Error {
   constructor() {
