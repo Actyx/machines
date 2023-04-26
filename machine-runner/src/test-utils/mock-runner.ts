@@ -12,13 +12,13 @@ import { RetvalOrElse } from '../utils/type-utils.js'
 export type MockMachineRunner<
   SwarmProtocolName extends string,
   MachineName extends string,
-  RegisteredEventsFactoriesTuple extends Readonly<MachineEvent.Factory.Any[]>,
+  MachineEventFactories extends MachineEvent.Factory.Any,
 > = MachineRunner<SwarmProtocolName, MachineName> & {
   /**
    * Contains test utilities for MockMachineRunner
    * @see MockMachineRunnerTestUtils for more information
    */
-  test: MockMachineRunnerTestUtils<SwarmProtocolName, MachineName, RegisteredEventsFactoriesTuple>
+  test: MockMachineRunnerTestUtils<SwarmProtocolName, MachineName, MachineEventFactories>
 }
 
 /**
@@ -27,7 +27,7 @@ export type MockMachineRunner<
 type MockMachineRunnerTestUtils<
   SwarmProtocolName extends string,
   MachineName extends string,
-  RegisteredEventsFactoriesTuple extends Readonly<MachineEvent.Factory.Any[]>,
+  MachineEventFactories extends MachineEvent.Factory.Any,
 > = {
   /**
    * Feed events into the MachineRunner.
@@ -49,9 +49,9 @@ type MockMachineRunnerTestUtils<
    * ])
    */
   feed: (
-    ev: MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>[],
+    ev: MachineEvent.Of<MachineEventFactories>[],
     props?: { caughtUp: boolean },
-  ) => ReturnType<Subscription.CallbackFnOf<RegisteredEventsFactoriesTuple>>
+  ) => ReturnType<Subscription.CallbackFnOf<MachineEvent.Of<MachineEventFactories>>>
 
   /**
    * Asserts the state of the machine as being in the state  of a particular
@@ -82,11 +82,8 @@ type MockMachineRunnerTestUtils<
     Then extends (state: State<N, P, C>) => any,
   >(
     ...args:
-      | [StateFactory<SwarmProtocolName, MachineName, RegisteredEventsFactoriesTuple, N, P, C>]
-      | [
-          StateFactory<SwarmProtocolName, MachineName, RegisteredEventsFactoriesTuple, N, P, C>,
-          Then,
-        ]
+      | [StateFactory<SwarmProtocolName, MachineName, MachineEventFactories, N, P, C>]
+      | [StateFactory<SwarmProtocolName, MachineName, MachineEventFactories, N, P, C>, Then]
   ) => RetvalOrElse<typeof args[1], State<N, P, C>>
 }
 
@@ -107,23 +104,23 @@ export type MockMachineRunnerDelayUtils = {
 export const createMockMachineRunner = <
   SwarmProtocolName extends string,
   MachineName extends string,
-  RegisteredEventsFactoriesTuple extends Readonly<MachineEvent.Factory.Any[]>,
+  MachineEventFactories extends MachineEvent.Factory.Any,
   Payload,
 >(
   factory: StateFactory<
     SwarmProtocolName,
     MachineName,
-    RegisteredEventsFactoriesTuple,
+    MachineEventFactories,
     string,
     Payload,
     object
   >,
   payload: Payload,
-): MockMachineRunner<SwarmProtocolName, MachineName, RegisteredEventsFactoriesTuple> => {
-  type Self = MockMachineRunner<SwarmProtocolName, MachineName, RegisteredEventsFactoriesTuple>
+): MockMachineRunner<SwarmProtocolName, MachineName, MachineEventFactories> => {
+  type Self = MockMachineRunner<SwarmProtocolName, MachineName, MachineEventFactories>
 
   const delayer = PromiseDelay.make()
-  const sub = Subscription.make<RegisteredEventsFactoriesTuple>()
+  const sub = Subscription.make<MachineEvent.Of<MachineEventFactories>>()
   const persisted: MachineEvent.Any[] = []
 
   const feed: Self['test']['feed'] = (ev, props) => {
@@ -259,14 +256,12 @@ export namespace PromiseDelay {
 }
 
 export namespace Subscription {
-  export type CallbackFnOf<
-    RegisteredEventsFactoriesTuple extends Readonly<MachineEvent.Factory.Any[]>,
-  > = Parameters<SubscribeFn<RegisteredEventsFactoriesTuple>>[0]
+  export type CallbackFnOf<MachineEvents extends MachineEvent.Any> = Parameters<
+    SubscribeFn<MachineEvents>
+  >[0]
 
-  export const make = <
-    RegisteredEventsFactoriesTuple extends Readonly<MachineEvent.Factory.Any[]>,
-  >() => {
-    type Subscribe = SubscribeFn<RegisteredEventsFactoriesTuple>
+  export const make = <MachineEvents extends MachineEvent.Any>() => {
+    type Subscribe = SubscribeFn<MachineEvents>
     type Callback = Parameters<Subscribe>[0]
     type ErrorCallback = Parameters<Subscribe>[1]
 
