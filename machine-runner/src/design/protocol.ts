@@ -1,13 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { Tag, Tags } from '@actyx/sdk'
-import {
-  StateMechanism,
-  MachineEvent,
-  MachineProtocol,
-  ReactionMap,
-  StateFactory,
-} from './state.js'
-import { ReadonlyNonZeroTuple } from '../utils/type-utils.js'
+import { StateMechanism, MachineProtocol, ReactionMap, StateFactory } from './state.js'
+import { MachineEvent } from './event.js'
 
 /**
  * SwarmProtocol is the entry point of designing a swarm of MachineRunners. A
@@ -21,14 +15,13 @@ import { ReadonlyNonZeroTuple } from '../utils/type-utils.js'
  */
 export type SwarmProtocol<
   SwarmProtocolName extends string,
-  RegisteredEventsFactoriesTuple extends MachineEvent.Factory.ReadonlyNonZeroTuple,
+  MachineEventFactories extends MachineEvent.Factory.Any,
+  MachineEvents extends MachineEvent.Any = MachineEvent.Of<MachineEventFactories>,
 > = {
   makeMachine: <MachineName extends string>(
     machineName: MachineName,
-  ) => Machine<SwarmProtocolName, MachineName, RegisteredEventsFactoriesTuple>
-  tagWithEntityId: (
-    id: string,
-  ) => Tags<MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>>
+  ) => Machine<SwarmProtocolName, MachineName, MachineEventFactories>
+  tagWithEntityId: (id: string) => Tags<MachineEvents>
 }
 
 /**
@@ -61,16 +54,17 @@ export namespace SwarmProtocol {
    */
   export const make = <
     SwarmProtocolName extends string,
-    RegisteredEventsFactoriesTuple extends MachineEvent.Factory.ReadonlyNonZeroTuple,
+    InitialEventFactoriesTuple extends MachineEvent.Factory.ReadonlyNonZeroTuple,
   >(
     swarmName: SwarmProtocolName,
-    registeredEventFactories: RegisteredEventsFactoriesTuple,
-  ): SwarmProtocol<SwarmProtocolName, RegisteredEventsFactoriesTuple> => {
-    const tag = Tag<MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>>(swarmName)
+    registeredEventFactories: InitialEventFactoriesTuple,
+  ): SwarmProtocol<SwarmProtocolName, MachineEvent.Factory.Reduce<InitialEventFactoriesTuple>> => {
+    const eventFactories = MachineEvent.Factory.convertTupleToArray(registeredEventFactories)
+    type Factories = typeof eventFactories[0]
+    const tag = Tag<MachineEvent.Of<Factories>>(swarmName)
     return {
       tagWithEntityId: (id) => tag.withId(id),
-      makeMachine: (machineName) =>
-        ImplMachine.make(swarmName, machineName, registeredEventFactories),
+      makeMachine: (machineName) => ImplMachine.make(swarmName, machineName, eventFactories),
     }
   }
 }
@@ -86,7 +80,7 @@ export namespace SwarmProtocol {
 export type Machine<
   SwarmProtocolName extends string,
   MachineName extends string,
-  RegisteredEventsFactoriesTuple extends Readonly<MachineEvent.Factory.Any[]>,
+  MachineEventFactories extends MachineEvent.Factory.Any,
 > = {
   /**
    * Starts the design process for a state with a payload. Payload data will be
@@ -101,12 +95,7 @@ export type Machine<
    */
   designState: <StateName extends string>(
     stateName: StateName,
-  ) => DesignStateIntermediate<
-    SwarmProtocolName,
-    MachineName,
-    RegisteredEventsFactoriesTuple,
-    StateName
-  >
+  ) => DesignStateIntermediate<SwarmProtocolName, MachineName, MachineEventFactories, StateName>
 
   /**
    * Starts a design process for a state without a payload.
@@ -120,28 +109,21 @@ export type Machine<
   ) => StateMechanism<
     SwarmProtocolName,
     MachineName,
-    RegisteredEventsFactoriesTuple,
+    MachineEventFactories,
     StateName,
     void,
     Record<never, never>
   >
 
   createJSONForAnalysis: (
-    initial: StateFactory<
-      SwarmProtocolName,
-      MachineName,
-      RegisteredEventsFactoriesTuple,
-      any,
-      any,
-      any
-    >,
+    initial: StateFactory<SwarmProtocolName, MachineName, MachineEventFactories, any, any, any>,
   ) => MachineAnalysisResource
 }
 
 type DesignStateIntermediate<
   SwarmProtocolName extends string,
   MachineName extends string,
-  RegisteredEventsFactoriesTuple extends Readonly<MachineEvent.Factory.Any[]>,
+  MachineEventFactories extends MachineEvent.Factory.Any,
   StateName extends string,
 > = {
   /**
@@ -150,7 +132,7 @@ type DesignStateIntermediate<
   withPayload: <StatePayload extends any>() => StateMechanism<
     SwarmProtocolName,
     MachineName,
-    RegisteredEventsFactoriesTuple,
+    MachineEventFactories,
     StateName,
     StatePayload,
     Record<never, never>
@@ -161,7 +143,7 @@ type DesignStateIntermediate<
  * A collection of type utilities around Machine.
  */
 export namespace Machine {
-  export type Any = Machine<string, string, any[]>
+  export type Any = Machine<string, string, any>
 
   /**
    * Extract the type of registered MachineEvent of a machine protocol in the
@@ -180,12 +162,8 @@ export namespace Machine {
    * // MachineEvent.Of<typeof E1> | MachineEvent.Of<typeof E2> | MachineEvent.Of<typeof E3>
    * // { "type": "E1" }           | { "type": "E2" }           | { "type": "E3" }
    */
-  export type EventsOf<T extends Machine.Any> = T extends Machine<
-    any,
-    any,
-    infer RegisteredEventsFactoriesTuple
-  >
-    ? MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>
+  export type EventsOf<T extends Machine.Any> = T extends Machine<any, any, infer EventFactories>
+    ? EventFactories
     : never
 }
 
@@ -202,19 +180,19 @@ namespace ImplMachine {
   export const make = <
     SwarmProtocolName extends string,
     MachineName extends string,
-    RegisteredEventsFactoriesTuple extends Readonly<MachineEvent.Factory.Any[]>,
+    MachineEventFactories extends MachineEvent.Factory.Any,
   >(
     swarmName: SwarmProtocolName,
     machineName: MachineName,
-    registeredEventFactories: RegisteredEventsFactoriesTuple,
-  ): Machine<SwarmProtocolName, MachineName, RegisteredEventsFactoriesTuple> => {
-    type Self = Machine<SwarmProtocolName, MachineName, RegisteredEventsFactoriesTuple>
-    type Protocol = MachineProtocol<SwarmProtocolName, MachineName, RegisteredEventsFactoriesTuple>
+    registeredEventFactories: MachineEventFactories[],
+  ): Machine<SwarmProtocolName, MachineName, MachineEventFactories> => {
+    type Self = Machine<SwarmProtocolName, MachineName, MachineEventFactories>
+    type Protocol = MachineProtocol<SwarmProtocolName, MachineName, MachineEventFactories>
 
     const protocol: Protocol = {
       swarmName: swarmName,
       name: machineName,
-      registeredEvents: registeredEventFactories,
+      registeredEvents: [...registeredEventFactories],
       reactionMap: ReactionMap.make(),
       commands: [],
       states: {
@@ -284,21 +262,10 @@ export namespace MachineAnalysisResource {
   export const fromMachineInternals = <
     SwarmProtocolName extends string,
     MachineName extends string,
-    RegisteredEventsFactoriesTuple extends Readonly<MachineEvent.Factory.Any[]>,
+    MachineEventFactories extends MachineEvent.Factory.Any,
   >(
-    protocolInternals: MachineProtocol<
-      SwarmProtocolName,
-      MachineName,
-      RegisteredEventsFactoriesTuple
-    >,
-    initial: StateFactory<
-      SwarmProtocolName,
-      MachineName,
-      RegisteredEventsFactoriesTuple,
-      any,
-      any,
-      any
-    >,
+    protocolInternals: MachineProtocol<SwarmProtocolName, MachineName, MachineEventFactories>,
+    initial: StateFactory<SwarmProtocolName, MachineName, MachineEventFactories, any, any, any>,
   ): MachineAnalysisResource => {
     if (!protocolInternals.states.allFactories.has(initial)) {
       throw new Error('Initial state supplied not found')

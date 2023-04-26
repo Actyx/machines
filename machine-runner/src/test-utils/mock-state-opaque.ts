@@ -11,7 +11,7 @@ type Options = {
 export const createMockStateOpaque = <
   SwarmProtocolName extends string,
   MachineName extends string,
-  RegisteredEventsFactoriesTuple extends Readonly<MachineEvent.Factory.Any[]>,
+  MachineEventFactories extends MachineEvent.Factory.Any,
   StateName extends string,
   StatePayload,
   /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
@@ -20,7 +20,7 @@ export const createMockStateOpaque = <
   factory: StateFactory<
     SwarmProtocolName,
     MachineName,
-    RegisteredEventsFactoriesTuple,
+    MachineEventFactories,
     StateName,
     StatePayload,
     Commands
@@ -46,7 +46,7 @@ export const createMockStateOpaque = <
 export const createMockState = <
   SwarmProtocolName extends string,
   MachineName extends string,
-  RegisteredEventsFactoriesTuple extends Readonly<MachineEvent.Factory.Any[]>,
+  MachineEventFactories extends MachineEvent.Factory.Any,
   StateName extends string,
   StatePayload,
   /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
@@ -55,7 +55,7 @@ export const createMockState = <
   factory: StateFactory<
     SwarmProtocolName,
     MachineName,
-    RegisteredEventsFactoriesTuple,
+    MachineEventFactories,
     StateName,
     StatePayload,
     Commands
