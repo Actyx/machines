@@ -93,6 +93,14 @@ export namespace MachineRunner {
    */
   export type Any = MachineRunner<string, string>
 
+  export type EventsOf<T extends MachineRunner.Any> = T extends Machine<
+    any,
+    any,
+    infer MachineEventFactories
+  >
+    ? MachineEvent.Of<MachineEventFactories>
+    : never
+
   /**
    * Extract MachineRunner event emitter map type from a MachineRunner
    * @example
@@ -380,11 +388,7 @@ export type MachineRunnerIterableIterator<
   }
 
 namespace MachineRunnerIterableIterator {
-  export const make = <
-    SwarmProtocolName extends string,
-    MachineName extends string,
-    MachineEventFactories extends Readonly<MachineEvent.Factory.Any[]>,
-  >({
+  export const make = <SwarmProtocolName extends string, MachineName extends string>({
     events,
     inheritedDestruction: inheritedDestruction,
   }: {
@@ -520,11 +524,7 @@ namespace NextValueAwaiter {
     return pair
   }
 
-  const intoIteratorResult = <
-    SwarmProtocolName extends string,
-    MachineName extends string,
-    MachineEvents extends MachineEvent.Factory.Any,
-  >(
+  const intoIteratorResult = <SwarmProtocolName extends string, MachineName extends string>(
     value: StateOpaque<SwarmProtocolName, MachineName>,
   ): IteratorResult<StateOpaque<SwarmProtocolName, MachineName>, null> => ({
     done: false,
@@ -718,7 +718,7 @@ export namespace StateOpaque {
    * // The type below refers to any StateOpaque coming from HangarBay protocol
    * type ThisStateOpaque3 = StateOpaque.Of<typeof HangarBay>;
    */
-  export type Of<M extends MachineRunner.Any | Machine.Any | SwarmProtocol<string, any>> =
+  export type Of<M extends MachineRunner.Any | Machine.Any | SwarmProtocol<any, any>> =
     M extends MachineRunner<infer S, infer N>
       ? StateOpaque<S, N>
       : M extends Machine<infer S, infer N, any>
