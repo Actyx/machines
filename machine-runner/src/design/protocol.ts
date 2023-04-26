@@ -143,7 +143,7 @@ type DesignStateIntermediate<
  * A collection of type utilities around Machine.
  */
 export namespace Machine {
-  export type Any = Machine<string, string, any>
+  export type Any = Machine<any, any, any>
 
   /**
    * Extract the type of registered MachineEvent of a machine protocol in the
