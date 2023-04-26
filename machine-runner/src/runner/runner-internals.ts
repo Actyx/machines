@@ -14,16 +14,14 @@ import {
 export const CommandFiredAfterLocked: unique symbol = Symbol()
 type CommandFiredAfterLocked = typeof CommandFiredAfterLocked
 
-export type CommandCallback<
-  RegisteredEventsFactoriesTuple extends Readonly<MachineEvent.Factory.Any[]>,
-> = (
-  _: MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>[],
+export type CommandCallback<MachineEventFactories extends MachineEvent.Factory.Any> = (
+  _: MachineEvent.Of<MachineEventFactories>[],
 ) => Promise<CommandFiredAfterLocked | Metadata[]>
 
 export type RunnerInternals<
   SwarmProtocolName extends string,
   MachineName extends string,
-  RegisteredEventsFactoriesTuple extends Readonly<MachineEvent.Factory.Any[]>,
+  MachineEventFactories extends MachineEvent.Factory.Any,
   StateName extends string,
   StatePayload,
   Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
@@ -33,17 +31,17 @@ export type RunnerInternals<
   readonly initial: StateAndFactory<
     SwarmProtocolName,
     MachineName,
-    RegisteredEventsFactoriesTuple,
+    MachineEventFactories,
     any,
     any,
     any
   >
-  commandEmitFn: CommandCallback<RegisteredEventsFactoriesTuple>
+  commandEmitFn: CommandCallback<MachineEventFactories>
   queue: ActyxEvent<MachineEvent.Any>[]
   current: StateAndFactory<
     SwarmProtocolName,
     MachineName,
-    RegisteredEventsFactoriesTuple,
+    MachineEventFactories,
     StateName,
     StatePayload,
     Commands
@@ -59,7 +57,7 @@ export namespace RunnerInternals {
   export const make = <
     SwarmProtocolName extends string,
     MachineName extends string,
-    RegisteredEventsFactoriesTuple extends Readonly<MachineEvent.Factory.Any[]>,
+    MachineEventFactories extends MachineEvent.Factory.Any,
     StateName extends string,
     StatePayload extends any,
     Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
@@ -67,18 +65,18 @@ export namespace RunnerInternals {
     factory: StateFactory<
       SwarmProtocolName,
       MachineName,
-      RegisteredEventsFactoriesTuple,
+      MachineEventFactories,
       StateName,
       StatePayload,
       Commands
     >,
     payload: StatePayload,
-    commandCallback: CommandCallback<RegisteredEventsFactoriesTuple>,
+    commandCallback: CommandCallback<MachineEventFactories>,
   ) => {
     const initial: StateAndFactory<
       SwarmProtocolName,
       MachineName,
-      RegisteredEventsFactoriesTuple,
+      MachineEventFactories,
       StateName,
       StatePayload,
       Commands
@@ -92,7 +90,7 @@ export namespace RunnerInternals {
     const internals: RunnerInternals<
       SwarmProtocolName,
       MachineName,
-      RegisteredEventsFactoriesTuple,
+      MachineEventFactories,
       StateName,
       StatePayload,
       Commands
@@ -213,7 +211,7 @@ export namespace RunnerInternals {
 export type StateAndFactory<
   SwarmProtocolName extends string,
   MachineName extends string,
-  RegisteredEventsFactoriesTuple extends Readonly<MachineEvent.Factory.Any[]>,
+  MachineEventFactories extends MachineEvent.Factory.Any,
   StateName extends string,
   StatePayload extends any,
   Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
@@ -221,7 +219,7 @@ export type StateAndFactory<
   factory: StateFactory<
     SwarmProtocolName,
     MachineName,
-    RegisteredEventsFactoriesTuple,
+    MachineEventFactories,
     StateName,
     StatePayload,
     Commands

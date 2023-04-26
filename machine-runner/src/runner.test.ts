@@ -1,4 +1,4 @@
-import { EventsOrTimetravel, Metadata, MsgType, OnCompleteOrErr } from '@actyx/sdk'
+import { MsgType } from '@actyx/sdk'
 import { describe, expect, it } from '@jest/globals'
 import { createMachineRunnerInternal, State, StateOpaque, SubscribeFn } from './runner/runner.js'
 import { MachineEvent } from './design/event.js'
@@ -66,8 +66,9 @@ Initial.react([One, Two], Second, (c, one, two) => {
 class Runner<
   SwarmProtocolName extends string,
   MachineName extends string,
-  RegisteredEventsFactoriesTuple extends Readonly<MachineEvent.Factory.Any[]>,
+  MachineEventFactories extends MachineEvent.Factory.Any,
   Payload,
+  MachineEvent extends MachineEvent.Any = MachineEvent.Of<MachineEventFactories>,
 > {
   private persisted: MachineEvent.Any[] = []
   private unhandled: MachineEvent.Any[] = []
@@ -77,19 +78,12 @@ class Runner<
     unhandled: MachineEvent.Any[]
   }[] = []
   private delayer = PromiseDelay.make()
-  private sub = Subscription.make<RegisteredEventsFactoriesTuple>()
+  private sub = Subscription.make<MachineEvent>()
   public machine
 
   /* eslint-disable @typescript-eslint/no-explicit-any */
   constructor(
-    factory: StateFactory<
-      SwarmProtocolName,
-      MachineName,
-      RegisteredEventsFactoriesTuple,
-      any,
-      Payload,
-      any
-    >,
+    factory: StateFactory<SwarmProtocolName, MachineName, MachineEventFactories, any, Payload, any>,
     payload: Payload,
   ) {
     /* eslint-enable @typescript-eslint/no-explicit-any */
@@ -137,10 +131,7 @@ class Runner<
     await this.delayer.toggle(delayControl)
   }
 
-  feed(
-    ev: MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>[],
-    caughtUp: boolean,
-  ) {
+  feed(ev: MachineEvent[], caughtUp: boolean) {
     if (this.sub.cb === null) throw new Error('not subscribed')
     return this.sub.cb({
       type: MsgType.events,
@@ -170,7 +161,7 @@ class Runner<
     Factory extends StateFactory<
       SwarmProtocolName,
       MachineName,
-      RegisteredEventsFactoriesTuple,
+      MachineEventFactories,
       any,
       any,
       any
@@ -201,7 +192,7 @@ class Runner<
     Factory extends StateFactory<
       SwarmProtocolName,
       MachineName,
-      RegisteredEventsFactoriesTuple,
+      MachineEventFactories,
       any,
       any,
       any
@@ -235,7 +226,7 @@ class Runner<
     }
   }
 
-  assertPersisted(...e: MachineEvent.Factory.ReduceToEvent<RegisteredEventsFactoriesTuple>[]) {
+  assertPersisted(...e: MachineEvent[]) {
     expect(this.persisted).toEqual(e)
     this.persisted.length = 0
   }
