@@ -15,6 +15,6 @@ jobs:
           node-version: ${{ matrix.node-version }}
       - uses: jetli/wasm-pack-action@v0.4.0
         with:
-          version: "latest"
+          version: "v0.11.0"
       - run: npm i -g cross-env
       - run: npm run clean-build

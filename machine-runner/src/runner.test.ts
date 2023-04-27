@@ -80,6 +80,7 @@ class Runner<
   private sub = Subscription.make<RegisteredEventsFactoriesTuple>()
   public machine
 
+  /* eslint-disable @typescript-eslint/no-explicit-any */
   constructor(
     factory: StateFactory<
       SwarmProtocolName,
@@ -91,6 +92,7 @@ class Runner<
     >,
     payload: Payload,
   ) {
+    /* eslint-enable @typescript-eslint/no-explicit-any */
     const machine = createMachineRunnerInternal(
       this.sub.subscribe,
       async (events) => {
@@ -163,7 +165,7 @@ class Runner<
     err(new Error('boo!'))
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  /* eslint-disable @typescript-eslint/no-explicit-any */
   assertLastStateChange<
     Factory extends StateFactory<
       SwarmProtocolName,
@@ -180,6 +182,7 @@ class Runner<
       unhandled: MachineEvent.Any[]
     }) => void,
   ) {
+    /* eslint-enable @typescript-eslint/no-explicit-any */
     const last = this.stateChangeHistory.at(0)
     if (!last) throw new Unreachable()
 
@@ -193,6 +196,7 @@ class Runner<
     // expect(cmd0).toBe(cmd)
   }
 
+  /* eslint-disable @typescript-eslint/no-explicit-any */
   assertLastCaughtUp<
     Factory extends StateFactory<
       SwarmProtocolName,
@@ -203,6 +207,7 @@ class Runner<
       any
     >,
   >(factory: Factory, assertStateFurther?: (params: { snapshot: State.Of<Factory> }) => void) {
+    /* eslint-enable @typescript-eslint/no-explicit-any */
     const state = this.caughtUpHistory.at(0)
     if (!state) throw new Unreachable()
 
