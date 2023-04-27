@@ -130,6 +130,13 @@ export namespace MachineEvent {
 
     export type ReadonlyNonZeroTuple = utils.ReadonlyNonZeroTuple<Factory.Any>
 
+    /**
+     * Retrive the factory type of an event
+     * @example
+     * MachineEvent.Factory.Of<type SomeEvent>
+     * // where SomeEvent is a MachineEvent<Key, Payload>
+     * // results in MachineEvent.Factory<Key, Payload>
+     */
     export type Of<T extends MachineEvent.Any> = T extends MachineEvent<infer Key, infer Payload>
       ? Factory<Key, Payload>
       : never
@@ -173,7 +180,7 @@ export namespace MachineEvent {
       : ACC
 
     /**
-     * Turns a subtype of MachineEvent.Factory.Any[] into MachineEvent[].
+     * Turns a subtype of MachineEvent.Factory.Any[] into Payload[].
      * @example
      * MachineEvent.Factory.MapToPayload<[A,B]>
      * // where A and B are MachineEvent.Factory
@@ -189,7 +196,7 @@ export namespace MachineEvent {
       : ACC
 
     /**
-     * Turns a subtype of MachineEvent.Factory.Any[] into union of its members.
+     * Reduces a subtype of MachineEvent.Factory.Any[] into union of its members.
      * @example
      * MachineEvent.Factory.Reduce<[A,B]>
      * // where A and B are MachineEvent.Factory
