@@ -59,7 +59,9 @@ export namespace SwarmProtocol {
     swarmName: SwarmProtocolName,
     registeredEventFactories: InitialEventFactoriesTuple,
   ): SwarmProtocol<SwarmProtocolName, MachineEvent.Factory.Reduce<InitialEventFactoriesTuple>> => {
-    const eventFactories = MachineEvent.Factory.convertTupleToArray(registeredEventFactories)
+    const eventFactories = [
+      ...registeredEventFactories,
+    ] as MachineEvent.Factory.Reduce<InitialEventFactoriesTuple>[]
     type Factories = typeof eventFactories[0]
     const tag = Tag<MachineEvent.Of<Factories>>(swarmName)
     return {
@@ -192,7 +194,7 @@ namespace ImplMachine {
     const protocol: Protocol = {
       swarmName: swarmName,
       name: machineName,
-      registeredEvents: [...registeredEventFactories],
+      registeredEvents: registeredEventFactories,
       reactionMap: ReactionMap.make(),
       commands: [],
       states: {

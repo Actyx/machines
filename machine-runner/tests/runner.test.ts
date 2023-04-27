@@ -1,4 +1,4 @@
-import { MsgType } from '@actyx/sdk'
+import { ActyxEvent, MsgType, Tags } from '@actyx/sdk'
 import { describe, expect, it } from '@jest/globals'
 import {
   createMachineRunner,
@@ -13,6 +13,7 @@ import { NOP } from '../lib/utils/index.js'
 import { Equal, Expect, NotAnyOrUnknown, NotEqual } from '../lib/utils/type-utils.js'
 import { MachineAnalysisResource, SwarmProtocol } from '../lib/design/protocol.js'
 import { PromiseDelay, Subscription, mockMeta } from '../lib/test-utils/mock-runner.js'
+import { MachineProtocol } from '../src/design/state.js'
 
 class Unreachable extends Error {
   constructor() {
@@ -897,6 +898,71 @@ describe('protocol.createJSONForAnalysis', () => {
  * Bad type definitions are expected to fail the compilation
  */
 describe('typings', () => {
+  const E1 = MachineEvent.design('E1').withoutPayload()
+  const E2 = MachineEvent.design('E2').withoutPayload()
+  const E3 = MachineEvent.design('E3').withPayload<{ property: string }>()
+  const protocol = SwarmProtocol.make('example', [E1, E2])
+
+  it('event type transformation should be working well', () => {
+    true as Expect<Equal<MachineEvent.Of<typeof E1>, { type: 'E1' } & Record<never, never>>>
+    true as Expect<Equal<MachineEvent.Of<typeof E3>, { type: 'E3' } & { property: string }>>
+    true as Expect<
+      Equal<
+        MachineEvent.Factory.MapToActyxEvent<readonly [typeof E1, typeof E2, typeof E3]>,
+        [
+          ActyxEvent<MachineEvent.Of<typeof E1>>,
+          ActyxEvent<MachineEvent.Of<typeof E2>>,
+          ActyxEvent<MachineEvent.Of<typeof E3>>,
+        ]
+      >
+    >
+    true as Expect<
+      Equal<
+        MachineEvent.Factory.MapToMachineEvent<readonly [typeof E1, typeof E2, typeof E3]>,
+        [MachineEvent.Of<typeof E1>, MachineEvent.Of<typeof E2>, MachineEvent.Of<typeof E3>]
+      >
+    >
+    true as Expect<
+      Equal<
+        MachineEvent.Factory.MapToPayload<readonly [typeof E1, typeof E2, typeof E3]>,
+        [
+          MachineEvent.Payload.Of<typeof E1>,
+          MachineEvent.Payload.Of<typeof E2>,
+          MachineEvent.Payload.Of<typeof E3>,
+        ]
+      >
+    >
+    true as Expect<
+      Equal<
+        MachineEvent.Factory.Reduce<readonly [typeof E1, typeof E2, typeof E3]>,
+        typeof E1 | typeof E2 | typeof E3
+      >
+    >
+    true as Expect<
+      Equal<
+        MachineEvent.Of<MachineEvent.Factory.Reduce<readonly [typeof E1, typeof E2, typeof E3]>>,
+        MachineEvent.Of<typeof E1> | MachineEvent.Of<typeof E2> | MachineEvent.Of<typeof E3>
+      >
+    >
+  })
+
+  it("tags parameter from protocol should match createMachineRunner's", () => {
+    // Accepted parameter type
+    type TagsParamType = Parameters<
+      typeof createMachineRunner<any, any, typeof E1 | typeof E2, any>
+    >[1]
+
+    // Argument type
+    type TagsArgType = ReturnType<typeof protocol['tagWithEntityId']>
+
+    type ExpectedTagsType = Tags<MachineEvent.Of<typeof E1> | MachineEvent.Of<typeof E2>>
+
+    NOP<[TagsParamType]>(undefined as any as TagsArgType)
+    NOP<[NotAnyOrUnknown<TagsParamType>]>(undefined as any)
+    NOP<[NotAnyOrUnknown<TagsArgType>]>(undefined as any)
+    true as Expect<Equal<ExpectedTagsType, TagsParamType>>
+  })
+
   it("state.as should not return 'any'", () => {
     const r = new Runner(Initial, { transitioned: false })
     const snapshot = r.machine.get()

@@ -1,3 +1,3 @@
-export const NOP = (..._: unknown[]) => {
+export const NOP = <T extends unknown[]>(..._: T) => {
   // do nothing
 }
