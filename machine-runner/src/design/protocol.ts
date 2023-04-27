@@ -59,6 +59,7 @@ export namespace SwarmProtocol {
     swarmName: SwarmProtocolName,
     registeredEventFactories: InitialEventFactoriesTuple,
   ): SwarmProtocol<SwarmProtocolName, MachineEvent.Factory.Reduce<InitialEventFactoriesTuple>> => {
+    // Make a defensive copy to prevent side effects from external mutations
     const eventFactories = [
       ...registeredEventFactories,
     ] as MachineEvent.Factory.Reduce<InitialEventFactoriesTuple>[]
