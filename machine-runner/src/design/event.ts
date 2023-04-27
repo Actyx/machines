@@ -112,12 +112,12 @@ export namespace MachineEvent {
    * A collection of type utilities around the Payload of a MachineEvent.Factory.
    */
   export namespace Payload {
-    export type Of<T extends MachineEvent.Any | Factory.Any> = T extends MachineEvent<
-      any,
+    export type Of<T extends MachineEvent.Any | Factory.Any> = T extends Factory<
+      string,
       infer Payload
     >
       ? Payload
-      : T extends MachineEvent.Factory<string, infer Payload>
+      : T extends MachineEvent<any, infer Payload>
       ? Payload
       : never
   }
@@ -126,11 +126,6 @@ export namespace MachineEvent {
    * A collection of type utilities around MachineEvent.Factory.
    */
   export namespace Factory {
-    // WORKAROUND: This function is required by `protocol.ts` so that usage of
-    // `Reduce` type in the said file is not inlined
-    export const convertTupleToArray = <T extends ReadonlyNonZeroTuple>(t: T) =>
-      [...t] as Reduce<T>[]
-
     export type Any = Factory<string, any>
 
     export type ReadonlyNonZeroTuple = utils.ReadonlyNonZeroTuple<Factory.Any>
@@ -139,14 +134,6 @@ export namespace MachineEvent {
       ? Factory<Key, Payload>
       : never
 
-    // =====
-    type LooseMapToActyxEvent<
-      T,
-      ACC extends ActyxEvent<MachineEvent.Any>[] = [],
-    > = T extends Readonly<[Factory<infer Key, infer Payload>, ...infer Rest]>
-      ? LooseMapToActyxEvent<Rest, [...ACC, ActyxEvent<MachineEvent<Key, Payload>>]>
-      : ACC
-
     /**
      * Turns a subtype of MachineEvent.Factory.Any[] into ActyxEvent[].
      * @example
@@ -154,8 +141,17 @@ export namespace MachineEvent {
      * // where A and B are MachineEvent.Factory
      * // results in [ActyxEvent<MachineEvent.Of<A>>, ActyxEvent<MachineEvent.Of<B>>]
      */
-    export type MapToActyxEvent<T extends Readonly<MachineEvent.Factory.Any[]>> =
-      LooseMapToActyxEvent<T>
+    export type MapToActyxEvent<
+      T extends Readonly<MachineEvent.Factory.Any[]>,
+      ACC extends ActyxEvent<MachineEvent.Any>[] = [],
+    > = T extends Readonly<
+      [
+        Factory<infer Key, infer Payload>,
+        ...infer Rest extends Readonly<MachineEvent.Factory.Any[]>,
+      ]
+    >
+      ? MapToActyxEvent<Rest, [...ACC, ActyxEvent<MachineEvent<Key, Payload>>]>
+      : ACC
 
     /**
      * Turns a subtype of MachineEvent.Factory.Any[] into MachineEvent[].
@@ -170,7 +166,7 @@ export namespace MachineEvent {
     > = T extends Readonly<
       [
         Factory<infer Key, infer Payload>,
-        ...infer Rest extends Readonly<[Factory<infer Key, infer Payload>, ...infer Rest]>,
+        ...infer Rest extends Readonly<MachineEvent.Factory.Any[]>,
       ]
     >
       ? MapToMachineEvent<Rest, [...ACC, MachineEvent<Key, Payload>]>
