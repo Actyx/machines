@@ -348,18 +348,20 @@ describe('machine as async generator', () => {
     const r1 = new Runner(On, { toggleCount: 0 })
     const { machine } = r1
 
-    const before = new Date()
+    let resolved = false
     const promise = machine.next()
+    promise.then(() => {
+      resolved = true
+    })
 
     // First caughtUp after TIMEOUT
-    const TIMEOUT = 50 // milliseconds
-    setTimeout(() => r1.feed([], true), TIMEOUT)
+    r1.feed([], false)
+    expect(resolved).toBe(false)
+    r1.feed([], true)
 
     // await promise here
     const iterResult = await promise
-    const after = new Date()
-
-    expect(after.getTime() - before.getTime()).toBeGreaterThanOrEqual(TIMEOUT)
+    expect(resolved).toBe(true)
 
     if (iterResult.done !== false) throw new Unreachable()
 
