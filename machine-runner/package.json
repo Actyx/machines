@@ -17,6 +17,7 @@
     "clean": "rimraf ./lib",
     "test": "jest",
     "lint": "npx eslint src/**/*.ts",
+    "lint:strict": "npm run lint -- --max-warnings 0",
     "prepublishOnly": "npm run clean && npm run build && npm run test && npm run lint"
   },
   "keywords": [

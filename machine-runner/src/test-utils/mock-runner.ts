@@ -78,7 +78,9 @@ type MockMachineRunnerTestUtils<
   assertAs: <
     N extends string,
     P,
+    /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
     C extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
+    /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
     Then extends (state: State<N, P, C>) => any,
   >(
     ...args:
@@ -215,6 +217,7 @@ export namespace PromiseDelay {
 
     const make = (): Pair => {
       let finished = false
+      /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
       const pair: Pair = [undefined as any, undefined as any]
       pair[0] = new Promise<void>((resolve, reject) => {
         pair[1] = {

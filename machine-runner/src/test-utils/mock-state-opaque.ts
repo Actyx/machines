@@ -14,6 +14,7 @@ export const createMockStateOpaque = <
   RegisteredEventsFactoriesTuple extends Readonly<MachineEvent.Factory.Any[]>,
   StateName extends string,
   StatePayload,
+  /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
   Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
 >(
   factory: StateFactory<
@@ -48,6 +49,7 @@ export const createMockState = <
   RegisteredEventsFactoriesTuple extends Readonly<MachineEvent.Factory.Any[]>,
   StateName extends string,
   StatePayload,
+  /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
   Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
 >(
   factory: StateFactory<
