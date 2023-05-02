@@ -29,9 +29,44 @@ type SerializableValue =
   | SerializableObject
   | SerializableArray
   // Record type cannot be circular https://github.com/microsoft/TypeScript/issues/41164
+  // Read more in the comment below
   | Record<string, unknown>
 
 type SerializableArray = SerializableValue[]
+
+/* Note: Lax SerializableObject used for type constraint
+
+Serializable object only guards the first level property. This means, when used
+as type constraint, the user can still assign non-serializable values such as
+Date, function, BigInt, symbol as key and values of the second-level object.
+
+For example
+```
+const constrainedParam = <T extends SerialiableObject>(t: T) => {}
+
+constrainedParam<{ someDate: Date }>(undefined as any);
+
+// The line above results in compile error
+
+constrainedParam<{ someObject: { [Symbol()]: Date } }>(undefined as any)
+
+// The line below does not result in compile error
+```
+
+The problem is caused by TypeScript not supporting circular type for Record
+type. This means we cannot write this:
+
+`type SerializableValue = string | number | SomeOtherPrimitives | Record<string,
+SerializableValue>`
+
+Meanwhile, without Record type, the user-facing type definition that is written
+against SerializableObject as the type constraint, such as that of the
+withPayload, will encounter compile-error "Property 'record' is incompatible
+with index signature." when { [key: string]: string } is assigned to the field.
+Therefore `Record<string, unknown>` is included into the SerializableValue
+union. The consequence of including it is that the type constrain becomes
+relaxed and omits checks of serializable whenever Record is involve.
+*/
 
 export type SerializableObject = {
   [key: string]: SerializableValue
