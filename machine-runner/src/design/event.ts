@@ -37,6 +37,12 @@ export type MachineEvent<Key extends string, Payload extends object> = {
 export namespace MachineEvent {
   /**
    * Start a design of a MachineEventFactory used for MachineRunner.
+   *
+   * Event payload will be serialized. See that the payload definition put into
+   * `withPayload` method does not include non-serializable properties such as
+   * symbol, Function, Date, BigInt. machine-runner cannot put this constraint
+   * into the type definition due to constraint of the TypeScript compiler.
+   *
    * @example
    * const HangarDoorTransitioning = MachineEvent
    *   .design("HangarDoorTransitioning")
@@ -72,6 +78,11 @@ export namespace MachineEvent {
   type EventFactoryIntermediate<Key extends string> = {
     /**
      * Declares the payload type for this MachineEvent.
+     *
+     * Event payload will be serialized. See that the payload definition put into
+     * `withPayload` method does not include non-serializable properties such as
+     * symbol, Function, Date, BigInt. machine-runner cannot put this constraint
+     * into the type definition due to constraint of the TypeScript compiler.
      */
     withPayload: <Payload extends utils.SerializableObject>() => Factory<Key, Payload>
     /**
