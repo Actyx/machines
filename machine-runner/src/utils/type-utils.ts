@@ -21,14 +21,18 @@ export type Expect<T extends true> = T
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type NotAnyOrUnknown<T> = any extends T ? never : T
 
-type SerializablePrimitive = number | string | boolean | null | undefined
+type SerializableValue =
+  | string
+  | number
+  | boolean
+  | null
+  | SerializableObject
+  | SerializableArray
+  // Record type cannot be circular https://github.com/microsoft/TypeScript/issues/41164
+  | Record<string, unknown>
+
+type SerializableArray = SerializableValue[]
 
 export type SerializableObject = {
-  [_: string]:
-    | SerializablePrimitive
-    | SerializablePrimitive[]
-    | SerializableObject
-    | SerializableObject[]
-  [_: number]: never
-  [_: symbol]: never
-}
+  [key: string]: SerializableValue
+} & { [_: number | symbol]: never }
