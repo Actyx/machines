@@ -30,7 +30,9 @@ type SerializableValue =
   | SerializableArray
   // Record type cannot be circular https://github.com/microsoft/TypeScript/issues/41164
   // Read more in the comment below
-  | Record<string, unknown>
+  | SerializableRecord
+
+type SerializableRecord = Record<string, SerializableObject>
 
 type SerializableArray = SerializableValue[]
 
@@ -70,4 +72,37 @@ relaxed and omits checks of serializable whenever Record is involve.
 
 export type SerializableObject = {
   [key: string]: SerializableValue
-} & { [_: number | symbol]: never }
+}
+
+namespace tests {
+  const s = (_s: SerializableValue) => {
+    // empty
+  }
+  // @ts-expect-error undefined
+  s(undefined)
+  s(null)
+  s(true)
+  s(42)
+  s('hello')
+  // @ts-expect-error undefined
+  s([undefined])
+  s([null])
+  s([true])
+  s([42])
+  s(['hello'])
+  // @ts-expect-error undefined
+  s({ c: undefined })
+  s({ c: null })
+  s({ c: true })
+  s({ c: 42 })
+  s({ c: 'hello' })
+
+  // @ts-expect-error undefined
+  s({} as { [_: string]: undefined })
+  s({} as { [_: string]: null })
+  s({} as { [_: string]: boolean })
+  s({} as { [_: string]: number })
+  s({} as { [_: string]: string })
+  // @ts-expect-error function
+  s({} as { [_: string]: () => void })
+}
