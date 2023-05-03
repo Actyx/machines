@@ -10,10 +10,16 @@ import { MachineEvent } from '../lib/design/event.js'
 import { StateFactory, StateMechanism } from '../lib/design/state.js'
 import { deepCopy } from '../lib/utils/object-utils.js'
 import { NOP } from '../lib/utils/index.js'
-import { Equal, Expect, NotAnyOrUnknown, NotEqual } from '../lib/utils/type-utils.js'
+import {
+  Equal,
+  Expect,
+  NotAnyOrUnknown,
+  NotEqual,
+  SerializableObject,
+  SerializableValue,
+} from '../lib/utils/type-utils.js'
 import { MachineAnalysisResource, SwarmProtocol } from '../lib/design/protocol.js'
 import { PromiseDelay, Subscription, mockMeta } from '../lib/test-utils/mock-runner.js'
-import { MachineProtocol } from '../src/design/state.js'
 
 class Unreachable extends Error {
   constructor() {
@@ -1076,6 +1082,58 @@ describe('typings', () => {
           IncorrectFactory['mechanism']['protocol']['name']
         >
       >
+    })
+  })
+
+  describe('serializable-object', () => {
+    it('should work correctly', () => {
+      const s = (_s: SerializableValue) => {
+        // empty
+      }
+      // @ts-expect-error undefined
+      s(undefined)
+      s(null)
+      s(true)
+      s(42)
+      s('hello')
+      // @ts-expect-error undefined
+      s([undefined])
+      s([null])
+      s([true])
+      s([42])
+      s(['hello'])
+      // @ts-expect-error undefined
+      s({ c: undefined })
+      s({ c: null })
+      s({ c: true })
+      s({ c: 42 })
+      s({ c: 'hello' })
+
+      // @ts-expect-error undefined
+      s({} as { [_: string]: undefined })
+      s({} as { [_: string]: null })
+      s({} as { [_: string]: boolean })
+      s({} as { [_: string]: number })
+      s({} as { [_: string]: string })
+      // @ts-expect-error function
+      s({} as { [_: string]: () => void })
+      s({} as Record<string, string>)
+
+      const o = <T extends SerializableObject>() => {
+        // empty
+      }
+
+      o<{ a: Record<string, string>; b: Record<string, string>[] }>()
+      o<{ a: { b: Record<string, { c: number }[]> } }>()
+      o<{ a: { b: Record<string, { c: number }[]>[] }[] }>()
+      // @ts-expect-error undefined
+      o<{ a: Date; b: { c: Date } }>()
+      // @ts-expect-error undefined
+      o<{ a: () => unknown; b: { c: () => unknown } }>()
+      // @ts-expect-error undefined
+      o<{ a: bigint; b: { c: bigint } }>()
+      // @ts-expect-error undefined
+      o<{ a: symbol; b: { c: symbol } }>()
     })
   })
 })
