@@ -21,88 +21,16 @@ export type Expect<T extends true> = T
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type NotAnyOrUnknown<T> = any extends T ? never : T
 
-type SerializableValue =
+export type SerializableValue =
   | string
   | number
   | boolean
   | null
   | SerializableObject
   | SerializableArray
-  // Record type cannot be circular https://github.com/microsoft/TypeScript/issues/41164
-  // Read more in the comment below
-  | SerializableRecord
 
-type SerializableRecord = Record<string, SerializableObject>
-
-type SerializableArray = SerializableValue[]
-
-/* Note: Lax SerializableObject used for type constraint
-
-Serializable object only guards the first level property. This means, when used
-as type constraint, the user can still assign non-serializable values such as
-Date, function, BigInt, symbol as key and values of the second-level object.
-
-For example
-```
-const constrainedParam = <T extends SerialiableObject>(t: T) => {}
-
-constrainedParam<{ someDate: Date }>(undefined as any);
-
-// The line above results in compile error
-
-constrainedParam<{ someObject: { [Symbol()]: Date } }>(undefined as any)
-
-// The line below does not result in compile error
-```
-
-The problem is caused by TypeScript not supporting circular type for Record
-type. This means we cannot write this:
-
-`type SerializableValue = string | number | SomeOtherPrimitives | Record<string,
-SerializableValue>`
-
-Meanwhile, without Record type, the user-facing type definition that is written
-against SerializableObject as the type constraint, such as that of the
-withPayload, will encounter compile-error "Property 'record' is incompatible
-with index signature." when { [key: string]: string } is assigned to the field.
-Therefore `Record<string, unknown>` is included into the SerializableValue
-union. The consequence of including it is that the type constrain becomes
-relaxed and omits checks of serializable whenever Record is involve.
-*/
+export type SerializableArray = SerializableValue[]
 
 export type SerializableObject = {
   [key: string]: SerializableValue
-}
-
-namespace tests {
-  const s = (_s: SerializableValue) => {
-    // empty
-  }
-  // @ts-expect-error undefined
-  s(undefined)
-  s(null)
-  s(true)
-  s(42)
-  s('hello')
-  // @ts-expect-error undefined
-  s([undefined])
-  s([null])
-  s([true])
-  s([42])
-  s(['hello'])
-  // @ts-expect-error undefined
-  s({ c: undefined })
-  s({ c: null })
-  s({ c: true })
-  s({ c: 42 })
-  s({ c: 'hello' })
-
-  // @ts-expect-error undefined
-  s({} as { [_: string]: undefined })
-  s({} as { [_: string]: null })
-  s({} as { [_: string]: boolean })
-  s({} as { [_: string]: number })
-  s({} as { [_: string]: string })
-  // @ts-expect-error function
-  s({} as { [_: string]: () => void })
 }

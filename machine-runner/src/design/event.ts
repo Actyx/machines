@@ -38,10 +38,11 @@ export namespace MachineEvent {
   /**
    * Start a design of a MachineEventFactory used for MachineRunner.
    *
-   * Event payload will be serialized. See that the payload definition put into
-   * `withPayload` method does not include non-serializable properties such as
-   * symbol, Function, Date, BigInt. machine-runner cannot put this constraint
-   * into the type definition due to constraint of the TypeScript compiler.
+   * Event payload will be serialized. Payload definition cannot have fields
+   * that cannot be serialized and deserialized back via JSON.stringify and
+   * JSON.parse. See that the payload definition type argument does not include
+   * non-serializable properties, especially `symbol` and `number` indexed
+   * object.
    *
    * @example
    * const HangarDoorTransitioning = MachineEvent
@@ -79,10 +80,11 @@ export namespace MachineEvent {
     /**
      * Declares the payload type for this MachineEvent.
      *
-     * Event payload will be serialized. See that the payload definition put into
-     * `withPayload` method does not include non-serializable properties such as
-     * symbol, Function, Date, BigInt. machine-runner cannot put this constraint
-     * into the type definition due to constraint of the TypeScript compiler.
+     * Event payload will be serialized. Payload definition cannot have fields
+     * that cannot be serialized and deserialized back via JSON.stringify and
+     * JSON.parse. See that the payload definition type argument does not include
+     * non-serializable properties, especially `symbol` and `number` indexed
+     * object.
      */
     withPayload: <Payload extends utils.SerializableObject>() => Factory<Key, Payload>
     /**
