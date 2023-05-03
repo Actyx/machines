@@ -33,4 +33,6 @@ export type SerializableArray = SerializableValue[]
 
 export type SerializableObject = {
   [key: string]: SerializableValue
+} & {
+  [key: symbol]: never
 }
