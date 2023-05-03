@@ -1122,18 +1122,38 @@ describe('typings', () => {
       const o = <T extends SerializableObject>() => {
         // empty
       }
+      const somesymbol: unique symbol = Symbol()
+      type somesymbol = typeof somesymbol
 
+      o<{
+        a: boolean
+        b: null
+        c: true
+        d: 42
+        e: 'hello'
+        f: string
+        g: {
+          a: boolean
+          b: null
+          c: true
+          d: 42
+          e: 'hello'
+          f: string
+        }
+      }>()
       o<{ a: Record<string, string>; b: Record<string, string>[] }>()
       o<{ a: { b: Record<string, { c: number }[]> } }>()
       o<{ a: { b: Record<string, { c: number }[]>[] }[] }>()
-      // @ts-expect-error undefined
+      // @ts-expect-error Date as property value
       o<{ a: Date; b: { c: Date } }>()
-      // @ts-expect-error undefined
+      // @ts-expect-error function as property value
       o<{ a: () => unknown; b: { c: () => unknown } }>()
-      // @ts-expect-error undefined
+      // @ts-expect-error bigint as property value
       o<{ a: bigint; b: { c: bigint } }>()
-      // @ts-expect-error undefined
+      // @ts-expect-error symbol as property value
       o<{ a: symbol; b: { c: symbol } }>()
+      // @ts-expect-error symbol as property key
+      o<{ [somesymbol]: boolean }>()
     })
   })
 })

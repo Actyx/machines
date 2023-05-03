@@ -40,9 +40,7 @@ export namespace MachineEvent {
    *
    * Event payload will be serialized. Payload definition cannot have fields
    * that cannot be serialized and deserialized back via JSON.stringify and
-   * JSON.parse. See that the payload definition type argument does not include
-   * non-serializable properties, especially `symbol` and `number` indexed
-   * object.
+   * JSON.parse.
    *
    * @example
    * const HangarDoorTransitioning = MachineEvent
@@ -82,9 +80,7 @@ export namespace MachineEvent {
      *
      * Event payload will be serialized. Payload definition cannot have fields
      * that cannot be serialized and deserialized back via JSON.stringify and
-     * JSON.parse. See that the payload definition type argument does not include
-     * non-serializable properties, especially `symbol` and `number` indexed
-     * object.
+     * JSON.parse.
      */
     withPayload: <Payload extends utils.SerializableObject>() => Factory<Key, Payload>
     /**
