@@ -1,5 +1,5 @@
 import { describe, expect, it } from '@jest/globals'
-import { Cleanup, Destruction } from './destruction.js'
+import { Cleanup, Destruction } from '../lib/utils/destruction.js'
 
 describe('Cleanup', () => {
   it('should call all registered functions', () => {

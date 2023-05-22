@@ -34,7 +34,7 @@
     "typescript": "^4.9.5"
   },
   "dependencies": {
-    "@actyx/machine-runner": "file:../machine-runner",
+    "@actyx/machine-runner": "file:../machine-runner/cjs",
     "@actyx/sdk": "^0.5.7",
     "react-konva": "^18.2.5",
     "konva": "^8.4.3"
