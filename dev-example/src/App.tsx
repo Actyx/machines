@@ -1,6 +1,6 @@
 import { createMachineRunner, MachineRunner, utils } from '@actyx/machine-runner'
 import { AuditMachines } from '@actyx/machine-visual'
-import { Actyx, Tag } from '@actyx/sdk'
+import { Actyx } from '@actyx/sdk'
 import { useEffect, useMemo, useState } from 'react'
 import { UIMachine } from './UIMachine.js'
 import { protocol } from './machines/protocol.js'
@@ -64,7 +64,7 @@ type EventMap = MachineRunner.EventMapOf<ThisMachineRunner>
 export const useMachineDebug = (machine: ThisMachineRunner, label: string) => {
   useEffect(() => {
     const onPrevState: EventMap['debug.eventHandlingPrevState'] = (prevstate) =>
-      console.log(label, 'prevstate', utils.deepCopy(prevstate))
+      console.log(label, 'prevstate', utils.object.deepCopy(prevstate))
 
     const onDebug: EventMap['debug.eventHandling'] = ({
       event,
@@ -78,14 +78,14 @@ export const useMachineDebug = (machine: ThisMachineRunner, label: string) => {
         factory,
         handlingReport,
         mechanism,
-        nextState: utils.deepCopy(nextState),
+        nextState: utils.object.deepCopy(nextState),
       })
 
     const onChange: EventMap['change'] = () =>
-      console.log(label, 'state after caughtUp', utils.deepCopy(machine.get()))
+      console.log(label, 'state after caughtUp', utils.object.deepCopy(machine.get()))
 
     const onAuditState: EventMap['audit.state'] = (x) =>
-      console.log(label, 'state change to ', utils.deepCopy(x.state))
+      console.log(label, 'state change to ', utils.object.deepCopy(x.state))
 
     const onLog: EventMap['log'] = (x) => console.log(label, `log`, x)
 

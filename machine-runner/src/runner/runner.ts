@@ -9,7 +9,7 @@ import {
   OnCompleteOrErr,
   Tags,
 } from '@actyx/sdk'
-import EventEmitter from 'events'
+import { EventEmitter } from 'events'
 import {
   MachineEvent,
   StateRaw,
@@ -19,7 +19,6 @@ import {
   convertCommandMapToCommandSignatureMap,
 } from '../design/state.js'
 import { Destruction } from '../utils/destruction.js'
-import { NOP } from '../utils/index.js'
 import {
   CommandCallback,
   CommandFiredAfterLocked,
@@ -28,6 +27,7 @@ import {
 } from './runner-internals.js'
 import { MachineEmitter, MachineEmitterEventMap } from './runner-utils.js'
 import { Machine, SwarmProtocol } from '../design/protocol.js'
+import { NOP } from '../utils/misc.js'
 
 /**
  * Contains and manages the state of a machine by subscribing and publishing

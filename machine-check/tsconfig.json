@@ -5,7 +5,7 @@
     "alwaysStrict": true,
     "declaration": true,
     "emitDecoratorMetadata": false,
-    "esModuleInterop": true,
+    "esModuleInterop": false,
     "experimentalDecorators": true,
     "lib": ["dom", "es2019"],
     "module": "Node16",

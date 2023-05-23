@@ -1,5 +1,4 @@
 import { MachineRunner } from '@actyx/machine-runner'
-import { MachineEmitterEventMap } from '@actyx/machine-runner/lib/runner/runner-utils.js'
 import { useEffect, useState } from 'react'
 import { PrintState } from './UIMachineCommon.js'
 import { UIPassengerAuction, UIPassengerInitial, UIPassengerRide } from './UIMachinePassenger.js'
