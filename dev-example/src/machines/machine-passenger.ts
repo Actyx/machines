@@ -1,4 +1,4 @@
-import { DeepReadonly } from '@actyx/machine-runner/lib/utils/type-utils.js'
+import { utils } from '@actyx/machine-runner'
 import { protocol, ProtocolEvents, BidData } from './protocol.js'
 const { Bid, BidderID, Cancelled, PassengerID, Requested, Selected } = ProtocolEvents
 
@@ -7,7 +7,7 @@ export const Initial = machine
   .designEmpty('Initial')
   .command('request', [Requested], (_, params: { pickup: string; destination: string }) => [
     // demonstrate that event payloads are allowed to be readonly
-    Requested.make(params as DeepReadonly<{ pickup: string; destination: string }>),
+    Requested.make(params as utils.types.DeepReadonly<{ pickup: string; destination: string }>),
   ])
   .finish()
 

@@ -1,7 +1,6 @@
 /* eslint-disable @typescript-eslint/no-namespace */
 
-import { MachineEvent } from '@actyx/machine-runner'
-import { SwarmProtocol } from '@actyx/machine-runner/lib/design/protocol.js'
+import { MachineEvent, SwarmProtocol } from '@actyx/machine-runner'
 
 /**
  * Actyx pub-sub is based on topics selected by tagging (which supports

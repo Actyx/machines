@@ -2,7 +2,7 @@ import {
   createMockMachineRunner,
   createMockState,
   createMockStateOpaque,
-} from '@actyx/machine-runner/lib/test-utils'
+} from '@actyx/machine-runner/test-utils'
 import { BidData, Passenger, ProtocolEvents } from './machines/index.js'
 import { toPrettyJSONString } from './UIMachineCommon.js'
 import { isTaxiRideCancelEnabled } from './UIMachinePassenger.js'

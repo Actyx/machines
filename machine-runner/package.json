@@ -1,10 +1,21 @@
 {
   "name": "@actyx/machine-runner",
-  "version": "0.3.1",
-  "type": "module",
+  "version": "0.4.0",
   "description": "asymmetric replicated state machines: runtime support",
-  "main": "./lib/index.js",
-  "types": "./lib/index.d.ts",
+  "type": "module",
+  "types": "./lib/esm/index.d.ts",
+  "module": "./lib/esm/index.js",
+  "main": "./lib/cjs/index.js",
+  "exports": {
+    ".": {
+      "import": "./lib/esm/index.js",
+      "require": "./lib/cjs/index.js"
+    },
+    "./test-utils": {
+      "import": "./lib/esm/test-utils/index.js",
+      "require": "./lib/cjs/test-utils/index.js"
+    }
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/Actyx/machines"
@@ -13,9 +24,17 @@
     "./lib/**/*"
   ],
   "scripts": {
-    "build": "tsc --build tsconfig.build.json",
-    "clean": "rimraf ./lib",
-    "test": "cross-env NODE_OPTIONS=--experimental-vm-modules jest",
+    "build": "npm run build:esm && npm run build:cjs && npm run build:copy-package-json",
+    "build:esm": "tsc --build tsconfig.esm.json",
+    "build:cjs": "tsc --build tsconfig.cjs.json",
+    "build:copy-package-json": "ts-node-esm scripts/build/copy-package-json.ts",
+    "clean": "npm run clean:lib && npm run test:cjs:clean",
+    "clean:lib": "rimraf ./lib",
+    "test": "npm run test:esm && npm run test:cjs",
+    "test:esm": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --config=tests/esm/jest.config.ts",
+    "test:cjs": "npm run test:cjs:clean && npm run test:cjs:copy && jest --config=tests/cjs/jest.config.ts",
+    "test:cjs:copy": "ts-node-esm scripts/test/cjs-copy.ts",
+    "test:cjs:clean": "ts-node-esm scripts/test/cjs-remove.ts",
     "lint": "npx eslint src/**/*.ts",
     "lint:strict": "npm run lint -- --max-warnings 0",
     "prepublishOnly": "npm run clean && npm run build && npm run test && npm run lint"
@@ -27,12 +46,14 @@
   "license": "Apache-2.0",
   "devDependencies": {
     "@jest/globals": "^29.4.2",
+    "@types/glob": "^8.1.0",
     "@typescript-eslint/eslint-plugin": "^5.45.0",
     "@typescript-eslint/parser": "^5.45.0",
     "cross-env": "^7.0.3",
     "eslint": "^8.28.0",
     "eslint-config-prettier": "^8.5.0",
     "eslint-plugin-prettier": "^4.2.1",
+    "glob": "^10.2.6",
     "jest": "^29.4.2",
     "prettier": "^2.8.0",
     "rimraf": "^4.4.0",

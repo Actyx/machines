@@ -2,14 +2,16 @@ import { ActyxEvent, MsgType, Tags } from '@actyx/sdk'
 import { describe, expect, it } from '@jest/globals'
 import {
   createMachineRunner,
-  createMachineRunnerInternal,
-  State,
   StateOpaque,
-} from '../lib/runner/runner.js'
-import { MachineEvent } from '../lib/design/event.js'
-import { StateFactory, StateMechanism } from '../lib/design/state.js'
-import { deepCopy } from '../lib/utils/object-utils.js'
-import { NOP } from '../lib/utils/index.js'
+  MachineEvent,
+  SwarmProtocol,
+  StateFactory,
+  State,
+  StateMechanism,
+} from '../../lib/esm/index.js'
+import { createMachineRunnerInternal } from '../../lib/esm/runner/runner.js'
+import { deepCopy } from '../../lib/esm/utils/object-utils.js'
+import { NOP } from '../../lib/esm/utils/misc.js'
 import {
   Equal,
   Expect,
@@ -17,9 +19,9 @@ import {
   NotEqual,
   SerializableObject,
   SerializableValue,
-} from '../lib/utils/type-utils.js'
-import { MachineAnalysisResource, SwarmProtocol } from '../lib/design/protocol.js'
-import { PromiseDelay, Subscription, mockMeta } from '../lib/test-utils/mock-runner.js'
+} from '../../lib/esm/utils/type-utils.js'
+import { MachineAnalysisResource } from '../../lib/esm/design/protocol.js'
+import { PromiseDelay, Subscription, mockMeta } from '../../lib/esm/test-utils/mock-runner.js'
 
 class Unreachable extends Error {
   constructor() {
