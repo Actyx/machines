@@ -1,6 +1,6 @@
 {
   "name": "@actyx/machine-runner",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "asymmetric replicated state machines: runtime support",
   "type": "module",
   "types": "./lib/esm/index.d.ts",
@@ -21,7 +21,8 @@
     "url": "git+https://github.com/Actyx/machines.git"
   },
   "files": [
-    "./lib/**/*"
+    "./lib/**/*",
+    "./example-workflow.png"
   ],
   "scripts": {
     "build": "npm run build:esm && npm run build:cjs && npm run build:copy-package-json",
