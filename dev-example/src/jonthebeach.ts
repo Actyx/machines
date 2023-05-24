@@ -37,7 +37,10 @@ Auction.react([bid], Auction, (ctx, b) => {
   return ctx.self
 })
 
-Auction.react([selected], DoIt, (ctx, s) => ({ robot: ctx.self.robot, winner: s.payload.winner }))
+Auction.react([selected], DoIt, (ctx, s) => ({
+  robot: ctx.self.robot,
+  winner: s.payload.winner,
+}))
 
 const TransportOrderForWarehouse = transportOrder.makeMachine('warehouse')
 export const InitialWarehouse = TransportOrderForWarehouse.designState('Initial')

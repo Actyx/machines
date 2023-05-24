@@ -17,11 +17,14 @@ First we define our set of events:
 
 ```typescript
 // sent by the warehouse to get things started
-const requested = Event.design('requested').withPayload<{ id: string; from: string; to: string }>()
+const requested = Event.design('requested')
+  .withPayload<{ id: string; from: string; to: string }>()
 // sent by each available candidate robot to register interest
-const bid = Event.design('bid').withPayload<{ robot: string; delay: number }>()
-// sent by either the warehouse or the robots, depending on requirements (see below)
-const selected = Event.design('selected').withPayload<{ winner: string }>()
+const bid = Event.design('bid')
+  .withPayload<{ robot: string; delay: number }>()
+// sent by the robots
+const selected = Event.design('selected')
+  .withPayload<{ winner: string }>()
 
 // declare a precisely typed tuple of all events we can now choose from
 const transportOrderEvents = [requested, bid, selected] as const
@@ -38,12 +41,15 @@ The `warehouse` is much simpler in this initial part of the workflow since it ha
 
 ```typescript
 // initialize the state machine builder for the `warehouse` role
-const TransportOrderForWarehouse = transportOrder.makeMachine('warehouse')
+const TransportOrderForWarehouse =
+  transportOrder.makeMachine('warehouse')
 
 // add initial state with command to request the transport
-export const InitialWarehouse = TransportOrderForWarehouse.designState('Initial')
+export const InitialWarehouse = TransportOrderForWarehouse
+  .designState('Initial')
   .withPayload<{ id: string }>()
-  .command('request', [requested], (ctx, from: string, to: string) => [{ id: ctx.self.id, from, to }])
+  .command('request', [requested], (ctx, from: string, to: string) =>
+                                   [{ id: ctx.self.id, from, to }])
   .finish()
 
 export const DoneWarehouse = TransportOrderForWarehouse.designEmpty('Done').finish()
@@ -58,13 +64,16 @@ The `robot` state machine is constructed in the same way, albeit with more comma
 const TransportOrderForRobot = transportOrder.makeMachine('robot')
 
 type Score = { robot: string; delay: number }
+type AuctionPayload =
+  { id: string; from: string; to: string; robot: string; scores: Score[] }
 
 export const Initial = TransportOrderForRobot.designState('Initial')
   .withPayload<{ robot: string }>()
   .finish()
 export const Auction = TransportOrderForRobot.designState('Auction')
-  .withPayload<{ id: string; from: string; to: string; robot: string; scores: Score[] }>()
-  .command('bid', [bid], (ctx, delay: number) => [{ robot: ctx.self.robot, delay }])
+  .withPayload<AuctionPayload>()
+  .command('bid', [bid], (ctx, delay: number) =>
+                         [{ robot: ctx.self.robot, delay }])
   .command('select', [selected], (_ctx, winner: string) => [{ winner }])
   .finish()
 export const DoIt = TransportOrderForRobot.designState('DoIt')
@@ -85,12 +94,13 @@ Auction.react([bid], Auction, (ctx, b) => {
 })
 
 // end the auction when a selection has happened
-Auction.react([selected], DoIt, (ctx, s) => ({ robot: ctx.self.robot, winner: s.payload.winner }))
+Auction.react([selected], DoIt, (ctx, s) =>
+  ({ robot: ctx.self.robot, winner: s.payload.winner }))
 ```
 
 ### Checking the machines
 
-<img src="example-workflow.png" alt="workflow" width="300" />
+<img src="https://raw.githubusercontent.com/Actyx/machines/62fbda79d27a71260159c2688f0f57ef4c9e13ca/machine-runner/example-workflow.png" alt="workflow" width="300" />
 
 The part of the transport order workflow implemented in the previous section is visualized above as a UML state diagram.
 With the `@actyx/machine-check` library we can check that this workflow makes sense (i.e. it achieves eventual consensus, which is the same kind of consensus used by the bitcoin network to settle transactions), and we can also check that our state machines written down in code implement this workflow correctly.
@@ -98,7 +108,7 @@ With the `@actyx/machine-check` library we can check that this workflow makes se
 To this end, we first need to declare the graph in JSON notation:
 
 ```typescript
-const transportOrderProtocol: SwarmProtocolType = {
+const proto: SwarmProtocolType = {
   initial: 'initial',
   transitions: [
     { source: 'initial', target: 'auction',
@@ -117,18 +127,23 @@ With this preparation, we can perform the behavioral type checking as follows:
 ```typescript
 import { SwarmProtocolType, checkProjection, checkSwarmProtocol } from '@actyx/machine-check'
 
-const robotJSON = TransportOrderForRobot.createJSONForAnalysis(Initial)
-const warehouseJSON = TransportOrderForWarehouse.createJSONForAnalysis(InitialWarehouse)
+const robotJSON =
+  TransportOrderForRobot.createJSONForAnalysis(Initial)
+const warehouseJSON =
+  TransportOrderForWarehouse.createJSONForAnalysis(InitialWarehouse)
 const subscriptions = {
   robot: robotJSON.subscriptions,
   warehouse: warehouseJSON.subscriptions,
 }
 
-// these should all print `{ type: 'OK' }`, otherwise there’s a mistake in the code
-// (you would normally verify this using your favorite unit testing framework)
-console.log(checkSwarmProtocol(transportOrderProtocol, subscriptions))
-console.log(checkProjection(transportOrderProtocol, subscriptions, 'robot', robotJSON))
-console.log(checkProjection(transportOrderProtocol, subscriptions, 'warehouse', warehouseJSON))
+// these should all print `{ type: 'OK' }`, otherwise there’s a mistake in
+// the code (you would normally verify this using your favorite unit
+// testing framework)
+console.log(
+  checkSwarmProtocol(proto, subscriptions),
+  checkProjection(proto, subscriptions, 'robot', robotJSON),
+  checkProjection(proto, subscriptions, 'warehouse', warehouseJSON),
+)
 ```
 
 ### Running the machines
@@ -138,10 +153,12 @@ In other words, Actyx is the middleware that allows the `warehouse` and `robot` 
 Therefore, before we can run our machines we need to use the Actyx SDK to connect to the local Actyx service:
 
 ```typescript
-const actyx = await Actyx.of({ appId: 'com.example.acm', displayName: 'example', version: '0.0.1' })
+const actyx = await Actyx.of(
+  { appId: 'com.example.acm', displayName: 'example', version: '0.0.1' })
 const tags = transportOrder.tagWithEntityId('4711')
 const robot1 = createMachineRunner(actyx, tags, Initial, { robot: 'agv1' })
-const warehouse = createMachineRunner(actyx, tags, InitialWarehouse, { id: '4711' })
+const warehouse = createMachineRunner(actyx, tags, InitialWarehouse,
+                                      { id: '4711' })
 ```
 
 The `tags` can be thought of as the name of a [dedicated pub–sub channel](https://developer.actyx.com/docs/conceptual/tags) for this particular workflow instance.
@@ -196,6 +213,17 @@ If the workflow still is in the `Auction` state, we compute the best robot bid (
 
 The third feature becomes relevant once the auction has ended: we check if our robot is indeed the winner and record that in a variable `IamWinner`, i.e. in the current application in-memory state.
 Then we can use this information in all following states as well.
+
+### The consequences of Eventual Consensus
+
+The design goal of Actyx and the machine runner is to provide uncompromising resilience and availability, meaning that if a device is capable of computation it shall be able to make progress, independent of the network.
+This implies that two devices that are not currently connected (which also includes the brief time lag introduced by ping times between them!) can make contradicting choices in a workflow.
+
+In the example above, we deliberately didn’t use a `manager` or `referee` role to select the winner in the auction, since that decision maker would be a single-point-of-failure in the whole process.
+Instead, each robot independently ensures that after at five seconds a decision will be made — even if two robots concurrently come to different conclusions and both emit a `selected` event.
+
+Machine runner resolves this conflict by using only the `selected` event that comes first in the Actyx event sort order; in other words, Actyx arbitrarily picks a winner and the losing event is discarded.
+If a robot saw itself winning, started the mission, and then discovers that its win turned out to be invalid, it will have to stop the mission and pick a new one.
 
 ## Developer support
 
