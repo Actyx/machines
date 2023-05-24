@@ -7,101 +7,196 @@ The detailed documentation of this library is provided in its JsDoc comments.
 
 ## Example usage
 
+We demonstrate the usage of our decentralized state machines on an example from manufacturing automation, i.e. the factory shop floor: a warehouse requests the fleet of logistics robots to pick something up and bring it somewhere else.
+Our task is to write the logic for the warehouse and for each of the robots so that the job will eventually be done.
+Since there are many robots we use an auction to settle who will do it.
+
+### Declaring the machines
+
 First we define our set of events:
 
 ```typescript
-const mkTuple = <T extends unknown[]>(...args: T) => args
+// sent by the warehouse to get things started
+const requested = Event.design('requested').withPayload<{ id: string; from: string; to: string }>()
+// sent by each available candidate robot to register interest
+const bid = Event.design('bid').withPayload<{ robot: string; delay: number }>()
+// sent by either the warehouse or the robots, depending on requirements (see below)
+const selected = Event.design('selected').withPayload<{ winner: string }>()
 
-namespace Events {
-  export const Opened = MachineEvent.design('opened').withoutPayload()
-  export const Closed = MachineEvent.design('closed').withoutPayload()
-  export const Opening = MachineEvent.design('opening').withPayload<{ fractionOpen: number }>()
-  export const Closing = MachineEvent.design('closing').withPayload<{ fractionOpen: number }>()
-
-  export const all = mkTuple(Opened, Closed, Opening, Closing)
-}
+// declare a precisely typed tuple of all events we can now choose from
+const transportOrderEvents = [requested, bid, selected] as const
 ```
 
 Then we can declare a swarm protocol using these events:
 
 ```typescript
-const HangarBay = SwarmProtocol.make('HangarBay', Events.all)
+const transportOrder = SwarmProtocol.make('transportOrder', transportOrderEvents)
 ```
 
-Now we build two machines that participate in this protocol: the `Control` will tell the door when to move, while the `Door` will register updates as to what it is doing.
-
-Here we put the `Door` into a TypeScript namespace, you might want to put each machine into a separate file in your own code.
+Now we build two machines that participate in this protocol: the `warehouse` will request the material transport, while the fleet of `robot` will figure out who does it.
+The `warehouse` is much simpler in this initial part of the workflow since it has no further role after making the request — in a real implementation the protocol would go on to include the actual delivery.
 
 ```typescript
-namespace Door {
-  const Door = HangarBay.makeMachine('door')
+// initialize the state machine builder for the `warehouse` role
+const TransportOrderForWarehouse = transportOrder.makeMachine('warehouse')
 
-  const Open = Door.designEmpty('Open').finish()
-  const Closing = Door.designState('Closing')
-    .withPayload<{ fractionOpen: number }>()
-    .command('update', [Events.Closing], (_ctx, fractionOpen: number) => [{ fractionOpen }])
-    .command('closed', [Events.Closed], (_ctx) => [{}])
-    .finish()
-  const Closed = Door.designEmpty('Closed').finish()
-  const Opening = Door.designState('Opening')
-    .withPayload<{ fractionOpen: number }>()
-    .command('update', [Events.Opening], (_ctx, fractionOpen: number) => [{ fractionOpen }])
-    .command('open', [Events.Opened], (_ctx) => [{}])
-    .finish()
+// add initial state with command to request the transport
+export const InitialWarehouse = TransportOrderForWarehouse.designState('Initial')
+  .withPayload<{ id: string }>()
+  .command('request', [requested], (ctx, from: string, to: string) => [{ id: ctx.self.id, from, to }])
+  .finish()
 
-  Open.react([Events.Closing], Closing, (_ctx, closing) => ({
-    fractionOpen: closing.payload.fractionOpen,
-  }))
-  Closing.react([Events.Closing], Closing, (ctx, closing) => {
-    ctx.self.fractionOpen = closing.payload.fractionOpen
-    return ctx.self
-  })
-  Closing.react([Events.Closed], Closed, (_ctx, _closed) => [{}])
-  Closed.react([Events.Opening], Opening, (_ctx, opening) => ({
-    fractionOpen: opening.payload.fractionOpen,
-  }))
-  Opening.react([Events.Opening], Opening, (ctx, opening) => {
-    ctx.self.fractionOpen = opening.payload.fractionOpen
-    return ctx.self
-  })
-  Opening.react([Events.Opened], Open, (_ctx, _open) => [{}])
+export const DoneWarehouse = TransportOrderForWarehouse.designEmpty('Done').finish()
+
+// describe the transition into the `Done` state after request has been made
+InitialWarehouse.react([requested], DoneWarehouse, (_ctx, _r) => [{}])
+```
+
+The `robot` state machine is constructed in the same way, albeit with more commands and state transitions:
+
+```typescript
+const TransportOrderForRobot = transportOrder.makeMachine('robot')
+
+type Score = { robot: string; delay: number }
+
+export const Initial = TransportOrderForRobot.designState('Initial')
+  .withPayload<{ robot: string }>()
+  .finish()
+export const Auction = TransportOrderForRobot.designState('Auction')
+  .withPayload<{ id: string; from: string; to: string; robot: string; scores: Score[] }>()
+  .command('bid', [bid], (ctx, delay: number) => [{ robot: ctx.self.robot, delay }])
+  .command('select', [selected], (_ctx, winner: string) => [{ winner }])
+  .finish()
+export const DoIt = TransportOrderForRobot.designState('DoIt')
+  .withPayload<{ robot: string; winner: string }>()
+  .finish()
+
+// ingest the request from the `warehouse`
+Initial.react([requested], Auction, (ctx, r) => ({
+  ...ctx.self,
+  ...r.payload,
+  scores: [],
+}))
+
+// accumulate bids from all `robot`
+Auction.react([bid], Auction, (ctx, b) => {
+  ctx.self.scores.push(b.payload)
+  return ctx.self
+})
+
+// end the auction when a selection has happened
+Auction.react([selected], DoIt, (ctx, s) => ({ robot: ctx.self.robot, winner: s.payload.winner }))
+```
+
+### Checking the machines
+
+<img src="example-workflow.png" alt="workflow" width="300" />
+
+The part of the transport order workflow implemented in the previous section is visualized above as a UML state diagram.
+With the `@actyx/machine-check` library we can check that this workflow makes sense (i.e. it achieves eventual consensus, which is the same kind of consensus used by the bitcoin network to settle transactions), and we can also check that our state machines written down in code implement this workflow correctly.
+
+To this end, we first need to declare the graph in JSON notation:
+
+```typescript
+const transportOrderProtocol: SwarmProtocolType = {
+  initial: 'initial',
+  transitions: [
+    { source: 'initial', target: 'auction',
+      label: { cmd: 'request', logType: ['requested'], role: 'warehouse' } },
+    { source: 'auction', target: 'auction',
+      label: { cmd: 'bid', logType: ['bid'], role: 'robot' } },
+    { source: 'auction', target: 'doIt',
+      label: { cmd: 'select', logType: ['selected'], role: 'robot' } },
+  ]
 }
 ```
 
-And finally the `Control`’s machine:
+The naming of states does not need to be the same as in our code, but the event type names and the commands need to match.
+With this preparation, we can perform the behavioral type checking as follows:
 
 ```typescript
-namespace Control {
-  const Control = HangarBay.makeMachine('control')
+import { SwarmProtocolType, checkProjection, checkSwarmProtocol } from '@actyx/machine-check'
 
-  const Open = Control.designEmpty('Open')
-    .command('close', [Events.Closing], (_ctx) => [{ fractionOpen: 1 }])
-    .finish()
-  const Closing = Control.designState('Closing').withPayload<{ fractionOpen: number }>().finish()
-  const Closed = Control.designEmpty('Closed')
-    .command('open', [Events.Opening], (_ctx) => [{ fractionOpen: 0 }])
-    .finish()
-  const Opening = Control.designState('Opening').withPayload<{ fractionOpen: number }>().finish()
+const robotJSON = TransportOrderForRobot.createJSONForAnalysis(Initial)
+const warehouseJSON = TransportOrderForWarehouse.createJSONForAnalysis(InitialWarehouse)
+const subscriptions = {
+  robot: robotJSON.subscriptions,
+  warehouse: warehouseJSON.subscriptions,
+}
 
-  Open.react([Events.Closing], Closing, (_ctx, closing) => ({
-    fractionOpen: closing.payload.fractionOpen,
-  }))
-  Closing.react([Events.Closing], Closing, (ctx, closing) => {
-    ctx.self.fractionOpen = closing.payload.fractionOpen
-    return ctx.self
-  })
-  Closing.react([Events.Closed], Closed, (_ctx, _closed) => [{}])
-  Closed.react([Events.Opening], Opening, (_ctx, opening) => ({
-    fractionOpen: opening.payload.fractionOpen,
-  }))
-  Opening.react([Events.Opening], Opening, (ctx, opening) => {
-    ctx.self.fractionOpen = opening.payload.fractionOpen
-    return ctx.self
-  })
-  Opening.react([Events.Opened], Open, (_ctx, _open) => [{}])
+// these should all print `{ type: 'OK' }`, otherwise there’s a mistake in the code
+// (you would normally verify this using your favorite unit testing framework)
+console.log(checkSwarmProtocol(transportOrderProtocol, subscriptions))
+console.log(checkProjection(transportOrderProtocol, subscriptions, 'robot', robotJSON))
+console.log(checkProjection(transportOrderProtocol, subscriptions, 'warehouse', warehouseJSON))
+```
+
+### Running the machines
+
+`@actyx/machine-runner` relies upon [Actyx](https://developer.actyx.com) for storing/retrieving events and sending them to other nodes in the swarm.
+In other words, Actyx is the middleware that allows the `warehouse` and `robot` programs on different computers to talk to each other, in a fully decentralized peer-to-peer fashion and without further coordination — for maximum resilience and availability.
+Therefore, before we can run our machines we need to use the Actyx SDK to connect to the local Actyx service:
+
+```typescript
+const actyx = await Actyx.of({ appId: 'com.example.acm', displayName: 'example', version: '0.0.1' })
+const tags = transportOrder.tagWithEntityId('4711')
+const robot1 = createMachineRunner(actyx, tags, Initial, { robot: 'agv1' })
+const warehouse = createMachineRunner(actyx, tags, InitialWarehouse, { id: '4711' })
+```
+
+The `tags` can be thought of as the name of a [dedicated pub–sub channel](https://developer.actyx.com/docs/conceptual/tags) for this particular workflow instance.
+We demonstrate how to create both a robot and the warehouse, even though you probably won’t do that on the same computer in the real world.
+
+Getting the process started means interacting with the state machines:
+
+```typescript
+for await (const state of warehouse) {
+  if (state.is(InitialWarehouse)) {
+    await state.cast().commands?.request('from', 'to')
+  } else {
+    // this role is done
+    break
+  }
 }
 ```
 
-Notice how the machines are deterministic at the type-level: instead of putting a conditional transition into the Closing state (e.g. by checking whether `fractionOpen === 0`) we need two separate named events `Closing` and `Closed` to allow our machine to transition to different target states.
+The `warehouse` machine implements the [async iterator](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Iteration_protocols#the_async_iterator_and_async_iterable_protocols) JavaScript protocol, which makes it conveniently consumable using a `for await (...)` loop.
+Exiting this loop, e.g. using `break` as shown, will destroy the `warehouse` running machine, including cancelling the underlying Actyx event subscription for live updates.
 
-For examples on how to run such machines, please refer to the [`dev-example` folder](https://github.com/Actyx/machines/tree/master/dev-example/src/App.tsx#L15-L18) on GitHub.
+Using the `robot` role we demonstrate a few more features of the machine runner:
+
+```typescript
+let IamWinner = false
+
+for await (const state of robot1) {
+  if (state.is(Auction)) {
+    const open = state.cast()
+    if (!open.payload.scores.find((s) => s.robot === open.payload.robot)) {
+      await open.commands?.bid(1)
+      setTimeout(() => {
+        const open = robot1.get()?.as(Auction)
+        open && open.commands?.select(bestRobot(open.payload.scores))
+      }, 5000)
+    }
+  } else if (state.is(DoIt)) {
+    const assigned = state.cast()
+    IamWinner = assigned.payload.winner === assigned.payload.robot
+    if (!IamWinner) break
+    // now we have the order and can start the mission
+  }
+}
+```
+
+The first one is that the accumulated state is inspected in the `state.is(Auction)` case to see whether this particular robot has already provided its bid for the auction.
+If not, it will do so by invoking a command, which will subsequently lead to the emission of a `bid` event and consequently to a new state being emitted from the machine, so a new round through the `for await` loop — this time we’ll find our bid in the list, though.
+
+The second part is that upon registering our bid, we also set a timer to expire after 5sec.
+When that happens we synchronously check the _current_ state of the workflow (since it will have changed, and if some other robot got to this part first, the auction may already be over).
+If the workflow still is in the `Auction` state, we compute the best robot bid (the logic in `bestRobot` is where _your expertise_ would go) and run the `select()` command to emit the corresponding event and end the auction.
+
+The third feature becomes relevant once the auction has ended: we check if our robot is indeed the winner and record that in a variable `IamWinner`, i.e. in the current application in-memory state.
+Then we can use this information in all following states as well.
+
+## Developer support
+
+If you have any questions, suggestions, or just want to chat with other interested folks, you’re welcome to join our discord chat. Please find a current invitation link on [the top right of the Actyx docs page](https://developer.actyx.com/).

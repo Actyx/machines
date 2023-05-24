@@ -18,7 +18,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/Actyx/machines"
+    "url": "git+https://github.com/Actyx/machines.git"
   },
   "files": [
     "./lib/**/*"
