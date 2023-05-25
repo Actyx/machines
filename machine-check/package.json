@@ -1,6 +1,6 @@
 {
   "name": "@actyx/machine-check",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Behavioural typechecking for @actyx/machine-runner machines",
   "repository": "https://github.com/Actyx/machines",
   "author": "Actyx AG",
@@ -8,32 +8,49 @@
     "local-first"
   ],
   "license": "Apache-2.0",
-  "type": "module",
   "files": [
-    "lib/**/*",
-    "pkg/machine*"
+    "lib/**/*"
   ],
-  "main": "./lib/index.js",
+  "type": "module",
+  "main": "./lib/cjs/index.js",
+  "module": "./lib/esm/index.js",
+  "types": "./lib/esm/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./lib/esm/index.js",
+      "require": "./lib/cjs/index.js"
+    }
+  },
   "scripts": {
-    "clean": "rimraf pkg lib",
-    "build:rs": "wasm-pack build --target nodejs --release",
-    "build:ts": "tsc",
+    "clean": "rimraf pkg lib && npm run test:cjs:remove",
+    "build:rs": "wasm-pack build --target nodejs --release && cpy pkg lib",
+    "build:ts": "npm run build:ts:esm && npm run build:ts:cjs",
+    "build:ts:esm": "tsc --build tsconfig.esm.json && cpy package.esm.json lib/esm --rename package.json",
+    "build:ts:cjs": "tsc --build tsconfig.cjs.json && cpy package.cjs.json lib/cjs --rename package.json",
     "build": "npm run build:rs && npm run build:ts",
     "prepack": "npm run clean && npm run build",
-    "test": "jest"
+    "test": "npm run test:esm && npm run test:cjs",
+    "test:esm": "cross-env NODE_OPTIONS=--experimental-vm-modules cross-env jest --config examples/esm/jest.config.ts",
+    "test:cjs": "npm run test:cjs:copy && jest --config examples/cjs/jest.config.ts",
+    "test:cjs:copy": "ts-node-esm scripts/test/cjs-copy.ts",
+    "test:cjs:remove": "ts-node-esm scripts/test/cjs-remove.ts"
   },
   "devDependencies": {
-    "@actyx/machine-runner": "^0.3.1",
+    "@actyx/machine-runner": "^0.4.0",
     "@jest/globals": "^29.5.0",
+    "@types/glob": "^8.1.0",
     "@typescript-eslint/eslint-plugin": "^5.45.0",
     "@typescript-eslint/parser": "^5.45.0",
+    "cpy-cli": "^4.2.0",
     "eslint": "^8.28.0",
     "eslint-config-prettier": "^8.5.0",
     "eslint-plugin-prettier": "^4.2.1",
+    "glob": "^10.2.6",
     "jest": "^29.5.0",
     "prettier": "^2.8.0",
     "rimraf": "^4.4.1",
     "ts-jest": "^29.1.0",
+    "ts-node": "^10.9.1",
     "typescript": "^5.0.2"
   }
 }

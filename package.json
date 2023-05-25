@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "machine-runner:clean-build": "cd machine-runner && npm ci && npm run clean && npm run build && npm run test && npm run lint:strict",
-    "machine-check:clean-build": "cd machine-check && npm ci && npm run clean && npm run build",
+    "machine-check:clean-build": "cd machine-check && npm ci && npm run clean && npm run build && npm run test",
     "machine-visual:clean-build": "cd machine-visual && npm ci && npm run clean && npm run build",
     "dev-example:clean-build": "cd dev-example && npm ci && npm run clean && npm run build && npm run test",
     "clean-build": "npm run machine-runner:clean-build && npm run machine-check:clean-build && npm run machine-visual:clean-build && npm run dev-example:clean-build"

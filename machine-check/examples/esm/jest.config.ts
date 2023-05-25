@@ -1,5 +1,7 @@
-/** @type {import('ts-jest').JestConfigWithTsJest} */
-module.exports = {
+import type { JestConfigWithTsJest } from 'ts-jest'
+
+const jestConfig: JestConfigWithTsJest = {
+  // [...]
   testEnvironment: 'node',
   extensionsToTreatAsEsm: ['.ts'],
   moduleNameMapper: {
@@ -8,13 +10,12 @@ module.exports = {
   transform: {
     // '^.+\\.[tj]sx?$' to process js/ts with `ts-jest`
     // '^.+\\.m?[tj]sx?$' to process js/ts/mjs/mts with `ts-jest`
-    '^.+\\.[jt]sx?$': [
+    '^.+\\.tsx?$': [
       'ts-jest',
       {
         useESM: true,
       },
     ],
   },
-  transformIgnorePatterns: [],
-  roots: ['src', 'examples'],
 }
+export default jestConfig
