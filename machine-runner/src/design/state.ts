@@ -363,6 +363,15 @@ export type StateFactory<
       NextPayload
     >,
   ) => void
+
+  reactIntoSelf: <EventFactoriesChain extends utils.ReadonlyNonZeroTuple<MachineEventFactories>>(
+    eventChainTrigger: EventFactoriesChain,
+    handler: ReactionHandler<
+      MachineEvent.Factory.MapToActyxEvent<EventFactoriesChain>,
+      ReactionContext<StatePayload>,
+      void
+    >,
+  ) => void
 }
 
 export namespace StateFactory {
@@ -419,10 +428,17 @@ export namespace StateFactory {
       mechanism.protocol.reactionMap.add(mechanism, eventChainTrigger, nextFactory, handler as any)
     }
 
+    const reactIntoSelf: Self['reactIntoSelf'] = (eventChainTrigger, handler) =>
+      react(eventChainTrigger, self, (ctx, ...params): StatePayload => {
+        handler(ctx, ...params)
+        return ctx.self
+      })
+
     const make: Self['make'] = (payload) => payload
 
     const self: Self = {
       react,
+      reactIntoSelf,
       make,
       mechanism,
       symbol: () => factorySymbol,
