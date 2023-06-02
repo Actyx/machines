@@ -146,8 +146,12 @@ class Runner<
   }
 
   feed(ev: MachineEvent[], caughtUp: boolean) {
-    if (this.sub.cb === null) throw new Error('not subscribed')
-    return this.sub.cb({
+    const cb = this.sub.cb
+    if (!cb) {
+      console.warn('not subscribed')
+      return
+    }
+    return cb({
       type: MsgType.events,
       caughtUp,
       events: ev.map((payload) => ({
@@ -589,6 +593,23 @@ describe('StateOpaque', () => {
       commands.Y()
 
       r1.assertPersisted(Two.make({ y: 2 }))
+    })
+
+    it('should be ignored when MachineRunner is destroyed', () => {
+      const r1 = new Runner(Initial, { transitioned: false })
+      r1.feed([], true)
+
+      const stateBeforeDestroy = r1.machine.get()
+      const state = stateBeforeDestroy?.as(Initial)
+      const commands = state?.commands
+
+      r1.machine.destroy()
+
+      if (!commands) throw new Unreachable()
+
+      commands.X(...XCommandParam)
+
+      r1.assertPersisted()
     })
 
     it('should be locked after a command issued', async () => {
