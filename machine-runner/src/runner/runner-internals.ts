@@ -14,9 +14,12 @@ import {
 export const CommandFiredAfterLocked: unique symbol = Symbol()
 type CommandFiredAfterLocked = typeof CommandFiredAfterLocked
 
+export const CommandFiredAfterDestroyed: unique symbol = Symbol()
+type CommandFiredAfterDestroyed = typeof CommandFiredAfterDestroyed
+
 export type CommandCallback<MachineEventFactories extends MachineEvent.Factory.Any> = (
   _: MachineEvent.Of<MachineEventFactories>[],
-) => Promise<CommandFiredAfterLocked | Metadata[]>
+) => Promise<CommandFiredAfterDestroyed | CommandFiredAfterLocked | Metadata[]>
 
 export type RunnerInternals<
   SwarmProtocolName extends string,

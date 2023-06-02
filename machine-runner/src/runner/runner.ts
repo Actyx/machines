@@ -21,6 +21,7 @@ import {
 import { Destruction } from '../utils/destruction.js'
 import {
   CommandCallback,
+  CommandFiredAfterDestroyed,
   CommandFiredAfterLocked,
   RunnerInternals,
   StateAndFactory,
@@ -217,7 +218,14 @@ export const createMachineRunnerInternal = <
   type ThisStateOpaque = StateOpaque<SwarmProtocolName, MachineName>
   type ThisMachineRunner = MachineRunner<SwarmProtocolName, MachineName>
 
+  const destruction = Destruction.make()
+
   const internals = RunnerInternals.make(initialFactory, initialPayload, (events) => {
+    if (destruction.isDestroyed()) {
+      console.error('Command issued after destroyed')
+      return Promise.resolve(CommandFiredAfterDestroyed)
+    }
+
     if (internals.commandLock) {
       console.error('Command issued after locked')
       return Promise.resolve(CommandFiredAfterLocked)
@@ -246,8 +254,6 @@ export const createMachineRunnerInternal = <
     emitter.emit('change', ImplStateOpaque.make(internals, internals.current))
     return persistResult
   })
-
-  const destruction = Destruction.make()
 
   // Actyx Subscription management
   const emitter = new EventEmitter() as MachineEmitter<SwarmProtocolName, MachineName>
