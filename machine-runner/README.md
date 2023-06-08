@@ -225,6 +225,35 @@ Instead, each robot independently ensures that after at five seconds a decision 
 Machine runner resolves this conflict by using only the `selected` event that comes first in the Actyx event sort order; in other words, Actyx arbitrarily picks a winner and the losing event is discarded.
 If a robot saw itself winning, started the mission, and then discovers that its win turned out to be invalid, it will have to stop the mission and pick a new one.
 
+## Other Features
+
+### Extra Tags
+
+In the case extra tags are required to be attached in events when invoking commands, extra tags can be registered on a command definition. These extra tags will always be attached when the command is invoked.
+
+```typescript
+// State definition
+export const InitialWarehouse = TransportOrderForWarehouse.designState('Initial')
+  .withPayload<{ id: string }>()
+  .command('request', [requested], (ctx, from: string, to: string) => {
+    ctx.withTags([
+      `transport-order-from:${from}`,
+      `transport-order-to:${to}`
+    ])
+    return [{ id: ctx.self.id, from, to }]
+  })
+  .finish()
+
+// Command call
+// The resulting events will include the extra tags
+// `transport-order-from:${from}`,
+// `transport-order-to:${to}`
+const stateAsInitialWarehouse = state
+  .as(InitialWarehouse)?
+  .commands?
+  .request(from: `source`, to: `destination`);
+```
+
 ## Developer support
 
 If you have any questions, suggestions, or just want to chat with other interested folks, you’re welcome to join our discord chat. Please find a current invitation link on [the top right of the Actyx docs page](https://developer.actyx.com/).
