@@ -1,5 +1,5 @@
 import { MachineEvent } from '../index.js'
-import { CommandDefinerMap, StateFactory } from '../design/state.js'
+import { CommandDefinerMap, Contained, StateFactory } from '../design/state.js'
 import { RunnerInternals } from '../runner/runner-internals.js'
 import { ImplStateOpaque } from '../runner/runner.js'
 
@@ -15,7 +15,7 @@ export const createMockStateOpaque = <
   StateName extends string,
   StatePayload,
   /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
-  Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
+  Commands extends CommandDefinerMap<any, any, Contained.ContainedEvent<MachineEvent.Any>[]>,
 >(
   factory: StateFactory<
     SwarmProtocolName,
@@ -34,7 +34,8 @@ export const createMockStateOpaque = <
       ...internals,
       caughtUp: !options?.disableCommands,
       caughtUpFirstTime: true,
-      commandEmitFn: async (events) => {
+      commandEmitFn: async (containedEvents) => {
+        const events = containedEvents.map(([ev, _extraData]) => ev)
         options?.capturedEvents?.push(...events)
         return []
       },
@@ -50,7 +51,7 @@ export const createMockState = <
   StateName extends string,
   StatePayload,
   /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
-  Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
+  Commands extends CommandDefinerMap<any, any, Contained.ContainedEvent<MachineEvent.Any>[]>,
 >(
   factory: StateFactory<
     SwarmProtocolName,

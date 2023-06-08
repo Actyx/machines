@@ -1,7 +1,7 @@
-import { MsgType } from '@actyx/sdk'
+import { ActyxEvent, MsgType, Tag } from '@actyx/sdk'
 import { MachineEvent } from '../index.js'
 import { MachineRunner, State, SubscribeFn } from '../runner/runner.js'
-import { CommandDefinerMap, StateFactory } from '../design/state.js'
+import { CommandDefinerMap, Contained, StateFactory } from '../design/state.js'
 import { createMachineRunnerInternal } from '../runner/runner.js'
 import { RetvalOrElse } from '../utils/type-utils.js'
 
@@ -79,7 +79,7 @@ type MockMachineRunnerTestUtils<
     N extends string,
     P,
     /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
-    C extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
+    C extends CommandDefinerMap<any, any, Contained.ContainedEvent<MachineEvent.Any>[]>,
     /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
     Then extends (state: State<N, P, C>) => any,
   >(
@@ -123,7 +123,7 @@ export const createMockMachineRunner = <
 
   const delayer = PromiseDelay.make()
   const sub = Subscription.make<MachineEvent.Of<MachineEventFactories>>()
-  const persisted: MachineEvent.Any[] = []
+  const persisted: ActyxEvent<MachineEvent.Any>[] = []
 
   const feed: Self['test']['feed'] = (ev, props) => {
     const caughtUp = props === undefined || props.caughtUp === true
@@ -160,14 +160,24 @@ export const createMockMachineRunner = <
   const machine = createMachineRunnerInternal(
     sub.subscribe,
     async (events) => {
-      persisted.push(...events)
+      const actyxEvents = events.map(
+        ({ event: payload, tags }): ActyxEvent<MachineEvent.Of<MachineEventFactories>> => ({
+          meta: { ...mockMeta(), tags },
+          payload: payload as MachineEvent.Of<MachineEventFactories>,
+        }),
+      )
+      persisted.push(...actyxEvents)
       const pair = delayer.make()
       const retval = pair[0].then(() => {
-        feed(events, { caughtUp: true })
-        return events.map((_) => mockMeta())
+        feed(
+          actyxEvents.map((e) => e.payload),
+          { caughtUp: true },
+        )
+        return actyxEvents.map((e) => e.meta)
       })
       return retval
     },
+    Tag(factory.mechanism.protocol.swarmName),
     factory,
     payload,
   )

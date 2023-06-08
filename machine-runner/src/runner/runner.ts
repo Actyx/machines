@@ -7,6 +7,7 @@ import {
   Metadata,
   MsgType,
   OnCompleteOrErr,
+  TaggedEvent,
   Tags,
 } from '@actyx/sdk'
 import { EventEmitter } from 'events'
@@ -17,6 +18,8 @@ import {
   CommandDefinerMap,
   ToCommandSignatureMap,
   convertCommandMapToCommandSignatureMap,
+  Contained,
+  CommandContext,
 } from '../design/state.js'
 import { Destruction } from '../utils/destruction.js'
 import {
@@ -146,6 +149,29 @@ export namespace MachineRunner {
       : S extends Machine<infer S, infer N, any>
       ? MachineRunner<S, N>
       : never
+
+  export const mergeExtraTags = <E>(
+    tags: Tags<E>,
+    extraData: Contained.ExtraData | null,
+  ): Tags<E> => {
+    const extraTags = extraData?.additionalTags
+    if (!extraTags || extraTags.length === 0) return tags
+    return tags.and(Tags(...extraTags))
+  }
+
+  export const tagContainedEvent = <E extends MachineEvent.Any>(
+    tags: Tags<E>,
+    containedEvent: Contained.ContainedEvent<E>,
+  ) => {
+    const [ev, extraData] = containedEvent
+    const finalTags = mergeExtraTags(tags as Tags<E>, extraData)
+    // NOTE: .map to tag.apply is used instead of tag.apply(...events)
+    // This is to prevent taggedEvents from accidentally returning non-array
+    // TaggedEvents seems to confuse:
+    // 1.) receiving one event
+    // 2.) receiving multiple events
+    return finalTags.apply(ev)
+  }
 }
 
 export type SubscribeFn<E extends MachineEvent.Any> = (
@@ -153,7 +179,11 @@ export type SubscribeFn<E extends MachineEvent.Any> = (
   onCompleteOrErr?: OnCompleteOrErr,
 ) => CancelSubscription
 
-export type PersistFn<E extends MachineEvent.Any> = (events: E[]) => Promise<Metadata[]>
+export type PersistFn<E extends MachineEvent.Any> = (
+  events: Contained.ContainedEvent<E>[],
+) => Promise<Metadata[]>
+
+type PublishFn = (events: TaggedEvent[]) => Promise<Metadata[]>
 
 /**
  * @param sdk - An instance of Actyx.
@@ -188,12 +218,12 @@ export const createMachineRunner = <
     attemptStartFrom: { from: {}, latestEventKey: EventKey.zero },
   }
 
-  const persist: PersistFn<MachineEvents> = (e) => sdk.publish(tags.apply(...e))
+  const persist: PublishFn = (e) => sdk.publish(e)
 
   const subscribe: SubscribeFn<MachineEvents> = (callback, onCompleteOrErr) =>
     sdk.subscribeMonotonic<MachineEvents>(subscribeMonotonicQuery, callback, onCompleteOrErr)
 
-  return createMachineRunnerInternal(subscribe, persist, initialFactory, initialPayload)
+  return createMachineRunnerInternal(subscribe, persist, tags, initialFactory, initialPayload)
 }
 
 export const createMachineRunnerInternal = <
@@ -204,7 +234,8 @@ export const createMachineRunnerInternal = <
   MachineEvents extends MachineEvent.Any = MachineEvent.Of<MachineEventFactories>,
 >(
   subscribe: SubscribeFn<MachineEvents>,
-  persist: PersistFn<MachineEvents>,
+  publish: PublishFn,
+  tags: Tags,
   initialFactory: StateFactory<
     SwarmProtocolName,
     MachineName,
@@ -219,6 +250,13 @@ export const createMachineRunnerInternal = <
   type ThisMachineRunner = MachineRunner<SwarmProtocolName, MachineName>
 
   const destruction = Destruction.make()
+
+  const persist: PersistFn<MachineEvents> = (containedEvents) => {
+    const taggedEvents = containedEvents.map((containedEvent) =>
+      MachineRunner.tagContainedEvent(tags as Tags<MachineEvents>, containedEvent),
+    )
+    return publish(taggedEvents)
+  }
 
   const internals = RunnerInternals.make(initialFactory, initialPayload, (events) => {
     if (destruction.isDestroyed()) {
@@ -551,7 +589,11 @@ export interface StateOpaque<
   MachineName extends string,
   StateName extends string = string,
   Payload = unknown,
-  Commands extends CommandDefinerMap<object, any, MachineEvent.Any[]> = object,
+  Commands extends CommandDefinerMap<
+    object,
+    any,
+    Contained.ContainedEvent<MachineEvent.Any>[]
+  > = object,
 > extends StateRaw<StateName, Payload> {
   /**
    * Checks if the StateOpaque's type equals to the StateFactory's type.
@@ -571,7 +613,11 @@ export interface StateOpaque<
     DeduceMachineName extends MachineName,
     DeduceStateName extends string,
     DeducePayload,
-    DeduceCommands extends CommandDefinerMap<object, any, MachineEvent.Any[]> = object,
+    DeduceCommands extends CommandDefinerMap<
+      object,
+      any,
+      Contained.ContainedEvent<MachineEvent.Any>[]
+    > = object,
   >(
     factory: StateFactory<
       SwarmProtocolName,
@@ -622,7 +668,7 @@ export interface StateOpaque<
     DeduceMachineName extends MachineName,
     StateName extends string,
     StatePayload extends any,
-    Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
+    Commands extends CommandDefinerMap<any, any, Contained.ContainedEvent<MachineEvent.Any>[]>,
   >(
     factory: StateFactory<
       SwarmProtocolName,
@@ -668,7 +714,7 @@ export interface StateOpaque<
     DeduceFactories extends MachineEvent.Factory.Any,
     StateName extends string,
     StatePayload extends any,
-    Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
+    Commands extends CommandDefinerMap<any, any, Contained.ContainedEvent<MachineEvent.Any>[]>,
     Then extends (arg: State<StateName, StatePayload, Commands>) => any,
   >(
     factory: StateFactory<
@@ -772,7 +818,7 @@ export namespace ImplStateOpaque {
     const as: ThisStateOpaque['as'] = <
       StateName extends string,
       StatePayload,
-      Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
+      Commands extends CommandDefinerMap<any, any, Contained.ContainedEvent<MachineEvent.Any>[]>,
     >(
       factory: StateFactory<SwarmProtocolName, MachineName, any, StateName, StatePayload, Commands>,
       then?: any,
@@ -826,7 +872,7 @@ export namespace ImplStateOpaque {
 export type State<
   StateName extends string,
   StatePayload,
-  Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
+  Commands extends CommandDefinerMap<any, any, Contained.ContainedEvent<MachineEvent.Any>[]>,
 > = StateRaw<StateName, StatePayload> & {
   /**
    * A dictionary containing commands previously registered during the State
@@ -843,14 +889,22 @@ export type State<
    * a promise that is resolved when persisting is successful and rejects when
    * persisting is failed.
    */
-  commands?: ToCommandSignatureMap<Commands, any, MachineEvent.Any[]>
+  commands?: CommandsOfState<Commands>
 }
+
+type CommandsOfState<
+  Commands extends CommandDefinerMap<any, any, Contained.ContainedEvent<MachineEvent.Any>[]>,
+> = ToCommandSignatureMap<Commands, any, Contained.ContainedEvent<MachineEvent.Any>[]>
 
 /**
  * A collection of type utilities around the State.
  */
 export namespace State {
-  export type Minim = State<string, any, CommandDefinerMap<any, any, MachineEvent.Any>>
+  export type Minim = State<
+    string,
+    any,
+    CommandDefinerMap<any, any, Contained.ContainedEvent<MachineEvent.Any>[]>
+  >
 
   export type NameOf<T extends State.Minim> = T extends State<infer Name, any, any> ? Name : never
 
@@ -892,7 +946,7 @@ namespace ImplState {
     MachineEventFactories extends MachineEvent.Factory.Any,
     StateName extends string,
     StatePayload extends any,
-    Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
+    Commands extends CommandDefinerMap<any, any, Contained.ContainedEvent<MachineEvent.Any>[]>,
   >({
     factory,
     isExpired,
@@ -912,29 +966,68 @@ namespace ImplState {
     commandEnabledAtSnapshot: boolean
     commandEmitFn: CommandCallback<MachineEventFactories>
     stateAtSnapshot: StateRaw<StateName, StatePayload>
-  }) => {
+  }): State<StateName, StatePayload, Commands> => {
     const mechanism = factory.mechanism
     const commands = commandEnabledAtSnapshot
-      ? convertCommandMapToCommandSignatureMap<
-          any,
-          StatePayload,
-          MachineEvent.Of<MachineEventFactories>
-        >(mechanism.commands, {
+      ? makeCommandsOfState({
+          mechanismCommands: mechanism.commands,
+          stateAtSnapshot,
           isExpired,
-          getActualContext: () => ({
-            self: stateAtSnapshot.payload,
-          }),
-          onReturn: async (events) => {
-            await commandEmitFn(events)
-          },
+          commandEmitFn,
         })
       : undefined
 
     const snapshot = {
+      type: stateAtSnapshot.type,
       payload: stateAtSnapshot.payload,
-      type: stateAtSnapshot.payload,
       commands,
     }
+
     return snapshot
   }
+
+  const makeCommandsOfState = <
+    MachineEventFactories extends MachineEvent.Factory.Any,
+    StateName extends string,
+    StatePayload extends any,
+    Commands extends CommandDefinerMap<any, any, Contained.ContainedEvent<MachineEvent.Any>[]>,
+  >({
+    mechanismCommands,
+    isExpired,
+    commandEmitFn,
+    stateAtSnapshot,
+  }: {
+    mechanismCommands: Commands
+    stateAtSnapshot: StateRaw<StateName, StatePayload>
+    isExpired: () => boolean
+    commandEmitFn: CommandCallback<MachineEventFactories>
+  }): CommandsOfState<Commands> => {
+    const commandCalls: ToCommandSignatureMap<
+      Commands,
+      any,
+      Contained.ContainedEvent<MachineEvent.Any>[]
+    > = convertCommandMapToCommandSignatureMap<
+      any,
+      CommandContext<StatePayload, MachineEvent.Factory.Any>,
+      Contained.ContainedEvent<MachineEvent.Of<MachineEventFactories>>[]
+    >(mechanismCommands, {
+      isExpired,
+      getActualContext: () => makeContextGetter(stateAtSnapshot),
+      onReturn: async (events) => {
+        await commandEmitFn(events)
+      },
+    })
+
+    return commandCalls
+  }
+
+  const makeContextGetter = <StateName extends string, StatePayload extends any>(
+    stateAtSnapshot: StateRaw<StateName, StatePayload>,
+  ): Readonly<CommandContext<StatePayload, MachineEvent.Factory.Any>> => ({
+    self: stateAtSnapshot.payload,
+    withTags: (additionalTags, payload) =>
+      Contained.ContainedPayload.wrap(payload, {
+        additionalTags,
+      }),
+  })
 }

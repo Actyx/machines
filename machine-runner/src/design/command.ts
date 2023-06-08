@@ -1,5 +1,3 @@
-import { DeepReadonly } from '../utils/type-utils.js'
-
 /**
  * DO NOT CHANGE `any` usage in this file! TypeScript's behavior towards extends
  * `any` is completely different than `object`. `any` here tells TypeScript that
@@ -9,12 +7,8 @@ import { DeepReadonly } from '../utils/type-utils.js'
  * Changing some of them to unknown or object will cause issues.
  */
 
-export type CommandContext<Self> = {
-  self: Self
-}
-
-export type CommandDefiner<Self, Args extends unknown[], Retval> = (
-  context: CommandContext<DeepReadonly<Self>>,
+export type CommandDefiner<Context, Args extends unknown[], Retval> = (
+  context: Context,
   ...args: Args
 ) => Retval
 
@@ -55,10 +49,10 @@ export type ToCommandSignatureMap<
  * the latest mutable property in case the property turns out to be a
  * non-reference/primitives
  */
-export type ActualContextGetter<Self> = () => Readonly<CommandContext<DeepReadonly<Self>>>
+export type ActualContextGetter<Context> = () => Readonly<Context>
 
-export type ConvertCommandMapParams<Self, RetVal> = {
-  getActualContext: ActualContextGetter<Self>
+export type ConvertCommandMapParams<Context, RetVal> = {
+  getActualContext: ActualContextGetter<Context>
   onReturn: (retval: RetVal) => Promise<void>
   /**
    * isExpired is intended to flag if a snapshot that owns the reference to a
@@ -69,11 +63,11 @@ export type ConvertCommandMapParams<Self, RetVal> = {
 
 export const convertCommandMapToCommandSignatureMap = <
   T extends CommandDefinerMap<object, unknown[], RetVal>,
-  Self,
+  Context,
   RetVal,
 >(
   t: T,
-  params: ConvertCommandMapParams<Self, RetVal>,
+  params: ConvertCommandMapParams<Context, RetVal>,
 ): ToCommandSignatureMap<T, unknown[], RetVal> => {
   return Object.fromEntries(
     Object.entries(t).map(([key, definer]) => {
@@ -82,9 +76,9 @@ export const convertCommandMapToCommandSignatureMap = <
   ) as ToCommandSignatureMap<T, unknown[], RetVal>
 }
 
-export const convertCommandDefinerToCommandSignature = <Self, Args extends unknown[], RetVal>(
-  definer: CommandDefiner<Self, Args, RetVal>,
-  { getActualContext, onReturn, isExpired }: ConvertCommandMapParams<Self, RetVal>,
+export const convertCommandDefinerToCommandSignature = <Context, Args extends unknown[], RetVal>(
+  definer: CommandDefiner<Context, Args, RetVal>,
+  { getActualContext, onReturn, isExpired }: ConvertCommandMapParams<Context, RetVal>,
 ): CommandSignature<Args> => {
   return (...args: Args) => {
     if (isExpired()) {

@@ -2,7 +2,7 @@
 import { ActyxEvent, Metadata } from '@actyx/sdk'
 import { deepCopy } from '../utils/object-utils.js'
 import { CommandDefinerMap } from '../design/command.js'
-import { MachineEvent } from '../design/event.js'
+import { Contained, MachineEvent } from '../design/event.js'
 import {
   Reaction,
   ReactionContext,
@@ -18,7 +18,7 @@ export const CommandFiredAfterDestroyed: unique symbol = Symbol()
 type CommandFiredAfterDestroyed = typeof CommandFiredAfterDestroyed
 
 export type CommandCallback<MachineEventFactories extends MachineEvent.Factory.Any> = (
-  _: MachineEvent.Of<MachineEventFactories>[],
+  _: Contained.ContainedEvent<MachineEvent.Of<MachineEventFactories>>[],
 ) => Promise<CommandFiredAfterDestroyed | CommandFiredAfterLocked | Metadata[]>
 
 export type RunnerInternals<
@@ -27,7 +27,7 @@ export type RunnerInternals<
   MachineEventFactories extends MachineEvent.Factory.Any,
   StateName extends string,
   StatePayload,
-  Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
+  Commands extends CommandDefinerMap<any, any, Contained.ContainedEvent<MachineEvent.Any>[]>,
 > = {
   caughtUpFirstTime: boolean
   caughtUp: boolean
@@ -63,7 +63,7 @@ export namespace RunnerInternals {
     MachineEventFactories extends MachineEvent.Factory.Any,
     StateName extends string,
     StatePayload extends any,
-    Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
+    Commands extends CommandDefinerMap<any, any, Contained.ContainedEvent<MachineEvent.Any>[]>,
   >(
     factory: StateFactory<
       SwarmProtocolName,
@@ -217,7 +217,7 @@ export type StateAndFactory<
   MachineEventFactories extends MachineEvent.Factory.Any,
   StateName extends string,
   StatePayload extends any,
-  Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
+  Commands extends CommandDefinerMap<any, any, Contained.ContainedEvent<MachineEvent.Any>[]>,
 > = {
   factory: StateFactory<
     SwarmProtocolName,

@@ -2,10 +2,22 @@
 import { ActyxEvent } from '@actyx/sdk'
 import * as utils from '../utils/type-utils.js'
 import { CommandDefiner, CommandDefinerMap } from './command.js'
-import { MachineEvent } from './event.js'
+import { Contained, MachineEvent } from './event.js'
 
 export * from './command.js'
 export * from './event.js'
+
+export type CommandContext<Self, EmittedEventFactories extends MachineEvent.Factory.Any> = {
+  self: Self
+  /**
+   * Attach tags to MachineEvents associated to this command
+   * @param tags the tags that will be attached to the MachineEvents
+   */
+  withTags: <InputPayload extends MachineEvent.Payload.Of<EmittedEventFactories>>(
+    tags: string[],
+    payload: InputPayload,
+  ) => Contained.ContainedPayload<InputPayload>
+}
 
 /**
  * @private not intended for use outside of actyx packages.
@@ -111,7 +123,11 @@ export type StateMechanism<
   MachineEventFactories extends MachineEvent.Factory.Any,
   StateName extends string,
   StatePayload,
-  Commands extends CommandDefinerMap<object, unknown[], MachineEvent.Any[]>,
+  Commands extends CommandDefinerMap<
+    object,
+    unknown[],
+    Contained.ContainedEvent<MachineEvent.Any>[]
+  >,
 > = {
   readonly protocol: MachineProtocol<SwarmProtocolName, MachineName, MachineEventFactories>
   readonly name: StateName
@@ -149,9 +165,9 @@ export type StateMechanism<
     name: CommandName extends `_${string}` ? never : CommandName,
     events: EmittedEventFactories,
     handler: CommandDefiner<
-      StatePayload,
+      CommandContext<StatePayload, MachineEvent.Factory.Reduce<EmittedEventFactories>>,
       CommandArgs,
-      MachineEvent.Factory.MapToPayload<EmittedEventFactories>
+      MachineEvent.Factory.MapToPayloadOrContainedPayload<EmittedEventFactories>
     >,
   ) => StateMechanism<
     SwarmProtocolName,
@@ -161,9 +177,9 @@ export type StateMechanism<
     StatePayload,
     Commands & {
       [key in CommandName]: CommandDefiner<
-        StatePayload,
+        CommandContext<StatePayload, MachineEvent.Factory.Reduce<EmittedEventFactories>>,
         CommandArgs,
-        MachineEvent.Factory.MapToPayload<EmittedEventFactories>
+        MachineEvent.Factory.MapToPayloadOrContainedPayload<EmittedEventFactories>
       >
     }
   >
@@ -190,7 +206,7 @@ export namespace StateMechanism {
     MachineEventFactories extends MachineEvent.Factory.Any,
     StateName extends string,
     StatePayload,
-    Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
+    Commands extends CommandDefinerMap<any, any, Contained.ContainedEvent<MachineEvent.Any>[]>,
   >(
     protocol: MachineProtocol<SwarmProtocolName, MachineName, MachineEventFactories>,
     stateName: StateName,
@@ -233,11 +249,16 @@ export namespace StateMechanism {
         // Payload is either 0 or factories.length. Therefore converting
         // payload to event this way is safe-ish
         const payloads = commandDefinition(...params)
-        const events = payloads.map((payload, index) => {
-          const factory = factories[index]
-          const event = factory.make(payload)
-          return event
-        })
+        const events = payloads.map(
+          (payloadOrContainedPayload, index): Contained.ContainedEvent<MachineEvent.Any> => {
+            const factory = factories[index]
+
+            const [payload, extraData] =
+              Contained.ContainedPayload.extract(payloadOrContainedPayload)
+
+            return [factory.make(payload), extraData]
+          },
+        )
 
         return events
       }
@@ -306,7 +327,7 @@ export type StateFactory<
   MachineEventFactories extends MachineEvent.Factory.Any,
   StateName extends string,
   StatePayload,
-  Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
+  Commands extends CommandDefinerMap<any, any, Contained.ContainedEvent<MachineEvent.Any>[]>,
 > = {
   /**
    * Helper to create a state payload to match the constraint of the state type.
@@ -372,7 +393,7 @@ export namespace StateFactory {
     MachineEvent.Factory.Any,
     string,
     any[],
-    CommandDefinerMap<any, any, MachineEvent.Any[]>
+    CommandDefinerMap<any, any, Contained.ContainedEvent<MachineEvent.Any>[]>
   >
   export type Any = StateFactory<any, any, any, any, any, any>
 
@@ -393,7 +414,7 @@ export namespace StateFactory {
     MachineEventFactories extends MachineEvent.Factory.Any,
     StateName extends string,
     StatePayload,
-    Commands extends CommandDefinerMap<any, any, MachineEvent.Any[]>,
+    Commands extends CommandDefinerMap<any, any, Contained.ContainedEvent<MachineEvent.Any>[]>,
   >(
     mechanism: StateMechanism<
       SwarmProtocolName,

@@ -71,11 +71,7 @@ describe('State mocking', () => {
   })
 
   it('should support state mocking with command disablement', () => {
-    const state = createMockState(
-      Passenger.Ride,
-      { taxiID: 'someTaxiID' },
-      { disableCommands: true },
-    )
+    const state = createMockState(Passenger.Ride, { taxiID: 'someTaxiID' }, { disableCommands: true })
     expect(isTaxiRideCancelEnabled(state)).toBe(false)
   })
 

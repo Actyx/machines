@@ -205,6 +205,25 @@ export namespace MachineEvent {
       : ACC
 
     /**
+     * Turns a subtype of MachineEvent.Factory.Any[] into ContainedPayload<Payload>[].
+     * @example
+     * MachineEvent.Factory.MapToContainedPayload<[A,B]>
+     * // where A and B are MachineEvent.Factory
+     * // results in [ContainedPayload<MachineEvent.Payload.Of<A>>, ContainedPayload<MachineEvent.Payload.Of<B>>]
+     */
+    export type MapToPayloadOrContainedPayload<
+      T extends Readonly<Factory.Any[]>,
+      ACC extends object[] = [],
+    > = T extends Readonly<
+      [Factory<any, infer Payload>, ...infer Rest extends Readonly<Factory.Any[]>]
+    >
+      ? MapToPayloadOrContainedPayload<
+          Rest,
+          [...ACC, Contained.ContainedPayload<Payload> | Payload]
+        >
+      : ACC
+
+    /**
      * Reduces a subtype of MachineEvent.Factory.Any[] into union of its members.
      * @example
      * MachineEvent.Factory.Reduce<[A,B]>
@@ -219,5 +238,57 @@ export namespace MachineEvent {
     >
       ? Reduce<Rest, UNION | Factory<Key, Payload>>
       : UNION
+  }
+}
+
+/**
+ * Container of event and payload bound to extra data.
+ */
+export namespace Contained {
+  const Marker = Symbol()
+  type Marker = typeof Marker
+
+  /**
+   * Extra data that can be bound to event/payload.
+   */
+  export type ExtraData = { additionalTags: string[] }
+
+  /**
+   * Event bound to ExtraData.
+   */
+  export type ContainedEvent<E extends MachineEvent.Any> = [E, ExtraData | null]
+
+  /**
+   * Payload bound to ExtraData. ContainedPayload is differentiated from
+   * ordinary payload by a unique marker.
+   */
+  export type ContainedPayload<P extends object> = [Marker, P, ExtraData]
+
+  /**
+   * Utilities around ContainedPayload
+   */
+  export namespace ContainedPayload {
+    /**
+     * Wraps payload into a ContainedPayload
+     */
+    export const wrap = <P extends object>(p: P, extraData: ExtraData): ContainedPayload<P> => [
+      Marker,
+      p,
+      extraData,
+    ]
+
+    /**
+     * Identify input whether it is a ContainedPayload or not. Returns payload
+     * and possibly an ExtraData if input is a ContainedPayload
+     */
+    export const extract = <P extends object>(
+      input: ContainedPayload<P> | P,
+    ): [P, ExtraData | null] => {
+      if (0 in input && input[0] === Marker) {
+        return [input[1], input[2]]
+      }
+
+      return [input as P, null]
+    }
   }
 }

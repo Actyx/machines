@@ -1,4 +1,4 @@
-import { ActyxEvent, MsgType, Tags } from '@actyx/sdk'
+import { ActyxEvent, MsgType, Tag, Tags } from '@actyx/sdk'
 import { describe, expect, it } from '@jest/globals'
 import {
   createMachineRunner,
@@ -84,7 +84,7 @@ class Runner<
   Payload,
   MachineEvent extends MachineEvent.Any = MachineEvent.Of<MachineEventFactories>,
 > {
-  private persisted: MachineEvent.Any[] = []
+  private persisted: ActyxEvent<MachineEvent.Any>[] = []
   private unhandled: MachineEvent.Any[] = []
   private caughtUpHistory: StateOpaque<SwarmProtocolName, MachineName>[] = []
   private stateChangeHistory: {
@@ -104,14 +104,24 @@ class Runner<
     const machine = createMachineRunnerInternal(
       this.sub.subscribe,
       async (events) => {
-        this.persisted.push(...events)
+        const actyxEvents = events.map(
+          ({ event: payload, tags }): ActyxEvent<MachineEvent.Of<MachineEventFactories>> => ({
+            meta: { ...mockMeta(), tags },
+            payload: payload as MachineEvent.Of<MachineEventFactories>,
+          }),
+        )
+        this.persisted.push(...actyxEvents)
         const pair = this.delayer.make()
         const retval = pair[0].then(() => {
-          this.feed(events, true)
-          return events.map((_) => mockMeta())
+          this.feed(
+            actyxEvents.map((e) => e.payload),
+            true,
+          )
+          return actyxEvents.map((e) => e.meta)
         })
         return retval
       },
+      Tag(factory.mechanism.protocol.swarmName),
       factory,
       payload,
     )
@@ -244,8 +254,13 @@ class Runner<
     }
   }
 
-  assertPersisted(...e: MachineEvent[]) {
-    expect(this.persisted).toEqual(e)
+  assertPersistedAsMachineEvent(...e: MachineEvent[]) {
+    expect(this.persisted.map((e) => e.payload)).toEqual(e)
+    this.persisted.length = 0
+  }
+
+  assertPersistedWithFn(fn: (events: ActyxEvent<MachineEvent.Any>[]) => void) {
+    fn([...this.persisted])
     this.persisted.length = 0
   }
 }
@@ -572,14 +587,14 @@ describe('StateOpaque', () => {
       const stateBeforeExpiry = r1.machine.get()?.as(Initial)
       if (!stateBeforeExpiry) throw new Unreachable()
 
-      r1.assertPersisted()
+      r1.assertPersistedAsMachineEvent()
 
       // Expire here by transforming it
       r1.feed([One.make({ x: 1 }), Two.make({ y: 1 })], true)
 
       expect(stateBeforeExpiry.commands).toBeTruthy()
       // Persisted should be 0
-      r1.assertPersisted()
+      r1.assertPersistedAsMachineEvent()
 
       const stateAfterExpiry = r1.machine.get()?.as(Second)
       if (!stateAfterExpiry) throw new Unreachable()
@@ -592,7 +607,7 @@ describe('StateOpaque', () => {
       // should persist Two.make({ y: 2 })
       commands.Y()
 
-      r1.assertPersisted(Two.make({ y: 2 }))
+      r1.assertPersistedAsMachineEvent(Two.make({ y: 2 }))
     })
 
     it('should be ignored when MachineRunner is destroyed', () => {
@@ -609,7 +624,7 @@ describe('StateOpaque', () => {
 
       commands.X(...XCommandParam)
 
-      r1.assertPersisted()
+      r1.assertPersistedAsMachineEvent()
     })
 
     it('should be locked after a command issued', async () => {
@@ -622,17 +637,17 @@ describe('StateOpaque', () => {
 
       await r1.toggleCommandDelay({ delaying: true })
       commands.X(...XCommandParam)
-      r1.assertPersisted(One.make({ x: 42 }))
+      r1.assertPersistedAsMachineEvent(One.make({ x: 42 }))
 
       // subsequent command call is not issued
       commands.X(...XCommandParam)
-      r1.assertPersisted()
+      r1.assertPersistedAsMachineEvent()
 
       await r1.toggleCommandDelay({ delaying: false })
 
       // subsequent command call is not issued
       commands.X(...XCommandParam)
-      r1.assertPersisted()
+      r1.assertPersistedAsMachineEvent()
     })
 
     it('should be unlocked after previous command is rejected', async () => {
@@ -647,12 +662,12 @@ describe('StateOpaque', () => {
 
       let rejectionSwitch1 = false
       commands.X(...XCommandParam).catch(() => (rejectionSwitch1 = true))
-      r1.assertPersisted(One.make({ x: 42 }))
+      r1.assertPersistedAsMachineEvent(One.make({ x: 42 }))
 
       // subsequent command call is not issued
       let rejectionSwitch2 = false
       commands.X(...XCommandParam).catch(() => (rejectionSwitch2 = true))
-      r1.assertPersisted()
+      r1.assertPersistedAsMachineEvent()
 
       await r1.toggleCommandDelay({ delaying: false, reject: true })
 
@@ -661,7 +676,7 @@ describe('StateOpaque', () => {
 
       // subsequent command after previous rejection is issued
       commands.X(...XCommandParam)
-      r1.assertPersisted(One.make({ x: 42 }))
+      r1.assertPersistedAsMachineEvent(One.make({ x: 42 }))
     })
 
     it('should be unlocked after state-change', async () => {
@@ -675,11 +690,11 @@ describe('StateOpaque', () => {
         if (!snapshot || !commands) throw new Unreachable()
 
         commands.X(...XCommandParam)
-        r1.assertPersisted(One.make({ x: 42 }))
+        r1.assertPersistedAsMachineEvent(One.make({ x: 42 }))
 
         // subsequent command call is not issued
         commands.X(...XCommandParam)
-        r1.assertPersisted()
+        r1.assertPersistedAsMachineEvent()
       })()
 
       // disable delay here, let all promise runs
@@ -691,8 +706,44 @@ describe('StateOpaque', () => {
         if (!snapshot) throw new Unreachable()
         // subsequent command call is not issued
         snapshot.commands?.Y()
-        r1.assertPersisted(Two.make({ y: 2 }))
+        r1.assertPersistedAsMachineEvent(Two.make({ y: 2 }))
       })()
+    })
+
+    describe('additional tags', () => {
+      const ToggleOn = MachineEvent.design('ToggleOn').withoutPayload()
+      const ToggleOff = MachineEvent.design('ToggleOff').withoutPayload()
+
+      const protocol = SwarmProtocol.make('switch', [ToggleOn, ToggleOff])
+
+      const machine = protocol.makeMachine('switch')
+
+      type StatePayload = { toggleCount: number }
+      const On = machine
+        .designState('On')
+        .withPayload<StatePayload>()
+        .command('off', [ToggleOff], ({ withTags }) => [
+          withTags(['extra-tag-off'], ToggleOff.make({})),
+        ])
+        .finish()
+      const Off = machine
+        .designState('Off')
+        .withPayload<StatePayload>()
+        .command('on', [ToggleOn], () => [ToggleOn.make({})])
+        .finish()
+
+      On.react([ToggleOff], Off, (context) => ({ toggleCount: context.self.toggleCount + 1 }))
+      Off.react([ToggleOn], On, (context) => ({ toggleCount: context.self.toggleCount + 1 }))
+
+      it('should support additional tags via command definition', () => {
+        const r1 = new Runner(On, { toggleCount: 0 })
+        r1.feed([], true)
+
+        r1.machine.get()?.as(On)?.commands?.off()
+        r1.assertPersistedWithFn(([ev]) => {
+          expect(ev.meta.tags.includes('extra-tag-off')).toBe(true)
+        })
+      })
     })
   })
 
