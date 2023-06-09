@@ -1,7 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { ActyxEvent, Metadata } from '@actyx/sdk'
 import { deepCopy } from '../utils/object-utils.js'
-import { CommandDefinerMap } from '../design/command.js'
+import {
+  CommandDefinerMap,
+  CommandFiredAfterDestroyed,
+  CommandFiredAfterLocked,
+} from '../design/command.js'
 import { Contained, MachineEvent } from '../design/event.js'
 import {
   Reaction,
@@ -10,12 +14,6 @@ import {
   StateRaw,
   StateFactory,
 } from '../design/state.js'
-
-export const CommandFiredAfterLocked: unique symbol = Symbol()
-type CommandFiredAfterLocked = typeof CommandFiredAfterLocked
-
-export const CommandFiredAfterDestroyed: unique symbol = Symbol()
-type CommandFiredAfterDestroyed = typeof CommandFiredAfterDestroyed
 
 export type CommandCallback<MachineEventFactories extends MachineEvent.Factory.Any> = (
   _: Contained.ContainedEvent<MachineEvent.Of<MachineEventFactories>>[],

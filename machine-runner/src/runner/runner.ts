@@ -18,17 +18,13 @@ import {
   CommandDefinerMap,
   ToCommandSignatureMap,
   convertCommandMapToCommandSignatureMap,
+  CommandFiredAfterDestroyed,
+  CommandFiredAfterLocked,
   Contained,
   CommandContext,
 } from '../design/state.js'
 import { Destruction } from '../utils/destruction.js'
-import {
-  CommandCallback,
-  CommandFiredAfterDestroyed,
-  CommandFiredAfterLocked,
-  RunnerInternals,
-  StateAndFactory,
-} from './runner-internals.js'
+import { CommandCallback, RunnerInternals, StateAndFactory } from './runner-internals.js'
 import { MachineEmitter, MachineEmitterEventMap } from './runner-utils.js'
 import { Machine, SwarmProtocol } from '../design/protocol.js'
 import { NOP } from '../utils/misc.js'
@@ -260,12 +256,10 @@ export const createMachineRunnerInternal = <
 
   const internals = RunnerInternals.make(initialFactory, initialPayload, (events) => {
     if (destruction.isDestroyed()) {
-      console.error('Command issued after destroyed')
       return Promise.resolve(CommandFiredAfterDestroyed)
     }
 
     if (internals.commandLock) {
-      console.error('Command issued after locked')
       return Promise.resolve(CommandFiredAfterLocked)
     }
 
@@ -1013,9 +1007,7 @@ namespace ImplState {
     >(mechanismCommands, {
       isExpired,
       getActualContext: () => makeContextGetter(stateAtSnapshot),
-      onReturn: async (events) => {
-        await commandEmitFn(events)
-      },
+      onReturn: commandEmitFn,
     })
 
     return commandCalls

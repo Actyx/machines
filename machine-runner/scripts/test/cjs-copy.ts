@@ -9,7 +9,10 @@ const createNotice = ({ sourcePath }: { sourcePath: string }) =>
 // ${sourcePath} 
 `.trim() + '\n\n'
 
-globSync(`${TEST_ESM_DIR}/**/*${TEST_FILE_EXTENSION}`).forEach((sourcePath) => {
+globSync(`${TEST_ESM_DIR}/**/*${TEST_FILE_EXTENSION}`, {
+  ignore: ['**/jest.config.ts'],
+}).forEach((sourcePath) => {
+  console.log(sourcePath)
   const destinationPath = path.resolve(TEST_CJS_DIR, path.basename(sourcePath))
 
   let content = fs.readFileSync(sourcePath, 'utf8')
@@ -17,6 +20,7 @@ globSync(`${TEST_ESM_DIR}/**/*${TEST_FILE_EXTENSION}`).forEach((sourcePath) => {
     /from '..\/..\/lib\/esm\/(.*).js'/gi,
     (_, p1) => `from '../../lib/cjs/${p1}'`,
   )
+  content = content.replace(/from '.\/(.*).js'/gi, (_, p1) => `from './${p1}'`)
   content = `${createNotice({ sourcePath })}${content}`
 
   fs.writeFileSync(destinationPath, content, 'utf8')

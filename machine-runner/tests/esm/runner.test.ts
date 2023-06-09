@@ -22,58 +22,14 @@ import {
 } from '../../lib/esm/utils/type-utils.js'
 import { MachineAnalysisResource } from '../../lib/esm/design/protocol.js'
 import { PromiseDelay, Subscription, mockMeta } from '../../lib/esm/test-utils/mock-runner.js'
+import * as ProtocolSwitch from './protocol-switch.js'
+import * as ProtocolOneTwo from './protocol-one-two.js'
 
 class Unreachable extends Error {
   constructor() {
     super('should be unreachable')
   }
 }
-
-// Event definitions
-
-const One = MachineEvent.design('One').withPayload<{ x: number }>()
-const Two = MachineEvent.design('Two').withPayload<{ y: number }>()
-
-// Machine and States
-
-const protocol = SwarmProtocol.make('TestSwarm', [One, Two])
-
-const machine = protocol.makeMachine('TestMachine')
-
-const XCommandParam = [true, 1, '', { specificField: 'literal-a' }, Symbol()] as const
-const Initial = machine
-  .designState('Initial')
-  .withPayload<{ transitioned: boolean }>()
-  .command(
-    'X',
-    [One],
-    // Types below are used for type tests
-    (
-      context,
-      _supposedBoolean: boolean,
-      _supposedNumber: number,
-      _supposedString: string,
-      _supposedObject: { specificField: 'literal-a' },
-      _supposedSymbol: symbol,
-    ) => [One.make({ x: 42 })],
-  )
-  .finish()
-
-const Second = machine
-  .designState('Second')
-  .withPayload<{ x: number; y: number }>()
-  .command('Y', [Two], () => [Two.make({ y: 2 })])
-  .finish()
-
-// Reactions
-
-Initial.react([One, Two], Second, (c, one, two) => {
-  c.self.transitioned = true
-  return Second.make({
-    x: one.payload.x,
-    y: two.payload.y,
-  })
-})
 
 // Mock Runner
 
@@ -266,6 +222,9 @@ class Runner<
 }
 
 describe('machine runner', () => {
+  const { Events, Initial, Second } = ProtocolOneTwo
+  const { One, Two } = Events
+
   it('should emit initial state', () => {
     const r = new Runner(Initial, { transitioned: false })
 
@@ -350,18 +309,8 @@ describe('machine runner', () => {
 })
 
 describe('machine as async generator', () => {
-  const Toggle = MachineEvent.design('Toggle').withoutPayload()
-
-  const protocol = SwarmProtocol.make('switch', [Toggle])
-
-  const machine = protocol.makeMachine('switch')
-
-  type StatePayload = { toggleCount: number }
-  const On = machine.designState('On').withPayload<StatePayload>().finish()
-  const Off = machine.designState('Off').withPayload<StatePayload>().finish()
-
-  On.react([Toggle], Off, ({ self }) => ({ toggleCount: self.toggleCount + 1 }))
-  Off.react([Toggle], On, ({ self }) => ({ toggleCount: self.toggleCount + 1 }))
+  const { On, Off } = ProtocolSwitch
+  const { ToggleOff, ToggleOn } = ProtocolSwitch.Events
 
   it('should not yield snapshot if destroyed', async () => {
     const r1 = new Runner(On, { toggleCount: 0 })
@@ -410,7 +359,7 @@ describe('machine as async generator', () => {
     const promise1 = machine.next()
     const promise2 = machine.next()
 
-    r1.feed([Toggle.make({})], true)
+    r1.feed([ToggleOff.make({})], true)
     const res1 = await promise1
     const res2 = await promise2
 
@@ -436,6 +385,58 @@ describe('machine as async generator', () => {
       r1.feed([], true)
     }
     expect(r1.machine.isDestroyed()).toBe(true)
+  })
+
+  it('should iterate only on state-change and caughtUp', async () => {
+    const { Off, On } = ProtocolSwitch
+
+    const r = new Runner(On, { toggleCount: 0 })
+    const machine = r.machine
+    r.feed([], true)
+
+    let toggleCount = 0
+    let iterationCount = 0
+
+    for await (const state of machine) {
+      iterationCount += 1
+      toggleCount =
+        state.as(On, (x) => x.payload.toggleCount) ||
+        state.as(Off, (x) => x.payload.toggleCount) ||
+        toggleCount
+
+      const whenOn = state.as(On)
+      if (whenOn) {
+        console.log(state.type, state.payload)
+        if (whenOn.payload.toggleCount > 0) {
+          break
+        }
+
+        // spam toggle commands
+
+        // two of these should go to "locked" case
+        const promises = [
+          whenOn.commands?.toggle(),
+          whenOn.commands?.toggle(),
+          whenOn.commands?.toggle(),
+        ]
+        await Promise.all(promises)
+
+        // this one should go to the expired case
+        await new Promise((res) => setTimeout(res, 5)) // should be enough so that the previous commands are received back and processed
+        await whenOn.commands?.toggle()
+      }
+
+      const whenOff = state.as(Off)
+      if (whenOff) {
+        await whenOff.commands?.toggle()
+      }
+    }
+
+    // iterationCount = toggleCount + initial iteration from r.feed([], true)
+    expect(iterationCount).toBe(toggleCount + 1)
+    // The circuit above should go this way: On->Off->On
+    // that's 2 toggles
+    expect(toggleCount).toBe(2)
   })
 
   describe('peek', () => {
@@ -493,7 +494,7 @@ describe('machine as async generator', () => {
       const machine = r.machine
       const cloned = machine.noAutoDestroy()
 
-      r.feed([{ type: 'Toggle' }], true)
+      r.feed([{ type: ToggleOff.type }], true)
 
       const mres1 = await machine.next()
       const cres1 = await cloned.next()
@@ -503,7 +504,7 @@ describe('machine as async generator', () => {
       expect(mval1?.as(Off)).toBeTruthy()
       expect(cval1?.as(Off)).toBeTruthy()
 
-      r.feed([{ type: 'Toggle' }], true)
+      r.feed([{ type: ToggleOn.type }], true)
 
       const mres2 = await machine.next()
       const cres2 = await cloned.next()
@@ -519,13 +520,13 @@ describe('machine as async generator', () => {
       const machine = r.machine
       const cloned = machine.noAutoDestroy()
 
-      r.feed([{ type: 'Toggle' }], true)
+      r.feed([{ type: ToggleOff.type }], true)
       const mres1 = await machine.next()
       const cres1 = await cloned.next()
       expect(mres1.done).toBeFalsy()
       expect(cres1.done).toBeFalsy()
 
-      r.feed([{ type: 'Toggle' }], true)
+      r.feed([{ type: ToggleOn.type }], true)
 
       // attempt to kill
       cloned.return?.()
@@ -543,7 +544,7 @@ describe('machine as async generator', () => {
       const machine = r.machine
       const cloned = machine.noAutoDestroy()
 
-      r.feed([{ type: 'Toggle' }], true)
+      r.feed([{ type: ToggleOff.type }], true)
 
       machine.destroy()
 
@@ -557,6 +558,8 @@ describe('machine as async generator', () => {
 })
 
 describe('StateOpaque', () => {
+  const { Events, Initial, Second, XCommandParam } = ProtocolOneTwo
+  const { One, Two } = Events
   describe('Commands', () => {
     it("should be undefined when StateOpaque hasn't caught up at snapshot-time", () => {
       const r1 = new Runner(Initial, { transitioned: false })
@@ -885,6 +888,8 @@ describe('deepCopy', () => {
 })
 
 describe('MachineAnalysisResource.syntheticEventName', () => {
+  const { Events, Initial, Second, XCommandParam } = ProtocolOneTwo
+  const { One, Two } = Events
   it('should be as formatted in the test', () => {
     expect(MachineAnalysisResource.syntheticEventName(Initial, [One, Two])).toBe('§Initial§One§Two')
     expect(MachineAnalysisResource.syntheticEventName(Second, [One])).toBe('§Second§One')
@@ -895,7 +900,7 @@ const nameOf = (m: StateMechanism.Any | StateFactory.Any | string): string =>
   typeof m === 'string' ? m : ('mechanism' in m ? m.mechanism : m).name
 
 const expectExecute = (
-  analysisData: ReturnType<typeof machine['createJSONForAnalysis']>,
+  analysisData: MachineAnalysisResource,
   factory: StateMechanism.Any | StateFactory.Any,
   commandName: string,
   logType: { type: string }[],
@@ -914,7 +919,7 @@ const expectExecute = (
 }
 
 const extractInput = (
-  analysisData: ReturnType<typeof machine['createJSONForAnalysis']>,
+  analysisData: MachineAnalysisResource,
   source: string | StateMechanism.Any | StateFactory.Any,
   eventType: { type: string },
   target: string | StateMechanism.Any | StateFactory.Any,
@@ -980,6 +985,8 @@ describe('protocol.createJSONForAnalysis', () => {
  * Bad type definitions are expected to fail the compilation
  */
 describe('typings', () => {
+  const { Initial, Second } = ProtocolOneTwo
+
   const E1 = MachineEvent.design('E1').withoutPayload()
   const E2 = MachineEvent.design('E2').withoutPayload()
   const E3 = MachineEvent.design('E3').withPayload<{ property: string }>()

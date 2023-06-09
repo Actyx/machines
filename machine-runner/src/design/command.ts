@@ -1,3 +1,4 @@
+import { Metadata } from '@actyx/sdk'
 /**
  * DO NOT CHANGE `any` usage in this file! TypeScript's behavior towards extends
  * `any` is completely different than `object`. `any` here tells TypeScript that
@@ -19,6 +20,15 @@ export type CommandDefinerMap<
 > = {
   [key in keyof Dictionary]: Dictionary[key]
 }
+
+export const CommandFiredAfterLocked: unique symbol = Symbol()
+export type CommandFiredAfterLocked = typeof CommandFiredAfterLocked
+
+export const CommandFiredAfterDestroyed: unique symbol = Symbol()
+export type CommandFiredAfterDestroyed = typeof CommandFiredAfterDestroyed
+
+export const CommandFiredExpiry: unique symbol = Symbol()
+export type CommandFiredExpiry = typeof CommandFiredExpiry
 
 export type CommandSignature<Args extends unknown[]> = (...args: Args) => Promise<void>
 
@@ -53,7 +63,11 @@ export type ActualContextGetter<Context> = () => Readonly<Context>
 
 export type ConvertCommandMapParams<Context, RetVal> = {
   getActualContext: ActualContextGetter<Context>
-  onReturn: (retval: RetVal) => Promise<void>
+  onReturn: (
+    retval: RetVal,
+  ) => Promise<
+    Metadata[] | CommandFiredAfterLocked | CommandFiredAfterDestroyed | CommandFiredExpiry
+  >
   /**
    * isExpired is intended to flag if a snapshot that owns the reference to a
    * command is not up to date with the state container's state.
@@ -80,12 +94,24 @@ export const convertCommandDefinerToCommandSignature = <Context, Args extends un
   definer: CommandDefiner<Context, Args, RetVal>,
   { getActualContext, onReturn, isExpired }: ConvertCommandMapParams<Context, RetVal>,
 ): CommandSignature<Args> => {
-  return (...args: Args) => {
+  return async (...args: Args) => {
     if (isExpired()) {
       // TODO: Do we want to provide user an option to handle expired command?
-      console.error('Command has expired')
+      console.error('Command issued after expired')
+      return
     }
+    // execute command definition
     const returnedValue = definer(getActualContext(), ...args)
-    return onReturn(returnedValue)
+    // call onReturn hook
+    const result = await onReturn(returnedValue)
+
+    if (result === CommandFiredAfterDestroyed) {
+      console.error('Command issued after destroyed')
+    }
+    if (result === CommandFiredAfterLocked) {
+      console.error('Command issued after locked')
+    }
+
+    return
   }
 }
