@@ -24,6 +24,7 @@ import { MachineAnalysisResource } from '../../lib/esm/design/protocol.js'
 import { PromiseDelay, Subscription, mockMeta } from '../../lib/esm/test-utils/mock-runner.js'
 import * as ProtocolSwitch from './protocol-switch.js'
 import * as ProtocolOneTwo from './protocol-one-two.js'
+import * as ProtocolScorecard from './protocol-scorecard.js'
 
 class Unreachable extends Error {
   constructor() {
@@ -859,6 +860,42 @@ describe('StateOpaque', () => {
         }
       })()
     })
+  })
+})
+
+describe('reactIntoSelf', () => {
+  it('should work', async () => {
+    const r = new Runner(ProtocolScorecard.Initial, undefined)
+    await r.feed(
+      [
+        ProtocolScorecard.Events.Begin.make({
+          par: 3,
+          playerIds: ['a', 'b', 'c'],
+        }),
+        ProtocolScorecard.Events.Score.make({
+          playerId: 'a',
+          numberOfShots: 1,
+        }),
+        ProtocolScorecard.Events.Score.make({
+          playerId: 'b',
+          numberOfShots: 2,
+        }),
+        ProtocolScorecard.Events.Score.make({
+          playerId: 'c',
+          numberOfShots: 3,
+        }),
+        ProtocolScorecard.Events.End.make({}),
+      ],
+      true,
+    )
+
+    const scoreMap = r.machine.get()?.as(ProtocolScorecard.Result)?.payload.scoreMap
+    if (!scoreMap) throw new Unreachable()
+
+    const scoreMapAsArray = Array.from(scoreMap.entries())
+    expect(scoreMapAsArray).toContainEqual(['a', 1])
+    expect(scoreMapAsArray).toContainEqual(['b', 2])
+    expect(scoreMapAsArray).toContainEqual(['c', 3])
   })
 })
 
