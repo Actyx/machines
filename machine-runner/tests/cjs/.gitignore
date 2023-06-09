@@ -1,2 +1,3 @@
-/*.test.ts
-/*.test.tsx
+/*.ts
+/*.tsx
+!jest.config.ts
