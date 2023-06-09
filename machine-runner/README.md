@@ -236,11 +236,12 @@ In the case extra tags are required to be attached in events when invoking comma
 export const InitialWarehouse = TransportOrderForWarehouse.designState('Initial')
   .withPayload<{ id: string }>()
   .command('request', [requested], (ctx, from: string, to: string) => {
-    ctx.withTags([
-      `transport-order-from:${from}`,
-      `transport-order-to:${to}`
-    ])
-    return [{ id: ctx.self.id, from, to }]
+    return [
+      ctx.withTags(
+        [`transport-order-from:${from}`, `transport-order-to:${to}`],
+        { id: ctx.self.id, from, to }
+      )
+    ]
   })
   .finish()
 

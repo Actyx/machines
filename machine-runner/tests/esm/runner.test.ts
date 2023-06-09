@@ -741,7 +741,7 @@ describe('StateOpaque', () => {
 
         r1.machine.get()?.as(On)?.commands?.off()
         r1.assertPersistedWithFn(([ev]) => {
-          expect(ev.meta.tags.includes('extra-tag-off')).toBe(true)
+          expect(ev.meta.tags).toContain('extra-tag-off')
         })
       })
     })
