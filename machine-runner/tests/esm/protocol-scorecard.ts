@@ -79,4 +79,6 @@ ScoreKeeping.react([Events.End], Result, ({ self }) => {
   }
 })
 
+export const AllStates = [Initial, ScoreKeeping, Result] as const
+
 // Reactions
