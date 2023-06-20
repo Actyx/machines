@@ -43,9 +43,9 @@ class Runner<
 > {
   private persisted: ActyxEvent<MachineEvent.Any>[] = []
   private unhandled: MachineEvent.Any[] = []
-  private caughtUpHistory: StateOpaque<SwarmProtocolName, MachineName>[] = []
+  private caughtUpHistory: StateOpaque<SwarmProtocolName, MachineName, string, unknown>[] = []
   private stateChangeHistory: {
-    state: StateOpaque<SwarmProtocolName, MachineName>
+    state: StateOpaque<SwarmProtocolName, MachineName, string, unknown>
     unhandled: MachineEvent.Any[]
   }[] = []
   private delayer = PromiseDelay.make()
@@ -1027,6 +1027,7 @@ describe('typings', () => {
   const E1 = MachineEvent.design('E1').withoutPayload()
   const E2 = MachineEvent.design('E2').withoutPayload()
   const E3 = MachineEvent.design('E3').withPayload<{ property: string }>()
+
   const protocol = SwarmProtocol.make('example', [E1, E2])
 
   it('event type transformation should be working well', () => {
@@ -1148,6 +1149,28 @@ describe('typings', () => {
     snapshot.as(Second)
 
     r.machine.destroy()
+  })
+
+  it("machine.refineStateType refines the type of the StateOpaque's payload", () => {
+    const r = new Runner(ProtocolScorecard.Initial, undefined)
+    const machine = r.machine
+    const refinedMachine = machine.refineStateType(ProtocolScorecard.AllStates)
+
+    const stateOpaque = machine.get()
+    if (!stateOpaque) return
+
+    const refinedStateOpaque = refinedMachine.get()
+    if (!refinedStateOpaque) return
+
+    true as Expect<Equal<typeof stateOpaque['payload'], unknown>>
+    true as Expect<
+      Equal<
+        typeof refinedStateOpaque['payload'],
+        | StateFactory.PayloadOf<typeof ProtocolScorecard.Initial>
+        | StateFactory.PayloadOf<typeof ProtocolScorecard.Result>
+        | StateFactory.PayloadOf<typeof ProtocolScorecard.ScoreKeeping>
+      >
+    >
   })
 
   describe('different-machines', () => {

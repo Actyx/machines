@@ -13,12 +13,25 @@ export type MockMachineRunner<
   SwarmProtocolName extends string,
   MachineName extends string,
   MachineEventFactories extends MachineEvent.Factory.Any,
-> = MachineRunner<SwarmProtocolName, MachineName> & {
+  StateUnion extends unknown,
+> = MachineRunner<SwarmProtocolName, MachineName, StateUnion> & {
   /**
    * Contains test utilities for MockMachineRunner
    * @see MockMachineRunnerTestUtils for more information
    */
   test: MockMachineRunnerTestUtils<SwarmProtocolName, MachineName, MachineEventFactories>
+
+  refineStateType: <
+    /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+    Factories extends Readonly<StateFactory<SwarmProtocolName, MachineName, any, any, any, any>[]>,
+  >(
+    _: Factories,
+  ) => MockMachineRunner<
+    SwarmProtocolName,
+    MachineName,
+    MachineEventFactories,
+    StateFactory.ReduceIntoPayload<Factories>
+  >
 }
 
 /**
@@ -108,6 +121,7 @@ export const createMockMachineRunner = <
   MachineName extends string,
   MachineEventFactories extends MachineEvent.Factory.Any,
   Payload,
+  StateUnion extends unknown,
 >(
   factory: StateFactory<
     SwarmProtocolName,
@@ -118,8 +132,8 @@ export const createMockMachineRunner = <
     object
   >,
   payload: Payload,
-): MockMachineRunner<SwarmProtocolName, MachineName, MachineEventFactories> => {
-  type Self = MockMachineRunner<SwarmProtocolName, MachineName, MachineEventFactories>
+): MockMachineRunner<SwarmProtocolName, MachineName, MachineEventFactories, StateUnion> => {
+  type Self = MockMachineRunner<SwarmProtocolName, MachineName, MachineEventFactories, StateUnion>
 
   const delayer = PromiseDelay.make()
   const sub = Subscription.make<MachineEvent.Of<MachineEventFactories>>()
@@ -157,41 +171,48 @@ export const createMockMachineRunner = <
   }
   // Below: public
 
-  const machine = createMachineRunnerInternal(
-    sub.subscribe,
-    async (events) => {
-      const actyxEvents = events.map(
-        ({ event: payload, tags }): ActyxEvent<MachineEvent.Of<MachineEventFactories>> => ({
-          meta: { ...mockMeta(), tags },
-          payload: payload as MachineEvent.Of<MachineEventFactories>,
-        }),
-      )
-      persisted.push(...actyxEvents)
-      const pair = delayer.make()
-      const retval = pair[0].then(() => {
-        feed(
-          actyxEvents.map((e) => e.payload),
-          { caughtUp: true },
+  const machine: MachineRunner<SwarmProtocolName, MachineName, StateUnion> =
+    createMachineRunnerInternal(
+      sub.subscribe,
+      async (events) => {
+        const actyxEvents = events.map(
+          ({ event: payload, tags }): ActyxEvent<MachineEvent.Of<MachineEventFactories>> => ({
+            meta: { ...mockMeta(), tags },
+            payload: payload as MachineEvent.Of<MachineEventFactories>,
+          }),
         )
-        return actyxEvents.map((e) => e.meta)
-      })
-      return retval
-    },
-    Tag(factory.mechanism.protocol.swarmName),
-    factory,
-    payload,
-  )
+        persisted.push(...actyxEvents)
+        const pair = delayer.make()
+        const retval = pair[0].then(() => {
+          feed(
+            actyxEvents.map((e) => e.payload),
+            { caughtUp: true },
+          )
+          return actyxEvents.map((e) => e.meta)
+        })
+        return retval
+      },
+      Tag(factory.mechanism.protocol.swarmName),
+      factory,
+      payload,
+    )
 
   // TODO: make shareable with runner.ts
   feed([], { caughtUp: true })
 
-  return {
+  const refineStateType = (..._: Parameters<Self['refineStateType']>) =>
+    self as ReturnType<Self['refineStateType']>
+
+  const self: Self = {
     ...machine,
+    refineStateType,
     test: {
       assertAs,
       feed,
     },
   }
+
+  return self
 }
 
 // Utilities

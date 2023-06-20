@@ -14,12 +14,17 @@ type TypedEventEmitter<Events extends EventMap> = import('typed-emitter').defaul
 export type MachineEmitter<
   SwarmProtocolName extends string,
   MachineName extends string,
-> = TypedEventEmitter<MachineEmitterEventMap<SwarmProtocolName, MachineName>>
+  StateUnion extends unknown,
+> = TypedEventEmitter<MachineEmitterEventMap<SwarmProtocolName, MachineName, StateUnion>>
 
-export type MachineEmitterEventMap<SwarmProtocolName extends string, MachineName extends string> = {
+export type MachineEmitterEventMap<
+  SwarmProtocolName extends string,
+  MachineName extends string,
+  StateUnion extends unknown,
+> = {
   'audit.reset': (_: void) => unknown
   'audit.state': (_: {
-    state: StateOpaque<SwarmProtocolName, MachineName>
+    state: StateOpaque<SwarmProtocolName, MachineName, string, StateUnion>
     events: ActyxEvent<MachineEvent.Any>[]
   }) => unknown
   'audit.dropped': (_: { state: StateRaw.Any; event: ActyxEvent<MachineEvent.Any> }) => unknown
@@ -36,7 +41,7 @@ export type MachineEmitterEventMap<SwarmProtocolName extends string, MachineName
     factory: StateFactory.Any
     nextState: unknown
   }) => unknown
-  change: (_: StateOpaque<SwarmProtocolName, MachineName>) => unknown
+  change: (_: StateOpaque<SwarmProtocolName, MachineName, string, StateUnion>) => unknown
   destroyed: (_: void) => unknown
   log: (_: string) => unknown
 }

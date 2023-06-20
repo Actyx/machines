@@ -417,6 +417,18 @@ export namespace StateFactory {
     ? Payload
     : never
 
+  export type ReduceIntoPayload<
+    F extends Readonly<StateFactory.Any[]>,
+    UNION extends unknown = never,
+  > = F extends Readonly<
+    [
+      StateFactory<any, any, any, any, infer Payload, any>,
+      ...infer Rest extends Readonly<StateFactory.Any[]>,
+    ]
+  >
+    ? ReduceIntoPayload<Rest, UNION | Payload>
+    : UNION
+
   export const fromMechanism = <
     SwarmProtocolName extends string,
     MachineName extends string,
