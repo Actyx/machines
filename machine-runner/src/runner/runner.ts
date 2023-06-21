@@ -93,6 +93,10 @@ export type MachineRunner<
   /**
    * Add type refinement to the state payload produced by the machine-runner
    *
+   * @param stateFactories - All state factories produced by the
+   * MachineProtocol. All state factories must be included, otherwise (i.e.
+   * passing only some state factories) will result in an exception being
+   * thrown.
    * @return a reference the machine-runner instance with added type refinement
    *
    * @example
@@ -437,8 +441,26 @@ export const createMachineRunnerInternal = <
       inheritedDestruction: destruction,
     })
 
-  const refineStateType = (..._: Parameters<ThisMachineRunner['refineStateType']>) =>
-    self as ReturnType<ThisMachineRunner['refineStateType']>
+  const refineStateType = <
+    /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+    Factories extends Readonly<StateFactory<SwarmProtocolName, MachineName, any, any, any, any>[]>,
+  >(
+    factories: Factories,
+  ) => {
+    const allStateNames = new Set(initialFactory.mechanism.protocol.states.registeredNames)
+    factories.forEach((factory) => allStateNames.delete(factory.mechanism.name))
+    if (allStateNames.size > 0) {
+      throw new Error(
+        'Call to refineStateType fails, some possible states are not passed into the parameter. Pass all states as arguments.',
+      )
+    }
+
+    return self as MachineRunner<
+      SwarmProtocolName,
+      MachineName,
+      StateFactory.ReduceIntoPayload<Factories>
+    >
+  }
 
   const self: ThisMachineRunner = {
     ...api,

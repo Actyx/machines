@@ -1156,6 +1156,9 @@ describe('typings', () => {
     const machine = r.machine
     const refinedMachine = machine.refineStateType(ProtocolScorecard.AllStates)
 
+    // Partial param should throw
+    expect(() => machine.refineStateType([ProtocolScorecard.Initial])).toThrow()
+
     const stateOpaque = machine.get()
     if (!stateOpaque) return
 

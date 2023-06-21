@@ -21,6 +21,26 @@ export type MockMachineRunner<
    */
   test: MockMachineRunnerTestUtils<SwarmProtocolName, MachineName, MachineEventFactories>
 
+  /**
+   * Add type refinement to the state payload produced by the mock
+   * machine-runner
+   *
+   * @param stateFactories - All state factories produced by the
+   * MachineProtocol. All state factories must be included, otherwise (i.e.
+   * passing only some state factories) will result in an exception being
+   * thrown.
+   * @return a reference the mock machine-runner instance with added type
+   * refinement
+   *
+   * @example
+   * const machineRunner = createMockMachineRunner(StateA, undefined)
+   *  .refineStateType([StateA, StateB, StateC] as const);
+   *
+   * const stateSnapshot = machineRunner.get();
+   * if (!stateSnapshot) return
+   *
+   * const payload = stateSnapshot.payload; // union of payloads of StateA, StateB, and StateC
+   */
   refineStateType: <
     /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
     Factories extends Readonly<StateFactory<SwarmProtocolName, MachineName, any, any, any, any>[]>,
@@ -200,8 +220,27 @@ export const createMockMachineRunner = <
   // TODO: make shareable with runner.ts
   feed([], { caughtUp: true })
 
-  const refineStateType = (..._: Parameters<Self['refineStateType']>) =>
-    self as ReturnType<Self['refineStateType']>
+  const refineStateType = <
+    /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+    Factories extends Readonly<StateFactory<SwarmProtocolName, MachineName, any, any, any, any>[]>,
+  >(
+    factories: Factories,
+  ) => {
+    const allStateNames = new Set(factory.mechanism.protocol.states.registeredNames)
+    factories.forEach((factory) => allStateNames.delete(factory.mechanism.name))
+    if (allStateNames.size > 0) {
+      throw new Error(
+        'Call to refineStateType fails, some possible states are not passed into the parameter. Pass all states as arguments.',
+      )
+    }
+
+    return self as MockMachineRunner<
+      SwarmProtocolName,
+      MachineName,
+      MachineEventFactories,
+      StateFactory.ReduceIntoPayload<Factories>
+    >
+  }
 
   const self: Self = {
     ...machine,
