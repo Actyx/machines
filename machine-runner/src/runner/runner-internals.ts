@@ -48,6 +48,15 @@ export type RunnerInternals<
     Commands
   >
 
+  previouslyEmittedToNext: null | StateAndFactory<
+    SwarmProtocolName,
+    MachineName,
+    MachineEventFactories,
+    StateName,
+    StatePayload,
+    Commands
+  >
+
   // TODO: document how it behaves
   commandLock: null | symbol
 }
@@ -106,6 +115,7 @@ export namespace RunnerInternals {
       caughtUp: false,
       caughtUpFirstTime: false,
       commandLock: null,
+      previouslyEmittedToNext: null,
     }
 
     return internals

@@ -42,6 +42,7 @@ export type MachineEmitterEventMap<
     nextState: unknown
   }) => unknown
   change: (_: StateOpaque<SwarmProtocolName, MachineName, string, StateUnion>) => unknown
+  next: (_: StateOpaque<SwarmProtocolName, MachineName, string, StateUnion>) => unknown
   destroyed: (_: void) => unknown
   log: (_: string) => unknown
 }

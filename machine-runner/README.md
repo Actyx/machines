@@ -214,6 +214,13 @@ If the workflow still is in the `Auction` state, we compute the best robot bid (
 The third feature becomes relevant once the auction has ended: we check if our robot is indeed the winner and record that in a variable `IamWinner`, i.e. in the current application in-memory state.
 Then we can use this information in all following states as well.
 
+### Change detection on for-await loop
+
+When using for-await loop with the machine runner, the loop iterates only if the following criteria matches:
+
+- A 'caughtUp' event is emitted; It happens when the machine runner receives the latest event published in Actyx;
+- An event between the current `caughtUp` and the previous one triggers a change to the machine's state; The state change is determined by comparing the name and payload between the state before and after the `caughtUp` event. The comparison uses the `deepEqual` function provided by the [fast-equal package](https://www.npmjs.com/package/fast-equals).
+
 ### The consequences of Eventual Consensus
 
 The design goal of Actyx and the machine runner is to provide uncompromising resilience and availability, meaning that if a device is capable of computation it shall be able to make progress, independent of the network.
