@@ -28,6 +28,8 @@ import { CommandCallback, RunnerInternals, StateAndFactory } from './runner-inte
 import { MachineEmitter, MachineEmitterEventMap } from './runner-utils.js'
 import { Machine, SwarmProtocol } from '../design/protocol.js'
 import { NOP } from '../utils/misc.js'
+import { deepEqual } from 'fast-equals'
+import { deepCopy } from '../utils/object-utils.js'
 
 /**
  * Contains and manages the state of a machine by subscribing and publishing
@@ -392,7 +394,20 @@ export const createMachineRunnerInternal = <
               internals.caughtUp = true
               internals.caughtUpFirstTime = true
               emitter.emit('log', 'Caught up')
-              emitter.emit('change', ImplStateOpaque.make(internals, internals.current))
+
+              const stateOpaqueToBeEmitted = ImplStateOpaque.make(internals, internals.current)
+              emitter.emit('change', stateOpaqueToBeEmitted)
+
+              if (
+                internals.current.factory !== internals.previouslyEmittedToNext?.factory ||
+                !deepEqual(internals.previouslyEmittedToNext.data, internals.current.data)
+              ) {
+                internals.previouslyEmittedToNext = {
+                  factory: internals.current.factory,
+                  data: deepCopy(internals.current.data),
+                }
+                emitter.emit('next', stateOpaqueToBeEmitted)
+              }
             }
           }
         } catch (error) {
@@ -569,7 +584,7 @@ namespace NextValueAwaiter {
       | ThisStateOpaque
       | RequestedPromisePair<SwarmProtocolName, MachineName, StateUnion> = null
 
-    const onChange: ThisMachineEmitterEventMap['change'] = (state) => {
+    const onNext: ThisMachineEmitterEventMap['next'] = (state) => {
       if (destruction.isDestroyed()) return
 
       if (Array.isArray(store)) {
@@ -580,10 +595,10 @@ namespace NextValueAwaiter {
       }
     }
 
-    events.on('change', onChange)
+    events.on('next', onNext)
 
     destruction.addDestroyHook(() => {
-      events.off('change', onChange)
+      events.off('next', onNext)
       if (Array.isArray(store)) {
         store[1](Done)
         store = null

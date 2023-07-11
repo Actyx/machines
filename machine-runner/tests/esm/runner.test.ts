@@ -10,7 +10,6 @@ import {
   StateMechanism,
 } from '../../lib/esm/index.js'
 import { createMachineRunnerInternal } from '../../lib/esm/runner/runner.js'
-import { deepCopy } from '../../lib/esm/utils/object-utils.js'
 import { NOP } from '../../lib/esm/utils/misc.js'
 import {
   Equal,
@@ -353,7 +352,83 @@ describe('machine as async generator', () => {
     machine.destroy()
   })
 
-  it('should resolve all previously unsolved yielded promises on one caughtUp event', async () => {
+  it('should only yield on "next" event', async () => {
+    const watchPromise = (promise: Promise<unknown>) => {
+      let finished = false
+      const isFinished = () => finished
+      promise.finally(() => (finished = true))
+      return { isFinished }
+    }
+
+    const r1 = new Runner(On, { toggleCount: 0 })
+    const { machine } = r1
+
+    const issueCommand = (snap: StateOpaque.Of<typeof machine> | null) => {
+      const state = snap?.as(On) || snap?.as(Off)
+      return state?.commands?.toggle()
+    }
+
+    const promise1 = machine.next()
+    const promise1Watcher = watchPromise(promise1)
+
+    expect(promise1Watcher.isFinished()).toBe(false)
+    await r1.feed([], true)
+    expect(promise1Watcher.isFinished()).toBe(true) // true because this is the first caughtUp
+
+    const promise2 = machine.next()
+    const promise2Watcher = watchPromise(promise2)
+    expect(promise2Watcher.isFinished()).toBe(false)
+    await r1.feed([], true)
+    expect(promise2Watcher.isFinished()).toBe(false) // false because there is no change
+
+    await issueCommand(machine.get())
+    expect(promise2Watcher.isFinished()).toBe(true) // true because "next" event
+
+    const promise3 = machine.next()
+    const promise3Watcher = watchPromise(promise3)
+
+    await r1.timeTravel()
+    expect(promise3Watcher.isFinished()).toBe(false)
+    await r1.feed([], true)
+    expect(promise3Watcher.isFinished()).toBe(true) // caught up after timeTravel will trigger "next" event
+  })
+
+  it('should not yield next when state does not change even though time travel happens', async () => {
+    const watchPromise = (promise: Promise<unknown>) => {
+      let finished = false
+      const isFinished = () => finished
+      promise.finally(() => (finished = true))
+      return { isFinished }
+    }
+
+    const r1 = new Runner(On, { toggleCount: 0 })
+
+    await r1.feed([ToggleOff.make({})], true)
+    await r1.machine.next()
+
+    const promise = r1.machine.next()
+    const promiseWatcher = watchPromise(promise)
+
+    await r1.feed([], true)
+    // False: no changes from previous 'caughtUp'
+    expect(promiseWatcher.isFinished()).toBe(false)
+
+    await r1.timeTravel()
+    await r1.feed([ToggleOff.make({})], true)
+    // False: no changes from previous 'caughtUp'.
+    // time travel, followed by, ToggleOff
+    expect(promiseWatcher.isFinished()).toBe(false)
+
+    await r1.feed([ToggleOn.make({})], false)
+    // False because there is no 'caughtUp' event
+    expect(promiseWatcher.isFinished()).toBe(false)
+
+    await r1.feed([], true)
+    // True because a change happens between previous and current 'caughtUp'
+    expect(promiseWatcher.isFinished()).toBe(true)
+  })
+
+  it('should resolve all previously unsolved yielded promises on one next event', async () => {
     const r1 = new Runner(On, { toggleCount: 0 })
     const { machine } = r1
 
@@ -378,12 +453,13 @@ describe('machine as async generator', () => {
     const r1 = new Runner(On, { toggleCount: 0 })
     r1.feed([], true)
     let i = 0
-    for await (const _ of r1.machine) {
+    for await (const state of r1.machine) {
       i++
       if (i > 3) {
         break
       }
-      r1.feed([], true)
+      await state.as(On, (s) => s.commands?.toggle())
+      await state.as(Off, (s) => s.commands?.toggle())
     }
     expect(r1.machine.isDestroyed()).toBe(true)
   })
@@ -407,7 +483,6 @@ describe('machine as async generator', () => {
 
       const whenOn = state.as(On)
       if (whenOn) {
-        console.log(state.type, state.payload)
         if (whenOn.payload.toggleCount > 0) {
           break
         }
@@ -478,7 +553,7 @@ describe('machine as async generator', () => {
         const nextPromise = machine.next()
         const peekPromise = machine.peek()
 
-        r1.feed([], true)
+        r1.feed([ToggleOff.make({})], true)
 
         const peekResult = await peekPromise
         const nextResult = await nextPromise
@@ -896,31 +971,6 @@ describe('reactIntoSelf', () => {
     expect(scoreMapAsArray).toContainEqual(['a', 1])
     expect(scoreMapAsArray).toContainEqual(['b', 2])
     expect(scoreMapAsArray).toContainEqual(['c', 3])
-  })
-})
-
-describe('deepCopy', () => {
-  it('should copy the basics', () => {
-    expect(deepCopy(null)).toBe(null)
-    expect(deepCopy(false)).toBe(false)
-    expect(deepCopy(42)).toBe(42)
-    expect(deepCopy('hello')).toBe('hello')
-    expect(deepCopy([null, true, 5, 'world'])).toEqual([null, true, 5, 'world'])
-    expect({ a: '5' }).not.toEqual({ a: 5 }) // just double-checking jest here
-    expect(deepCopy({ 0: true, a: '5' })).toEqual({ '0': true, a: '5' }) // JS only has string keys
-  })
-
-  it('should copy functions', () => {
-    let v = 42
-    const f = () => v
-    const c = deepCopy(f)
-    expect(c()).toBe(42)
-    v = 5
-    expect(c()).toBe(5)
-    const x = deepCopy({ f })
-    expect(x.f()).toBe(5)
-    v = 6
-    expect(x.f()).toBe(6)
   })
 })
 
