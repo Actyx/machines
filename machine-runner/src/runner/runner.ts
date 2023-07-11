@@ -395,7 +395,11 @@ export const createMachineRunnerInternal = <
               internals.caughtUpFirstTime = true
               emitter.emit('log', 'Caught up')
 
-              const stateOpaqueToBeEmitted = ImplStateOpaque.make(internals, internals.current)
+              const stateOpaqueToBeEmitted = ImplStateOpaque.make<
+                SwarmProtocolName,
+                MachineName,
+                StateUnion
+              >(internals, internals.current)
               emitter.emit('change', stateOpaqueToBeEmitted)
 
               if (
