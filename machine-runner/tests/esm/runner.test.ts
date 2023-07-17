@@ -25,6 +25,8 @@ import * as ProtocolSwitch from './protocol-switch.js'
 import * as ProtocolOneTwo from './protocol-one-two.js'
 import * as ProtocolScorecard from './protocol-scorecard.js'
 
+const sleep = (dur: number) => new Promise((res) => setTimeout(res, dur))
+
 class Unreachable extends Error {
   constructor() {
     super('should be unreachable')
@@ -363,7 +365,7 @@ describe('machine as async generator', () => {
     const r1 = new Runner(On, { toggleCount: 0 })
     const { machine } = r1
 
-    const issueCommand = (snap: StateOpaque.Of<typeof machine> | null) => {
+    const issueToggleCommand = (snap: StateOpaque.Of<typeof machine> | null) => {
       const state = snap?.as(On) || snap?.as(Off)
       return state?.commands?.toggle()
     }
@@ -373,16 +375,21 @@ describe('machine as async generator', () => {
 
     expect(promise1Watcher.isFinished()).toBe(false)
     await r1.feed([], true)
-    expect(promise1Watcher.isFinished()).toBe(true) // true because this is the first caughtUp
+    // True: from first caughtUp event
+    expect(promise1Watcher.isFinished()).toBe(true)
 
     const promise2 = machine.next()
     const promise2Watcher = watchPromise(promise2)
     expect(promise2Watcher.isFinished()).toBe(false)
     await r1.feed([], true)
-    expect(promise2Watcher.isFinished()).toBe(false) // false because there is no change
+    // False: no change happens between the previous caughtUp and the current caughtUp
+    expect(promise2Watcher.isFinished()).toBe(false)
 
-    await issueCommand(machine.get())
-    expect(promise2Watcher.isFinished()).toBe(true) // true because "next" event
+    await issueToggleCommand(machine.get())
+    await sleep(1)
+    // True: `issueToggleCommand` above triggers a change, which then triggers a
+    // caughtUp
+    expect(promise2Watcher.isFinished()).toBe(true)
 
     const promise3 = machine.next()
     const promise3Watcher = watchPromise(promise3)
@@ -390,7 +397,11 @@ describe('machine as async generator', () => {
     await r1.timeTravel()
     expect(promise3Watcher.isFinished()).toBe(false)
     await r1.feed([], true)
-    expect(promise3Watcher.isFinished()).toBe(true) // caught up after timeTravel will trigger "next" event
+
+    // True: before the time travel, a command is issued, yielding an event that
+    // caused a state change after the time travel, the same event isn't
+    // yielded, therefore the machine does not reach to the same state
+    expect(promise3Watcher.isFinished()).toBe(true)
   })
 
   it('should not yield next when state does not change even though time travel happens', async () => {
@@ -420,11 +431,11 @@ describe('machine as async generator', () => {
     expect(promiseWatcher.isFinished()).toBe(false)
 
     await r1.feed([ToggleOn.make({})], false)
-    // False because there is no 'caughtUp' event
+    // False: because there is no 'caughtUp' event
     expect(promiseWatcher.isFinished()).toBe(false)
 
     await r1.feed([], true)
-    // True because a change happens between previous and current 'caughtUp'
+    // True: because a change happens between previous and current 'caughtUp'
     expect(promiseWatcher.isFinished()).toBe(true)
   })
 
@@ -498,7 +509,7 @@ describe('machine as async generator', () => {
         await Promise.all(promises)
 
         // this one should go to the expired case
-        await new Promise((res) => setTimeout(res, 5)) // should be enough so that the previous commands are received back and processed
+        await sleep(5) // should be enough so that the previous commands are received back and processed
         await whenOn.commands?.toggle()
       }
 
