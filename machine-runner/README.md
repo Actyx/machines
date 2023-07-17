@@ -216,7 +216,7 @@ Then we can use this information in all following states as well.
 
 ### Change detection on for-await loop
 
-When using for-await loop with the machine runner, the loop iterates only if the following criteria matches:
+When using a for-await loop with the machine runner, the loop iterates only if all of the following criteria are met:
 
 - A 'caughtUp' event is emitted; It happens when the machine runner receives the latest event published in Actyx;
 - An event between the current `caughtUp` and the previous one triggers a change to the machine's state; The state change is determined by comparing the name and payload between the state before and after the `caughtUp` event. The comparison uses the `deepEqual` function provided by the [fast-equal package](https://www.npmjs.com/package/fast-equals).
