@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-namespace */
 
 import { MachineEvent, SwarmProtocol } from '@actyx/machine-runner'
+import * as z from 'zod'
 
 /**
  * Actyx pub-sub is based on topics selected by tagging (which supports
@@ -18,15 +19,21 @@ export type BidData = {
 // Events
 
 export namespace ProtocolEvents {
-  export const Requested = MachineEvent.design('Requested').withPayload<{
-    pickup: string
-    destination: string
-  }>()
+  // == Example of usage with Zod ==
+  export const Requested = MachineEvent.design('Requested').withZod(
+    z.object({
+      pickup: z.string(),
+      destination: z.string(),
+    }),
+  )
 
-  export const Bid = MachineEvent.design('Bid').withPayload<{
-    price: number
-    time: string
-  }>()
+  // == Example of usage with Zod ==
+  export const Bid = MachineEvent.design('Bid').withZod(
+    z.object({
+      price: z.number(),
+      time: z.string(),
+    }),
+  )
 
   export const BidderID = MachineEvent.design('BidderID').withPayload<{
     id: string
