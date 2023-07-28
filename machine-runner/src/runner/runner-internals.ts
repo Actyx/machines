@@ -139,8 +139,24 @@ export namespace RunnerInternals {
 
     if (!matchingReaction) return { shouldQueue: false }
 
-    if (newEvent.payload.type !== matchingReaction.eventChainTrigger[nextIndex]?.type)
+    // Asserted as non-nullish because it is impossible for `queue`'s length to
+    // exceeed `matchingReaction.eventChainTrigger`'s length
+    //
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    const factoryAtNextIndex = matchingReaction.eventChainTrigger[nextIndex]!
+    const zodDefinition = factoryAtNextIndex[MachineEvent.FactoryInternalsAccessor].zodDefinition
+
+    const typeMatches = () => newEvent.payload.type === factoryAtNextIndex.type
+
+    const payloadSchemaMatchesOrZodIsUnavailable = () => {
+      if (!zodDefinition) return true
+      const { type, ...rest } = newEvent.payload
+      return zodDefinition.safeParse(rest).success
+    }
+
+    if (!typeMatches() || !payloadSchemaMatchesOrZodIsUnavailable()) {
       return { shouldQueue: false }
+    }
 
     return {
       shouldQueue: true,

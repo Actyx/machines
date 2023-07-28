@@ -232,7 +232,72 @@ Instead, each robot independently ensures that after at five seconds a decision 
 Machine runner resolves this conflict by using only the `selected` event that comes first in the Actyx event sort order; in other words, Actyx arbitrarily picks a winner and the losing event is discarded.
 If a robot saw itself winning, started the mission, and then discovers that its win turned out to be invalid, it will have to stop the mission and pick a new one.
 
-## Other Features
+## Features
+
+### Zod on MachineEvent
+
+[Zod](https://zod.dev/) can be used to define and validate MachineEvents. On designing an event, use `withZod` instead of `withPayload`.
+
+```typescript
+export const requested = MachineEvent.design('requested').withPayload<{
+  id: string
+  from: string
+  to: string
+}>()
+```
+
+The above code can be converted into:
+
+```typescript
+import * as z from 'zod'
+
+export const requested = MachineEvent.design('requested').withZod(
+  z.object({
+    id: z.string(),
+    from: z.string(),
+    to: z.string(),
+  }),
+)
+```
+
+A zod-enabled event factory will have these additional features enabled:
+
+- When receiving events from Actyx, a `MachineRunner` will compare the event payload to the embedded `ZodType`, in addition to the mandatory event type checking. Events that don't match the defined `MachineEvent` on the reaction will be ignored by the `MachineRunner`. For example, see the reaction definition below:
+  ```typescript
+  InitialWarehouse.react([requested], DoneWarehouse, (_ctx, _r) => [{}])
+  ```
+  In a scenario where an incorrectly created event comes from Actyx `{ "type": "requested", id: "some_id" }`, the said event will not be regarded as valid and will be ignored.
+- When creating an event via the factory, which would be `requested.make` for the example above, an extra step will be taken to validate the payload. When the `make` method is called with an incorrect value, an exception will be thrown because internally `ZodType.parse` is used to validate the payload. For example:
+
+  ```typescript
+  // Will throw because `{}` is not a valid value for the previously provided zod schema
+  // But it takes `as any` to bypass TypeScript compiler in order to do this
+  const singleEvent = requested.make({} as any)
+  ```
+
+  An extra care must be taken when the `ZodType` is [refined](https://zod.dev/?id=refine). In contrast to a mismatch in schema, a refined `ZodType` is not caught at compile-time. Therefore, a compilation process and IDE warnings is not sufficient to catch these errors. For example:
+
+  ```typescript
+  export const requested = MachineEvent.design('requested').withZod(
+    z
+      .object({
+        id: z.string(),
+        from: z.string(),
+        to: z.string(),
+      })
+      .refine((payload) => {
+        return payload.from == payload.to
+      }),
+  )
+
+  // Will throw exception because `from` is same with `to`.
+  // This mistake can't be caught by TypeScript compiler
+  requested.make({
+    id: 'some_id',
+    from: 'some_location',
+    to: 'some_location',
+  })
+  ```
 
 ### Extra Tags
 

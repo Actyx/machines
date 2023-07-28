@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { ActyxEvent } from '@actyx/sdk'
 import * as utils from '../utils/type-utils.js'
+import type * as z from 'zod'
 
 // Note on "Loose" aliases
 //
@@ -61,20 +62,48 @@ export namespace MachineEvent {
    * ])
    */
   export const design = <Key extends string>(key: Key): EventFactoryIntermediate<Key> => ({
+    withZod: (zodDefinition) => ({
+      [FactoryInternalsAccessor]: {
+        zodDefinition: zodDefinition,
+      },
+      type: key,
+      make: (payload) => ({
+        ...zodDefinition.parse(payload),
+        type: key,
+      }),
+    }),
+
     withPayload: () => ({
+      [FactoryInternalsAccessor]: {
+        zodDefinition: undefined,
+      },
       type: key,
       make: (payload) => ({
         ...payload,
         type: key,
       }),
     }),
+
     withoutPayload: () => ({
+      [FactoryInternalsAccessor]: {
+        zodDefinition: undefined,
+      },
       type: key,
       make: () => ({ type: key }),
     }),
   })
 
   type EventFactoryIntermediate<Key extends string> = {
+    /**
+     * Declares the payload type for this MachineEvent using zod definition.
+     *
+     * Event payload will be serialized. Payload definition cannot have fields
+     * that cannot be serialized and deserialized back via JSON.stringify and
+     * JSON.parse.
+     */
+    withZod: <Payload extends utils.SerializableObject>(
+      z: z.ZodType<Payload>,
+    ) => Factory<Key, Payload>
     /**
      * Declares the payload type for this MachineEvent.
      *
@@ -94,6 +123,12 @@ export namespace MachineEvent {
   export type Of<T extends Factory.Any> = ReturnType<T['make']>
 
   export type NonZeroTuple = utils.ReadonlyNonZeroTuple<Any>
+
+  export const FactoryInternalsAccessor: unique symbol = Symbol('FactoryInternalsAccessor')
+
+  export type FactoryInternals<Payload> = {
+    zodDefinition?: z.ZodType<Payload>
+  }
 
   /**
    * MachineEvent.Factory is a type definition for a constructor type that serves
@@ -115,6 +150,11 @@ export namespace MachineEvent {
      * const machineEventInstance = HangarDoorTransitioning.make({ fractionOpen: 0.5 })
      */
     make: (payload: Payload) => MachineEvent<Key, Payload>
+    /**
+     * Contains Zod definition. Also serves to differentiate Event from
+     * Event.Factory when evaluated with Payload.Of
+     */
+    [FactoryInternalsAccessor]: FactoryInternals<Payload>
   }
 
   /**

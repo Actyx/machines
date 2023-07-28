@@ -24,6 +24,7 @@ import { PromiseDelay, Subscription, mockMeta } from '../../lib/esm/test-utils/m
 import * as ProtocolSwitch from './protocol-switch.js'
 import * as ProtocolOneTwo from './protocol-one-two.js'
 import * as ProtocolScorecard from './protocol-scorecard.js'
+import * as ProtocolThreeSwitch from './protocol-three-times-for-zod.js'
 
 const sleep = (dur: number) => new Promise((res) => setTimeout(res, dur))
 
@@ -307,6 +308,34 @@ describe('machine runner', () => {
     r.timeTravel()
     r.machine.destroy()
     r.assertSubscribed(false)
+  })
+
+  describe('zod-support', () => {
+    const { On, Off, Events } = ProtocolThreeSwitch
+
+    it('should not allow payload with a wrong schema or invalid values due to refinement', () => {
+      expect(() => Events.ToggleOn.make({ value: 1 } as any)).toThrow() // wrong payload schema
+      expect(() => Events.ToggleOn.make({ literal: 'toggleon', value: -1 })).toThrow() // invalid value due to refinement. See the definition of ToggleOn
+    })
+
+    it('should ignore event whose payload does not match the zod definition in the event factory', async () => {
+      const r = new Runner(Off, undefined)
+
+      await r.feed([Events.ToggleOn.make({ literal: 'toggleon' as const, value: 1 })], false) // valid
+      await r.feed([Events.ToggleOn.make({ literal: 'toggleon' as const, value: 2 })], false) // valid
+      await r.feed(
+        [{ type: 'ToggleOn', value: 3 } as any as MachineEvent.Of<typeof Events.ToggleOn>],
+        false,
+      ) // invalid, ToggleOn requires a field `literal: 'toggleon'` to be regarded as having a valid schema by the zod definition
+      await r.feed([Events.ToggleOn.make({ literal: 'toggleon' as const, value: 4 })], false) // valid
+      await r.feed([], true)
+
+      const whenOn = (await r.machine.peek()).value?.as(On)
+      if (!whenOn) throw new Unreachable()
+
+      // because the valid three events have values 1,2,4, the sum of the value captured by the On state should be 1 + 2 + 4
+      expect(whenOn.payload.sum).toBe(1 + 2 + 4)
+    })
   })
 })
 
