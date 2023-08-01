@@ -1,6 +1,6 @@
 {
   "name": "@actyx/machine-check",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Behavioural typechecking for @actyx/machine-runner machines",
   "repository": "https://github.com/Actyx/machines",
   "author": "Actyx AG",
@@ -36,7 +36,7 @@
     "test:cjs:remove": "ts-node-esm scripts/test/cjs-remove.ts"
   },
   "devDependencies": {
-    "@actyx/machine-runner": "^0.4.0",
+    "@actyx/machine-runner": "^0.4.4",
     "@jest/globals": "^29.5.0",
     "@types/glob": "^8.1.0",
     "@typescript-eslint/eslint-plugin": "^5.45.0",
