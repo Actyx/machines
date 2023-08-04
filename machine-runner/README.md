@@ -327,6 +327,51 @@ const stateAsInitialWarehouse = state
   .request(from: `source`, to: `destination`);
 ```
 
+### `refineStateType`
+
+A MachineRunner instance now has a new method available: `refineStateType` which return a new aliasing machine.
+State payload produced by the returned machine is typed as the **union of all possible payload types** instead of `unknown`.
+The union is useful to be used in combination with [type-narrowing](https://www.typescriptlang.org/docs/handbook/2/narrowing.html).
+
+Usage example:
+
+```typescript
+// States defined in previous examples
+const allStates = [Initial, Auction, DoIt] as const
+const machine = createMachineRunner(actyx, tags, Initial, { robot: 'agv1' }).refineStateType(
+  allStates,
+)
+
+const state = machine.get()
+if (state) {
+  const payload = state.payload
+
+  // Equals to:
+  //  | { robot: string }
+  //  | { id: string; from: string; to: string; robot: string; scores: Score[] }
+  //  | { robot: string; winner: string }
+  type PayloadType = typeof state.payload
+
+  // 'robot' property is accessible directly because it is available in all variants
+  const robot = payload.robot
+
+  // Used with type-narrowing
+  if ('winner' in payload) {
+    // here the type of payload is narrowed to { robot: string; winner: string }
+  } else if ('id' in payload) {
+    // here the type of payload is narrowed to { id: string; from: string; to: string; robot: string; scores: Score[] }
+  } else {
+    // here the type of payload is narrowed to { robot: string }
+  }
+}
+```
+
+The argument to `.refineStateType` must be an array containing all previously defined states.
+Any other argument will throw an error.
+
+The aliasing machine shares the original machine's internal state.
+All method calls, such as `.destroy`, create the same effect as when enacted on the original machine.
+
 ## Developer support
 
 If you have any questions, suggestions, or just want to chat with other interested folks, you’re welcome to join our discord chat. Please find a current invitation link on [the top right of the Actyx docs page](https://developer.actyx.com/).
