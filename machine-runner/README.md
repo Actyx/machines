@@ -329,7 +329,7 @@ const stateAsInitialWarehouse = state
 
 ### `refineStateType`
 
-A MachineRunner instance now has a new method available: `refineStateType` which return a new aliasing machine.
+A `MachineRunner` instance now has a new method available: `refineStateType` which return a new aliasing machine.
 State payload produced by the returned machine is typed as the **union of all possible payload types** instead of `unknown`.
 The union is useful to be used in combination with [type-narrowing](https://www.typescriptlang.org/docs/handbook/2/narrowing.html).
 
