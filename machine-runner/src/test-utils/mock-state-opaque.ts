@@ -34,7 +34,8 @@ export const createMockStateOpaque = <
       ...internals,
       caughtUp: !options?.disableCommands,
       caughtUpFirstTime: true,
-      commandEmitFn: async (containedEvents) => {
+      commandEmitFn: async (props) => {
+        const containedEvents = props.generateEvents()
         const events = containedEvents.map(([ev, _extraData]) => ev)
         options?.capturedEvents?.push(...events)
         return []

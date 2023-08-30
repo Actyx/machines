@@ -4,12 +4,24 @@ import { MachineEvent } from '../design/event.js'
 import { PushEventResult } from './runner-internals.js'
 import { EventMap } from 'typed-emitter'
 import { StateOpaque } from './runner.js'
+import {
+  MachineRunnerError,
+  MachineRunnerErrorCommandFiredAfterDestroyed,
+  MachineRunnerErrorCommandFiredAfterExpired,
+  MachineRunnerErrorCommandFiredAfterLocked,
+} from '../errors.js'
 
 /**
  * Imported this way because it cannot be imported via normal import ... from
  * syntax https://github.com/andywer/typed-emitter/issues/39
  */
 type TypedEventEmitter<Events extends EventMap> = import('typed-emitter').default<Events>
+
+type EmittableErrors =
+  | MachineRunnerError
+  | MachineRunnerErrorCommandFiredAfterLocked
+  | MachineRunnerErrorCommandFiredAfterDestroyed
+  | MachineRunnerErrorCommandFiredAfterExpired
 
 export type MachineEmitter<
   SwarmProtocolName extends string,
@@ -45,4 +57,5 @@ export type MachineEmitterEventMap<
   next: (_: StateOpaque<SwarmProtocolName, MachineName, string, StateUnion>) => unknown
   destroyed: (_: void) => unknown
   log: (_: string) => unknown
+  error: (_: EmittableErrors) => unknown
 }

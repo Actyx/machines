@@ -234,6 +234,51 @@ If a robot saw itself winning, started the mission, and then discovers that its 
 
 ## Features
 
+### Observe Changes and Errors
+
+An alternative use case of a machine runner is to listen to its events.
+
+`next` event emits states whenever a new state is calculated.
+Calling `destroy` is required when the machine is not used to sever subscription from Actyx.
+
+```typescript
+const warehouse = createMachineRunner(actyx, tags, InitialWarehouse, { id: '4711' })
+
+warehouse.events.on('next', (state) => {
+  if (state.is(InitialWarehouse)) {
+    // ...
+  }
+})
+
+await untilWareHouseIsNotUsedAnymore()
+
+warehouse.destroy()
+```
+
+`error` event can be used to capture errors that happens from machine-runner.
+
+```
+import {
+  MachineRunnerErrorCommandFiredAfterLocked,
+  MachineRunnerErrorCommandFiredAfterDestroyed,
+  MachineRunnerErrorCommandFiredAfterExpired,
+} from "@actyx/machine-runner"
+
+warehouse.events.on('error', (error) => {
+  if (error instanceof MachineRunnerErrorCommandFiredAfterLocked) {
+    //
+  }
+  
+  if (error instanceof MachineRunnerErrorCommandFiredAfterDestroyed) {
+    //
+  }
+
+  if (error instanceof MachineRunnerErrorCommandFiredAfterExpired) {
+    //
+  }
+})
+```
+
 ### Zod on MachineEvent
 
 [Zod](https://zod.dev/) can be used to define and validate MachineEvents. On designing an event, use `withZod` instead of `withPayload`.
