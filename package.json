@@ -4,6 +4,11 @@
   "description": "This set of libraries provides a way of writing **fully decentralised** applications using **replicated state machines**, but without any form of blocking coordination.\r Furthermore, the machines you deploy work together in the scope of a swarm protocol while the machine instances may play **different roles**.\r These roles may differ in their business logic as well as in the events they are allowed to consume; in other words the work can be distributed across different machines and split into separate responsibilities.",
   "main": "index.js",
   "scripts": {
+    "refresh-package-lock": "npm run machine-runner:refresh-package-lock && npm run machine-check:refresh-package-lock && npm run machine-visual:refresh-package-lock && npm run dev-example:refresh-package-lock",
+    "machine-runner:refresh-package-lock": "cd machine-runner && npm install",
+    "machine-check:refresh-package-lock": "cd machine-check && npm install",
+    "machine-visual:refresh-package-lock": "cd machine-visual && npm install",
+    "dev-example:refresh-package-lock": "cd dev-example && npm install",
     "machine-runner:clean-build": "cd machine-runner && npm ci && npm run clean && npm run build && npm run test && npm run lint:strict",
     "machine-check:clean-build": "cd machine-check && npm ci && npm run clean && npm run build && npm run test",
     "machine-visual:clean-build": "cd machine-visual && npm ci && npm run clean && npm run build",

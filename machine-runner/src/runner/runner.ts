@@ -52,7 +52,7 @@ import { deepCopy } from '../utils/object-utils.js'
 export type MachineRunner<
   SwarmProtocolName extends string,
   MachineName extends string,
-  StateUnion extends unknown,
+  StateUnion extends unknown = unknown,
 > = {
   id: symbol
   events: MachineEmitter<SwarmProtocolName, MachineName, StateUnion>
