@@ -22,6 +22,7 @@ import {
   CommandFiredAfterLocked,
   Contained,
   CommandContext,
+  CommandFiredExpiry,
 } from '../design/state.js'
 import { Destruction } from '../utils/destruction.js'
 import { CommandCallback, RunnerInternals, StateAndFactory } from './runner-internals.js'
@@ -30,6 +31,11 @@ import { Machine, SwarmProtocol } from '../design/protocol.js'
 import { NOP } from '../utils/misc.js'
 import { deepEqual } from 'fast-equals'
 import { deepCopy } from '../utils/object-utils.js'
+import {
+  MachineRunnerErrorCommandFiredAfterDestroyed,
+  MachineRunnerErrorCommandFiredAfterExpired,
+  MachineRunnerErrorCommandFiredAfterLocked,
+} from '../errors.js'
 
 /**
  * Contains and manages the state of a machine by subscribing and publishing
@@ -277,6 +283,20 @@ export const createMachineRunnerInternal = <
   type ThisStateOpaque = StateOpaque<SwarmProtocolName, MachineName, string, StateUnion>
   type ThisMachineRunner = MachineRunner<SwarmProtocolName, MachineName, StateUnion>
 
+  const emitter = new EventEmitter() as MachineEmitter<SwarmProtocolName, MachineName, StateUnion>
+
+  const emitErrorIfSubscribed: MachineEmitterEventMap<
+    SwarmProtocolName,
+    MachineName,
+    StateUnion
+  >['error'] = (error) => {
+    if (emitter.listenerCount('error') > 0) {
+      emitter.emit('error', error)
+    } else {
+      console.error(error.stack)
+    }
+  }
+
   const destruction = Destruction.make()
 
   const persist: PersistFn<MachineEvents> = (containedEvents) => {
@@ -286,12 +306,33 @@ export const createMachineRunnerInternal = <
     return publish(taggedEvents)
   }
 
-  const internals = RunnerInternals.make(initialFactory, initialPayload, (events) => {
+  const internals = RunnerInternals.make(initialFactory, initialPayload, (props) => {
+    const makeCommandErrorMessageDetail = () =>
+      makeCommandErrorMessage(
+        initialFactory.mechanism.protocol.swarmName,
+        initialFactory.mechanism.protocol.name,
+        tags.toString(),
+        props.commandKey,
+      )
+
+    if (props.isExpired()) {
+      emitErrorIfSubscribed(
+        new MachineRunnerErrorCommandFiredAfterExpired(makeCommandErrorMessageDetail()),
+      )
+      return Promise.resolve(CommandFiredExpiry)
+    }
+
     if (destruction.isDestroyed()) {
+      emitErrorIfSubscribed(
+        new MachineRunnerErrorCommandFiredAfterDestroyed(makeCommandErrorMessageDetail()),
+      )
       return Promise.resolve(CommandFiredAfterDestroyed)
     }
 
     if (internals.commandLock) {
+      emitErrorIfSubscribed(
+        new MachineRunnerErrorCommandFiredAfterLocked(makeCommandErrorMessageDetail()),
+      )
       return Promise.resolve(CommandFiredAfterLocked)
     }
 
@@ -299,6 +340,7 @@ export const createMachineRunnerInternal = <
 
     internals.commandLock = currentCommandLock
 
+    const events = props.generateEvents()
     const persistResult = persist(events)
 
     persistResult.catch((err) => {
@@ -320,7 +362,6 @@ export const createMachineRunnerInternal = <
   })
 
   // Actyx Subscription management
-  const emitter = new EventEmitter() as MachineEmitter<SwarmProtocolName, MachineName, StateUnion>
   destruction.addDestroyHook(() => emitter.emit('destroyed'))
 
   let refToUnsubFunction = null as null | (() => void)
@@ -335,6 +376,8 @@ export const createMachineRunnerInternal = <
     unsubscribeFromActyx()
 
     if (destruction.isDestroyed()) return
+
+    const subStartDate = new Date().getTime()
 
     refToUnsubFunction = subscribe(
       async (d) => {
@@ -1135,3 +1178,16 @@ namespace ImplState {
       }),
   })
 }
+
+const makeCommandErrorMessage = (
+  swarmProtocolName: string,
+  machineName: string,
+  tags: string,
+  commandKey: string,
+) =>
+  [
+    `protocol:${swarmProtocolName}`,
+    `machine:${machineName}`,
+    `tags:${tags.toString()}`,
+    `commandKey:${commandKey}`,
+  ].join(', ')

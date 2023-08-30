@@ -5,6 +5,7 @@ import {
   CommandDefinerMap,
   CommandFiredAfterDestroyed,
   CommandFiredAfterLocked,
+  CommandFiredExpiry,
 } from '../design/command.js'
 import { Contained, MachineEvent } from '../design/event.js'
 import {
@@ -15,9 +16,13 @@ import {
   StateFactory,
 } from '../design/state.js'
 
-export type CommandCallback<MachineEventFactories extends MachineEvent.Factory.Any> = (
-  _: Contained.ContainedEvent<MachineEvent.Of<MachineEventFactories>>[],
-) => Promise<CommandFiredAfterDestroyed | CommandFiredAfterLocked | Metadata[]>
+export type CommandCallback<MachineEventFactories extends MachineEvent.Factory.Any> = (_: {
+  commandKey: string
+  isExpired: () => boolean
+  generateEvents: () => Contained.ContainedEvent<MachineEvent.Of<MachineEventFactories>>[]
+}) => Promise<
+  CommandFiredAfterDestroyed | CommandFiredAfterLocked | CommandFiredExpiry | Metadata[]
+>
 
 export type RunnerInternals<
   SwarmProtocolName extends string,

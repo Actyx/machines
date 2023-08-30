@@ -30,7 +30,7 @@ export type CommandFiredAfterDestroyed = typeof CommandFiredAfterDestroyed
 export const CommandFiredExpiry: unique symbol = Symbol()
 export type CommandFiredExpiry = typeof CommandFiredExpiry
 
-export type CommandSignature<Args extends unknown[]> = (...args: Args) => Promise<void>
+export type CommandSignature<Args extends unknown[]> = (...args: Args) => Promise<Metadata[] | void>
 
 export type CommandSignatureMap<Dictionary extends { [key: string]: CommandSignature<unknown[]> }> =
   {
@@ -63,9 +63,11 @@ export type ActualContextGetter<Context> = () => Readonly<Context>
 
 export type ConvertCommandMapParams<Context, RetVal> = {
   getActualContext: ActualContextGetter<Context>
-  onReturn: (
-    retval: RetVal,
-  ) => Promise<
+  onReturn: (props: {
+    commandKey: string
+    isExpired: () => boolean
+    generateEvents: () => RetVal
+  }) => Promise<
     Metadata[] | CommandFiredAfterLocked | CommandFiredAfterDestroyed | CommandFiredExpiry
   >
   /**
@@ -85,31 +87,27 @@ export const convertCommandMapToCommandSignatureMap = <
 ): ToCommandSignatureMap<T, unknown[], RetVal> => {
   return Object.fromEntries(
     Object.entries(t).map(([key, definer]) => {
-      return [key, convertCommandDefinerToCommandSignature(definer, params)]
+      return [key, convertCommandDefinerToCommandSignature(key, definer, params)]
     }),
   ) as ToCommandSignatureMap<T, unknown[], RetVal>
 }
 
 export const convertCommandDefinerToCommandSignature = <Context, Args extends unknown[], RetVal>(
+  key: string,
   definer: CommandDefiner<Context, Args, RetVal>,
   { getActualContext, onReturn, isExpired }: ConvertCommandMapParams<Context, RetVal>,
 ): CommandSignature<Args> => {
   return async (...args: Args) => {
-    if (isExpired()) {
-      // TODO: Do we want to provide user an option to handle expired command?
-      console.error('Command issued after expired')
-      return
-    }
-    // execute command definition
-    const returnedValue = definer(getActualContext(), ...args)
-    // call onReturn hook
-    const result = await onReturn(returnedValue)
+    const generateEvents = () => definer(getActualContext(), ...args)
 
-    if (result === CommandFiredAfterDestroyed) {
-      console.error('Command issued after destroyed')
-    }
-    if (result === CommandFiredAfterLocked) {
-      console.error('Command issued after locked')
+    const result = await onReturn({
+      commandKey: key,
+      generateEvents,
+      isExpired,
+    })
+
+    if (Array.isArray(result)) {
+      return result
     }
 
     return
