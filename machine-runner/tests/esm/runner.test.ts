@@ -9,7 +9,7 @@ import {
   State,
   StateMechanism,
 } from '../../lib/esm/index.js'
-import { createMachineRunnerInternal } from '../../lib/esm/runner/runner.js'
+import { MachineRunner, createMachineRunnerInternal } from '../../lib/esm/runner/runner.js'
 import { NOP } from '../../lib/esm/utils/misc.js'
 import {
   Equal,
@@ -1112,6 +1112,13 @@ describe('protocol.createJSONForAnalysis', () => {
  * Bad type definitions are expected to fail the compilation
  */
 describe('typings', () => {
+  // Type Tests
+  // ==========
+
+  type MachineRunnerIsCommonlyUsableTypes = MachineRunner<'SomeSwarmName', 'SomeMachineName'>
+
+  // Reusables
+  // ==========
   const { Initial, Second } = ProtocolOneTwo
 
   const E1 = MachineEvent.design('E1').withoutPayload()
