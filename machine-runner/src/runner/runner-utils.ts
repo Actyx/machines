@@ -15,7 +15,7 @@ import {
  * Imported this way because it cannot be imported via normal import ... from
  * syntax https://github.com/andywer/typed-emitter/issues/39
  */
-type TypedEventEmitter<Events extends EventMap> = import('typed-emitter').default<Events>
+export type TypedEventEmitter<Events extends EventMap> = import('typed-emitter').default<Events>
 
 type EmittableErrors =
   | MachineRunnerError
@@ -23,11 +23,20 @@ type EmittableErrors =
   | MachineRunnerErrorCommandFiredAfterDestroyed
   | MachineRunnerErrorCommandFiredAfterExpired
 
+export type GlobalEmitter = TypedEventEmitter<GlobalMachineEmitterEventMap>
+
 export type MachineEmitter<
   SwarmProtocolName extends string,
   MachineName extends string,
   StateUnion extends unknown,
 > = TypedEventEmitter<MachineEmitterEventMap<SwarmProtocolName, MachineName, StateUnion>>
+
+export type CommonEmitterEventMap = {
+  'debug.bootTime': (_: { identity: string; durationMs: number; eventCount: number }) => unknown
+  error: (_: EmittableErrors) => unknown
+}
+
+export type GlobalMachineEmitterEventMap = CommonEmitterEventMap
 
 export type MachineEmitterEventMap<
   SwarmProtocolName extends string,
@@ -57,5 +66,4 @@ export type MachineEmitterEventMap<
   next: (_: StateOpaque<SwarmProtocolName, MachineName, string, StateUnion>) => unknown
   destroyed: (_: void) => unknown
   log: (_: string) => unknown
-  error: (_: EmittableErrors) => unknown
-}
+} & CommonEmitterEventMap

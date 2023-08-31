@@ -11,6 +11,7 @@ import {
   MachineRunnerErrorCommandFiredAfterLocked,
   MachineRunnerErrorCommandFiredAfterDestroyed,
   MachineRunnerErrorCommandFiredAfterExpired,
+  globals,
 } from '../../lib/esm/index.js'
 import { MachineRunner, createMachineRunnerInternal } from '../../lib/esm/runner/runner.js'
 import { NOP } from '../../lib/esm/utils/misc.js'
@@ -28,8 +29,19 @@ import * as ProtocolSwitch from './protocol-switch.js'
 import * as ProtocolOneTwo from './protocol-one-two.js'
 import * as ProtocolScorecard from './protocol-scorecard.js'
 import * as ProtocolThreeSwitch from './protocol-three-times-for-zod.js'
+import { CommonEmitterEventMap, TypedEventEmitter } from '../../lib/esm/runner/runner-utils.js'
 
 const sleep = (dur: number) => new Promise((res) => setTimeout(res, dur))
+
+const errorCatcher = (emitter: TypedEventEmitter<Pick<CommonEmitterEventMap, 'error'>>) => {
+  const self = {
+    error: null as unknown,
+  }
+  emitter.once('error', (e) => {
+    self.error = e
+  })
+  return self
+}
 
 class Unreachable extends Error {
   constructor() {
@@ -514,9 +526,6 @@ describe('machine as async generator', () => {
     const machine = r.machine
     r.feed([], true)
 
-    let error = null as unknown
-    r.machine.events.on('error', (e) => (error = e))
-
     let toggleCount = 0
     let iterationCount = 0
 
@@ -536,18 +545,24 @@ describe('machine as async generator', () => {
         // spam toggle commands
 
         // two of these should go to "locked" case
+        const errorCatchersOnLocked = [errorCatcher(machine.events), errorCatcher(globals.emitter)]
         const promises = [
           whenOn.commands?.toggle(),
           whenOn.commands?.toggle(),
           whenOn.commands?.toggle(),
         ]
         await Promise.all(promises)
-        expect(error).toBeInstanceOf(MachineRunnerErrorCommandFiredAfterLocked)
+        errorCatchersOnLocked.forEach((ec) =>
+          expect(ec.error).toBeInstanceOf(MachineRunnerErrorCommandFiredAfterLocked),
+        )
 
+        const errorCatchersOnExpired = [errorCatcher(machine.events), errorCatcher(globals.emitter)]
         // this one should go to the expired case
         await sleep(5) // should be enough so that the previous commands are received back and processed
         await whenOn.commands?.toggle()
-        expect(error).toBeInstanceOf(MachineRunnerErrorCommandFiredAfterExpired)
+        errorCatchersOnExpired.forEach((ec) =>
+          expect(ec.error).toBeInstanceOf(MachineRunnerErrorCommandFiredAfterExpired),
+        )
       }
 
       const whenOff = state.as(Off)
@@ -741,9 +756,6 @@ describe('StateOpaque', () => {
       const r1 = new Runner(Initial, { transitioned: false })
       r1.feed([], true)
 
-      let error = null as unknown
-      r1.machine.events.on('error', (e) => (error = e))
-
       const stateBeforeDestroy = r1.machine.get()
       const state = stateBeforeDestroy?.as(Initial)
       const commands = state?.commands
@@ -752,8 +764,11 @@ describe('StateOpaque', () => {
 
       if (!commands) throw new Unreachable()
 
+      const errorCatchers = [errorCatcher(r1.machine.events), errorCatcher(globals.emitter)]
       commands.X(...XCommandParam)
-      expect(error).toBeInstanceOf(MachineRunnerErrorCommandFiredAfterDestroyed)
+      errorCatchers.forEach((ec) =>
+        expect(ec.error).toBeInstanceOf(MachineRunnerErrorCommandFiredAfterDestroyed),
+      )
 
       r1.assertPersistedAsMachineEvent()
     })
@@ -761,9 +776,6 @@ describe('StateOpaque', () => {
     it('should be locked after a command issued', async () => {
       const r1 = new Runner(Initial, { transitioned: false })
       r1.feed([], true)
-
-      let error = null as unknown
-      r1.machine.events.on('error', (e) => (error = e))
 
       const snapshot = r1.machine.get()?.as(Initial)
       const commands = snapshot?.commands
@@ -774,8 +786,11 @@ describe('StateOpaque', () => {
       r1.assertPersistedAsMachineEvent(One.make({ x: 42 }))
 
       // subsequent command call is not issued
+      const errorCatchers = [errorCatcher(r1.machine.events), errorCatcher(globals.emitter)]
       commands.X(...XCommandParam)
-      expect(error).toBeInstanceOf(MachineRunnerErrorCommandFiredAfterLocked)
+      errorCatchers.forEach((ec) =>
+        expect(ec.error).toBeInstanceOf(MachineRunnerErrorCommandFiredAfterLocked),
+      )
       r1.assertPersistedAsMachineEvent()
 
       await r1.toggleCommandDelay({ delaying: false })
@@ -789,9 +804,6 @@ describe('StateOpaque', () => {
       const r1 = new Runner(Initial, { transitioned: false })
       r1.feed([], true)
 
-      let error = null as unknown
-      r1.machine.events.on('error', (e) => (error = e))
-
       const snapshot = r1.machine.get()?.as(Initial)
       const commands = snapshot?.commands
       if (!snapshot || !commands) throw new Unreachable()
@@ -804,8 +816,12 @@ describe('StateOpaque', () => {
 
       // subsequent command call is not issued
       let rejectionSwitch2 = false
+      const errorCatchers = [errorCatcher(r1.machine.events), errorCatcher(globals.emitter)]
       commands.X(...XCommandParam).catch(() => (rejectionSwitch2 = true))
-      expect(error).toBeInstanceOf(MachineRunnerErrorCommandFiredAfterLocked)
+      errorCatchers.forEach((ec) =>
+        expect(ec.error).toBeInstanceOf(MachineRunnerErrorCommandFiredAfterLocked),
+      )
+
       r1.assertPersistedAsMachineEvent()
 
       await r1.toggleCommandDelay({ delaying: false, reject: true })
@@ -824,9 +840,6 @@ describe('StateOpaque', () => {
 
       await r1.toggleCommandDelay({ delaying: true })
       ;(() => {
-        let error = null as unknown
-        r1.machine.events.on('error', (e) => (error = e))
-
         const snapshot = r1.machine.get()?.as(Initial)
         const commands = snapshot?.commands
         if (!snapshot || !commands) throw new Unreachable()
@@ -835,8 +848,11 @@ describe('StateOpaque', () => {
         r1.assertPersistedAsMachineEvent(One.make({ x: 42 }))
 
         // subsequent command call is not issued
+        const errorCatchers = [errorCatcher(r1.machine.events), errorCatcher(globals.emitter)]
         commands.X(...XCommandParam)
-        expect(error).toBeInstanceOf(MachineRunnerErrorCommandFiredAfterLocked)
+        errorCatchers.forEach((ec) =>
+          expect(ec.error).toBeInstanceOf(MachineRunnerErrorCommandFiredAfterLocked),
+        )
         r1.assertPersistedAsMachineEvent()
       })()
 
