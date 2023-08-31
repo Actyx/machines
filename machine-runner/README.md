@@ -344,6 +344,23 @@ A zod-enabled event factory will have these additional features enabled:
   })
   ```
 
+### Global Event Emitter
+
+Some global event emitters are provided.
+This event emitters will emit events from all machine runners in the same process.
+
+```typescript
+import { globals as machineRunnerGlobals } from "@actyx/machine-runner";
+
+globals.emitter.addListener("debug.bootTime", ({ identity, durationMs, eventCount }) => {
+  if (durationMs > 100) {
+    console.warn(`${identity} boot time takes more than 100ms (${durationMs}ms) processing ${eventCount} events`);
+  }
+});
+
+globals.emitter.addListener("error", console.error);
+```
+
 ### Extra Tags
 
 In the case extra tags are required to be attached in events when invoking commands, extra tags can be registered on a command definition. These extra tags will always be attached when the command is invoked.
