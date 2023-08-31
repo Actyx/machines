@@ -26,7 +26,12 @@ import {
 } from '../design/state.js'
 import { Destruction } from '../utils/destruction.js'
 import { CommandCallback, RunnerInternals, StateAndFactory } from './runner-internals.js'
-import { MachineEmitter, MachineEmitterEventMap } from './runner-utils.js'
+import {
+  CommonEmitterEventMap,
+  MachineEmitter,
+  TypedEventEmitter,
+  MachineEmitterEventMap,
+} from './runner-utils.js'
 import { Machine, SwarmProtocol } from '../design/protocol.js'
 import { NOP } from '../utils/misc.js'
 import { deepEqual } from 'fast-equals'
@@ -36,6 +41,7 @@ import {
   MachineRunnerErrorCommandFiredAfterExpired,
   MachineRunnerErrorCommandFiredAfterLocked,
 } from '../errors.js'
+import * as globals from '../globals.js'
 
 /**
  * Contains and manages the state of a machine by subscribing and publishing
@@ -290,10 +296,17 @@ export const createMachineRunnerInternal = <
     MachineName,
     StateUnion
   >['error'] = (error) => {
-    if (emitter.listenerCount('error') > 0) {
-      emitter.emit('error', error)
+    const listeningEmitters = [emitter, globals.emitter].filter(
+      (emitter) => emitter.listenerCount('error') > 0,
+    )
+
+    // Listener count must be check in order to not trigger ERR_UNHANDLED_ERROR
+    // https://nodejs.org/api/errors.html#err_unhandled_error
+    if (listeningEmitters.length > 0) {
+      listeningEmitters.forEach((emitter) => emitter.emit('error', error))
     } else {
-      console.error(error.stack)
+      // Preserve old behavior where errors are printed
+      console.warn(error.stack)
     }
   }
 
@@ -308,7 +321,7 @@ export const createMachineRunnerInternal = <
 
   const internals = RunnerInternals.make(initialFactory, initialPayload, (props) => {
     const makeCommandErrorMessageDetail = () =>
-      makeCommandErrorMessage(
+      makeIdentityStringForCommandError(
         initialFactory.mechanism.protocol.swarmName,
         initialFactory.mechanism.protocol.name,
         tags.toString(),
@@ -377,7 +390,14 @@ export const createMachineRunnerInternal = <
 
     if (destruction.isDestroyed()) return
 
-    const subStartDate = new Date().getTime()
+    const bootTimeLogger = makeBootTimeLogger(
+      makeIdentityString(
+        initialFactory.mechanism.protocol.swarmName,
+        initialFactory.mechanism.protocol.name,
+        tags.toString(),
+      ),
+      [emitter, globals.emitter],
+    )
 
     refToUnsubFunction = subscribe(
       async (d) => {
@@ -390,12 +410,12 @@ export const createMachineRunnerInternal = <
             restartActyxSubscription()
           } else if (d.type === MsgType.events) {
             //
-
             internals.caughtUp = false
 
             for (const event of d.events) {
               // TODO: Runtime typeguard for event
               // https://github.com/Actyx/machines/issues/9
+              bootTimeLogger.incrementEventCount()
               emitter.emit('debug.eventHandlingPrevState', internals.current.data)
 
               const pushEventResult = RunnerInternals.pushEvent(internals, event)
@@ -434,6 +454,10 @@ export const createMachineRunnerInternal = <
             if (d.caughtUp) {
               // the SDK translates an OffsetMap response into MsgType.events
               // with caughtUp=true
+              if (!internals.caughtUpFirstTime) {
+                bootTimeLogger.emit()
+              }
+
               internals.caughtUp = true
               internals.caughtUpFirstTime = true
               emitter.emit('log', 'Caught up')
@@ -458,6 +482,7 @@ export const createMachineRunnerInternal = <
             }
           }
         } catch (error) {
+          // TODO: handle error gracefully
           console.error(error)
         }
       },
@@ -1179,7 +1204,10 @@ namespace ImplState {
   })
 }
 
-const makeCommandErrorMessage = (
+const makeIdentityString = (swarmProtocolName: string, machineName: string, tags: string) =>
+  [`protocol:${swarmProtocolName}`, `machine:${machineName}`, `tags:${tags.toString()}`].join(', ')
+
+const makeIdentityStringForCommandError = (
   swarmProtocolName: string,
   machineName: string,
   tags: string,
@@ -1191,3 +1219,32 @@ const makeCommandErrorMessage = (
     `tags:${tags.toString()}`,
     `commandKey:${commandKey}`,
   ].join(', ')
+
+const makeBootTimeLogger = (
+  identity: string,
+  emitters: TypedEventEmitter<CommonEmitterEventMap>[],
+) => {
+  const initDate = new Date()
+  let eventCount = 0
+  return {
+    incrementEventCount: () => {
+      eventCount++
+    },
+    emit: () => {
+      const listeningEmitters = emitters.filter(
+        (emitter) => emitter.listenerCount('debug.bootTime') > 0,
+      )
+
+      if (listeningEmitters.length > 0) {
+        const durationMs = new Date().getTime() - initDate.getTime()
+        listeningEmitters.forEach((emitter) =>
+          emitter.emit('debug.bootTime', {
+            durationMs,
+            identity,
+            eventCount,
+          }),
+        )
+      }
+    },
+  }
+}
