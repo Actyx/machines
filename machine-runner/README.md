@@ -347,7 +347,7 @@ A zod-enabled event factory will have these additional features enabled:
 ### Global Event Emitter
 
 Some global event emitters are provided.
-This event emitters will emit events from all machine runners in the same process.
+These event emitters will emit events from all machine runners in the same process.
 
 ```typescript
 import { globals as machineRunnerGlobals } from "@actyx/machine-runner";
