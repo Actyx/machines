@@ -238,8 +238,8 @@ If a robot saw itself winning, started the mission, and then discovers that its 
 
 An alternative use case of a machine runner is to listen to its events.
 
-`next` event emits states whenever a new state is calculated.
-Calling `destroy` is required when the machine is not used to sever subscription from Actyx.
+The `next` event emits states whenever a new state is calculated.
+When not using the machine, calling `destroy` is required to close the connection to Actyx.
 
 ```typescript
 const warehouse = createMachineRunner(actyx, tags, InitialWarehouse, { id: '4711' })
@@ -255,7 +255,7 @@ await untilWareHouseIsNotUsedAnymore()
 warehouse.destroy()
 ```
 
-`error` event can be used to capture errors that happens from machine-runner.
+`error` event can be used to capture errors from machine-runner.
 
 ```
 import {
