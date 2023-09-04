@@ -279,6 +279,49 @@ warehouse.events.on('error', (error) => {
 })
 ```
 
+#### Event List
+
+##### `next`
+
+A `next` event is emitted when a state transition happens and the machine runner has processed all events matching the supplied tag.
+
+The payload is `StateOpaque`, similar to the value produced in the `for-await` loop. 
+
+##### `error`
+
+An `error` event is emitted when an error happened inside the runner. Currently this is the list of the errors:
+- A command is called when locked i.e. another command is being issued in the same machine
+- A command is called when the corresponding state is expired i.e. another command has been successfully issued from that state
+- A command is called on a destroyed machine
+
+The payload has an error subtype.
+
+##### `change`
+
+A `change` event is emitted when a `next` event is emitted, a command is issued, a command is published, or subscription error happened due to losing a connection to Actyx. This event is particularly useful in UI code where not only state changes are tracked, but also command availability and errors.
+
+The payload is `StateOpaque`, similar to the value produced in the `for-await` loop. 
+
+##### `debug.bootTime`
+
+A `debug.bootTime` event is emitted when a machine runner have caught up with an Actyx subscriptions (i.e. finished processing its events until the latest one) for the first time.
+
+The payload includes information on the duration of the booting, the number of events processed, and the identity containing the swarm name, machine name, and tags.
+
+```typescript
+// Logs every time a machine booting takes more than 100 milliseconds or processed more than 100 events
+machine.events.on(
+  'debug.bootTime',
+  ({ durationMs, eventCount, identity: { machineName, swarmProtocolName, tags } }) => {
+    if (durationMs > 100 || eventCount > 100) {
+      console.warn(
+        `Boot of "${swarmProtocolName}-${machineName}" tagged "${tags.toString()}" takes longer than usual (${durationMs} milliseconds of to process ${eventCount} events)`,
+      )
+    }
+  },
+)
+```
+
 ### Zod on MachineEvent
 
 [Zod](https://zod.dev/) can be used to define and validate MachineEvents. On designing an event, use `withZod` instead of `withPayload`.

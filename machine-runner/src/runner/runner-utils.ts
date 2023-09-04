@@ -1,4 +1,4 @@
-import { ActyxEvent } from '@actyx/sdk'
+import { ActyxEvent, Tags } from '@actyx/sdk'
 import { StateRaw, StateFactory, StateMechanism } from '../design/state.js'
 import { MachineEvent } from '../design/event.js'
 import { PushEventResult } from './runner-internals.js'
@@ -32,7 +32,15 @@ export type MachineEmitter<
 > = TypedEventEmitter<MachineEmitterEventMap<SwarmProtocolName, MachineName, StateUnion>>
 
 export type CommonEmitterEventMap = {
-  'debug.bootTime': (_: { identity: string; durationMs: number; eventCount: number }) => unknown
+  'debug.bootTime': (_: {
+    identity: Readonly<{
+      swarmProtocolName: string
+      machineName: string
+      tags: Readonly<Tags>
+    }>
+    durationMs: number
+    eventCount: number
+  }) => unknown
   error: (_: EmittableErrors) => unknown
 }
 

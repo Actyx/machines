@@ -6,8 +6,11 @@ export namespace Events {
   export const all = [ToggleOff, ToggleOn] as const
 }
 
-const protocol = SwarmProtocol.make('switch', Events.all)
-const machine = protocol.makeMachine('switch')
+export const SWARM_NAME = 'switch' as const
+export const MACHINE_NAME = 'switch-machine' as const
+
+export const protocol = SwarmProtocol.make(SWARM_NAME, Events.all)
+export const machine = protocol.makeMachine(MACHINE_NAME)
 
 type StatePayload = { toggleCount: number }
 export const On = machine
