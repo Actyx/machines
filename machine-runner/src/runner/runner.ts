@@ -23,6 +23,7 @@ import {
   Contained,
   CommandContext,
   CommandFiredExpiry,
+  MachineProtocol,
 } from '../design/state.js'
 import { Destruction } from '../utils/destruction.js'
 import { CommandCallback, RunnerInternals, StateAndFactory } from './runner-internals.js'
@@ -391,11 +392,11 @@ export const createMachineRunnerInternal = <
     if (destruction.isDestroyed()) return
 
     const bootTimeLogger = makeBootTimeLogger(
-      makeIdentityString(
-        initialFactory.mechanism.protocol.swarmName,
-        initialFactory.mechanism.protocol.name,
-        tags.toString(),
-      ),
+      {
+        machineName: initialFactory.mechanism.protocol.name,
+        swarmProtocolName: initialFactory.mechanism.protocol.swarmName,
+        tags: tags,
+      },
       [emitter, globals.emitter],
     )
 
@@ -1204,9 +1205,6 @@ namespace ImplState {
   })
 }
 
-const makeIdentityString = (swarmProtocolName: string, machineName: string, tags: string) =>
-  [`protocol:${swarmProtocolName}`, `machine:${machineName}`, `tags:${tags.toString()}`].join(', ')
-
 const makeIdentityStringForCommandError = (
   swarmProtocolName: string,
   machineName: string,
@@ -1221,7 +1219,11 @@ const makeIdentityStringForCommandError = (
   ].join(', ')
 
 const makeBootTimeLogger = (
-  identity: string,
+  identity: Readonly<{
+    swarmProtocolName: string
+    machineName: string
+    tags: Readonly<Tags>
+  }>,
   emitters: TypedEventEmitter<CommonEmitterEventMap>[],
 ) => {
   const initDate = new Date()

@@ -69,11 +69,14 @@ class Runner<
   private sub = Subscription.make<MachineEvent>()
   public machine
 
+  public tag
   /* eslint-disable @typescript-eslint/no-explicit-any */
   constructor(
     factory: StateFactory<SwarmProtocolName, MachineName, MachineEventFactories, any, Payload, any>,
     payload: Payload,
   ) {
+    const tag = Tag(factory.mechanism.protocol.swarmName).and('test-tag-and')
+    this.tag = tag
     /* eslint-enable @typescript-eslint/no-explicit-any */
     const machine = createMachineRunnerInternal(
       this.sub.subscribe,
@@ -95,7 +98,7 @@ class Runner<
         })
         return retval
       },
-      Tag(factory.mechanism.protocol.swarmName).and('test-tag-and'),
+      tag,
       factory,
       payload,
     )
@@ -350,6 +353,41 @@ describe('machine runner', () => {
 
       // because the valid three events have values 1,2,4, the sum of the value captured by the On state should be 1 + 2 + 4
       expect(whenOn.payload.sum).toBe(1 + 2 + 4)
+    })
+  })
+})
+
+describe('machine runner events', () => {
+  describe('debug.bootTime', () => {
+    const { On } = ProtocolSwitch
+    const { ToggleOff, ToggleOn } = ProtocolSwitch.Events
+
+    it('should yield identity, duration, and event counts correctly', async () => {
+      const WAIT_TIME = 50
+      const r1 = new Runner(On, { toggleCount: 0 })
+      const { machine } = r1
+
+      let bootData = null as null | {
+        identity: Readonly<{
+          swarmProtocolName: string
+          machineName: string
+          tags: Readonly<Tags>
+        }>
+        durationMs: number
+        eventCount: number
+      }
+      machine.events.addListener('debug.bootTime', (x) => (bootData = x))
+
+      await r1.feed([ToggleOn], false)
+      await sleep(WAIT_TIME)
+      await r1.feed([ToggleOff], true)
+
+      expect(bootData).not.toBe(null)
+      expect(bootData?.durationMs).toBeGreaterThanOrEqual(WAIT_TIME)
+      expect(bootData?.eventCount).toBe(2)
+      expect(bootData?.identity.swarmProtocolName).toBe(ProtocolSwitch.SWARM_NAME)
+      expect(bootData?.identity.machineName).toBe(ProtocolSwitch.MACHINE_NAME)
+      expect(bootData?.identity.tags).toBe(r1.tag)
     })
   })
 })
