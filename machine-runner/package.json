@@ -38,6 +38,7 @@
     "test:cjs:clean": "ts-node-esm scripts/test/cjs-remove.ts",
     "lint": "npx eslint src/**/*.ts",
     "lint:strict": "npm run lint -- --max-warnings 0",
+    "lint:fix": "npm run lint -- --fix",
     "prepublishOnly": "npm run clean && npm run build && npm run test && npm run lint"
   },
   "keywords": [
