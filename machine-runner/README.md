@@ -298,13 +298,14 @@ The payload has an error subtype.
 
 ##### `change`
 
-A `change` event is emitted when a `next` event is emitted, a command is issued, a command is published, or subscription error happened due to losing a connection to Actyx. This event is particularly useful in UI code where not only state changes are tracked, but also command availability and errors.
+A `change` event is emitted when a `next` event is emitted, a command is issued, a command’s event has been published, or a subscription error happened due to losing a connection to Actyx.
+This event is particularly useful in UI code where not only state changes are tracked, but also command availability and errors.
 
-The payload is `StateOpaque`, similar to the value produced in the `for-await` loop. 
+The payload is of type `StateOpaque`, like the value produced in the `for-await` loop. 
 
 ##### `debug.bootTime`
 
-A `debug.bootTime` event is emitted when a machine runner have caught up with an Actyx subscriptions (i.e. finished processing its events until the latest one) for the first time.
+A `debug.bootTime` event is emitted when a machine runner has caught up with its Actyx subscription (i.e. finished processing its events until the latest one) for the first time.
 
 The payload includes information on the duration of the booting, the number of events processed, and the identity containing the swarm name, machine name, and tags.
 
