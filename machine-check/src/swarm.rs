@@ -17,6 +17,7 @@ use std::{
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Error {
     InitialStateDisconnected,
+    StateUnreachable(NodeId),
     LogTypeEmpty(EdgeId),
     ActiveRoleNotSubscribed(EdgeId),
     LaterActiveRoleNotSubscribed(EdgeId, Role),
@@ -39,6 +40,12 @@ impl Error {
         match self {
             Error::InitialStateDisconnected => {
                 format!("initial swarm protocol state has no transitions")
+            }
+            Error::StateUnreachable(node) => {
+                format!(
+                    "state {} is unreachable from initial state",
+                    &graph[*node].state_name()
+                )
             }
             Error::LogTypeEmpty(edge) => {
                 format!("log type must not be empty {}", Edge(graph, *edge))
@@ -167,12 +174,45 @@ pub fn check(
         (g, Some(i), e) => (g, i, e),
         (g, None, e) => return (to_swarm(&g), None, e),
     };
+    errors.extend(all_nodes_reachable(&graph, initial));
     errors.extend(well_formed(&graph, initial, subs));
     (to_swarm(&graph), Some(initial), errors)
 }
 
 fn to_swarm(graph: &Graph) -> super::Graph {
     graph.map(|_, n| n.name.clone(), |_, x| x.clone())
+}
+
+fn all_nodes_reachable(graph: &Graph, initial: NodeId) -> Vec<Error> {
+    let mut visited = BTreeSet::<NodeId>::from([initial.clone()]);
+    let mut last_visited = vec![initial];
+
+    loop {
+        let next_unvisited_neighbors = last_visited
+            .iter()
+            .flat_map(|node| graph.neighbors_directed(*node, Outgoing))
+            .filter(|node| !visited.contains(node))
+            .collect::<Vec<_>>();
+
+        if next_unvisited_neighbors.len() == 0 {
+            break;
+        }
+
+        visited.append(
+            &mut next_unvisited_neighbors
+                .iter()
+                .cloned()
+                .collect::<BTreeSet<_>>(),
+        );
+
+        last_visited = next_unvisited_neighbors;
+    }
+
+    let unvisited = graph.node_indices().filter(|node| !visited.contains(node));
+
+    unvisited
+        .map(|node| Error::StateUnreachable(node))
+        .collect()
 }
 
 fn well_formed(graph: &Graph, initial: NodeId, subs: &Subscriptions) -> Vec<Error> {
