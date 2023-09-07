@@ -184,33 +184,29 @@ fn to_swarm(graph: &Graph) -> super::Graph {
 }
 
 fn all_nodes_reachable(graph: &Graph, initial: NodeId) -> Vec<Error> {
-    let mut visited = BTreeSet::<NodeId>::from([initial.clone()]);
-    let mut last_visited = vec![initial];
+    let mut unvisited = graph.node_indices().collect::<BTreeSet<_>>();
+    let mut last_discovered = vec![initial];
 
     loop {
-        let next_unvisited_neighbors = last_visited
+        last_discovered.iter().for_each(|node| {
+            unvisited.remove(node);
+        });
+
+        let next_evaluated = last_discovered
             .iter()
             .flat_map(|node| graph.neighbors_directed(*node, Outgoing))
-            .filter(|node| !visited.contains(node))
+            .filter(|node| unvisited.contains(node))
             .collect::<Vec<_>>();
 
-        if next_unvisited_neighbors.len() == 0 {
+        if next_evaluated.len() == 0 {
             break;
         }
 
-        visited.append(
-            &mut next_unvisited_neighbors
-                .iter()
-                .cloned()
-                .collect::<BTreeSet<_>>(),
-        );
-
-        last_visited = next_unvisited_neighbors;
+        last_discovered = next_evaluated;
     }
 
-    let unvisited = graph.node_indices().filter(|node| !visited.contains(node));
-
     unvisited
+        .into_iter()
         .map(|node| Error::StateUnreachable(node))
         .collect()
 }
