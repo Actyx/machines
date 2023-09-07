@@ -5,7 +5,7 @@ use crate::{
 use bitvec::{bitvec, vec::BitVec};
 use itertools::Itertools;
 use petgraph::{
-    visit::{Dfs, DfsPostOrder, EdgeRef, Walker},
+    visit::{Bfs, Dfs, DfsPostOrder, EdgeRef, Walker},
     Direction::{Incoming, Outgoing},
 };
 use std::{
@@ -184,29 +184,13 @@ fn to_swarm(graph: &Graph) -> super::Graph {
 }
 
 fn all_nodes_reachable(graph: &Graph, initial: NodeId) -> Vec<Error> {
-    let mut unvisited = graph.node_indices().collect::<BTreeSet<_>>();
-    let mut last_discovered = vec![initial];
+    let visited = Bfs::new(&graph, initial)
+        .iter(&graph)
+        .collect::<BTreeSet<_>>();
 
-    loop {
-        last_discovered.iter().for_each(|node| {
-            unvisited.remove(node);
-        });
-
-        let next_evaluated = last_discovered
-            .iter()
-            .flat_map(|node| graph.neighbors_directed(*node, Outgoing))
-            .filter(|node| unvisited.contains(node))
-            .collect::<Vec<_>>();
-
-        if next_evaluated.len() == 0 {
-            break;
-        }
-
-        last_discovered = next_evaluated;
-    }
-
-    unvisited
-        .into_iter()
+    graph
+        .node_indices()
+        .filter(|node| !visited.contains(node))
         .map(|node| Error::StateUnreachable(node))
         .collect()
 }
