@@ -232,6 +232,70 @@ Instead, each robot independently ensures that after at five seconds a decision 
 Machine runner resolves this conflict by using only the `selected` event that comes first in the Actyx event sort order; in other words, Actyx arbitrarily picks a winner and the losing event is discarded.
 If a robot saw itself winning, started the mission, and then discovers that its win turned out to be invalid, it will have to stop the mission and pick a new one.
 
+### Errors
+
+The following section describes various unavoidable errors that can arise due to the language design of JavaScript and TypeScript combined with the library's inherent distributed and asynchronous nature.
+
+#### Errors Emittable On Command Calls
+
+A command call returns a promise. The promise's resolution marks the success of the events publication to Actyx.
+
+```typescript
+const whenParticularState = state.as(ParticularState)
+if (whenParticularState) {
+  // awaits the promise, which consequently may break the control flow if there is a thrown exception / promise rejection
+  await whenParticularState.commands()?.someCommand()
+}
+```
+
+However, certain scenarios can result in async errors (i.e. a rejected promise) which will be explained momentarily.
+
+To avoid errors, the general best practice is to not stash commands in an external variable and defer the call.
+The `commands()` will return undefined when possible errors are detected.
+The passing of time might have invalidated the detection result, which is the stashed value.
+
+```typescript
+// Good
+await whenParticularState.commands()?.someCommand()
+
+// Bad
+const commands = whenParticularState.commands();
+await someLongRunningTask();   // this may have invalidated the error detection when finished executing 
+await commands?.someCommand(); 
+```
+
+The list of errors that may arise is as follows.
+
+- `MachineRunnerErrorCommandFiredAfterExpired`:
+
+  This error results from a command call to an expired state.
+
+  An "Expired" state object is a state object that does not match its machine-runner's current state object. An expired state object can be obtained by means of storing a state object's reference in a variable and using it at a later time when the machine-runner has transitioned to another state.
+
+- `MachineRunnerErrorCommandFiredAfterLocked`:
+
+  This error results from a command call to a locked state object/machine-runner. It is generally avoidable by not having a command being called twice in a concurrent fashion in the same state.
+
+  "Locked" is a transitionary state object/machine-runner between the time a command is called and it receives a rejection. When a command results in a failed publication, the source state objects are unlocked, thus subsequent commands will be available. When a command results in a successful publication, the machine-runner is unlocked, but the origin state object is kept locked to prevent subsequent command calls.
+
+- `MachineRunnerErrorCommandFiredAfterDestroyed`:
+
+  This error results from a command call to a state object of a destroyed machine.
+
+  "Destroyed" is the status of a machine-runner that has been destroyed, either by explicitly calling its `.destroy()` method or by breaking out of the `for-await` that is applied to the runner.
+
+- `MachineRunnerErrorCommandFiredWhenQueueNotEmpty`:
+
+  This error results from a command call to a state object when the machine is in the middle of processing multi-events transitions.
+
+  Machine-runner supports multi-event transitions. In a multi-events transition, a runner buffers events of an incomplete ordered events chain in a queue. If the queue is not empty, or in other words, the machine-runner is waiting for a later part of an events chain, then it will not be able to issue a command.
+
+- `MachineRunnerErrorCommandFiredWhenNotCaughtUp`:
+
+  This error results from a command call to a state object whose machine is not caught up.
+
+  "Caught up" is a state where a machine-runner has processed all published events in a subscription stream. Actyx sends events in batches. During the processing of a batch, the machine-runner is not caught up.
+
 ## Features
 
 ### Observe Changes and Errors
@@ -290,6 +354,7 @@ The payload is `StateOpaque`, similar to the value produced in the `for-await` l
 ##### `error`
 
 An `error` event is emitted when an error happened inside the runner. Currently this is the list of the errors:
+
 - A command is called when locked i.e. another command is being issued in the same machine
 - A command is called when the corresponding state is expired i.e. another command has been successfully issued from that state
 - A command is called on a destroyed machine
