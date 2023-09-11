@@ -1,6 +1,6 @@
 {
   "name": "@actyx/machine-runner",
-  "version": "0.4.5",
+  "version": "0.5.0",
   "description": "asymmetric replicated state machines: runtime support",
   "type": "module",
   "types": "./lib/esm/index.d.ts",

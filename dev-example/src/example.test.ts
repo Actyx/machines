@@ -78,7 +78,7 @@ describe('State mocking', () => {
   it('should support capturing events from commands', () => {
     const capturedEvents = [] as unknown[]
     const state = createMockState(Passenger.Ride, { taxiID: 'someTaxiID' }, { capturedEvents })
-    state.commands?.cancel()
+    state.commands()?.cancel()
     expect(capturedEvents).toEqual([ProtocolEvents.Cancelled.make({ reason: "don't wanna" })])
   })
 })

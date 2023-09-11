@@ -154,7 +154,7 @@ export type StateMechanism<
    * // TypeScript type hints for the command's parameters are available
    * const state = machine.get(); // machine is an instance of MachineRunner
    * if (state.is(HangarControlIdle)) {
-   *   state.cast().commands?.acceptDockingRequest("someShipId");
+   *   state.cast().commands()?.acceptDockingRequest("someShipId");
    * }
    */
   readonly command: <

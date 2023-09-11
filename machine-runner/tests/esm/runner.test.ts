@@ -1,246 +1,30 @@
-import { ActyxEvent, MsgType, Tag, Tags } from '@actyx/sdk'
-import { describe, expect, it } from '@jest/globals'
+import { Tags } from '@actyx/sdk'
+import { beforeEach, describe, expect, it } from '@jest/globals'
 import {
-  createMachineRunner,
   StateOpaque,
   MachineEvent,
   SwarmProtocol,
-  StateFactory,
-  State,
-  StateMechanism,
   MachineRunnerErrorCommandFiredAfterLocked,
   MachineRunnerErrorCommandFiredAfterDestroyed,
   MachineRunnerErrorCommandFiredAfterExpired,
-  globals,
+  MachineRunnerErrorCommandFiredWhenNotCaughtUp,
+  MachineRunnerErrorCommandFiredWhenQueueNotEmpty,
 } from '../../lib/esm/index.js'
-import { MachineRunner, createMachineRunnerInternal } from '../../lib/esm/runner/runner.js'
 import { NOP } from '../../lib/esm/utils/misc.js'
-import {
-  Equal,
-  Expect,
-  NotAnyOrUnknown,
-  NotEqual,
-  SerializableObject,
-  SerializableValue,
-} from '../../lib/esm/utils/type-utils.js'
+import { NotAnyOrUnknown } from '../../lib/esm/utils/type-utils.js'
 import { MachineAnalysisResource } from '../../lib/esm/design/protocol.js'
-import { PromiseDelay, Subscription, mockMeta } from '../../lib/esm/test-utils/mock-runner.js'
 import * as ProtocolSwitch from './protocol-switch.js'
 import * as ProtocolOneTwo from './protocol-one-two.js'
 import * as ProtocolScorecard from './protocol-scorecard.js'
 import * as ProtocolThreeSwitch from './protocol-three-times-for-zod.js'
-import { CommonEmitterEventMap, TypedEventEmitter } from '../../lib/esm/runner/runner-utils.js'
-
-const sleep = (dur: number) => new Promise((res) => setTimeout(res, dur))
-
-const errorCatcher = (emitter: TypedEventEmitter<Pick<CommonEmitterEventMap, 'error'>>) => {
-  const self = {
-    error: null as unknown,
-  }
-  emitter.once('error', (e) => {
-    self.error = e
-  })
-  return self
-}
-
-class Unreachable extends Error {
-  constructor() {
-    super('should be unreachable')
-  }
-}
+import { Runner, Unreachable, errorCatcher, sleep } from './helper.js'
+import { emitter } from '../../lib/esm/globals.js'
 
 // Mock Runner
 
-class Runner<
-  SwarmProtocolName extends string,
-  MachineName extends string,
-  MachineEventFactories extends MachineEvent.Factory.Any,
-  Payload,
-  MachineEvent extends MachineEvent.Any = MachineEvent.Of<MachineEventFactories>,
-> {
-  private persisted: ActyxEvent<MachineEvent.Any>[] = []
-  private unhandled: MachineEvent.Any[] = []
-  private caughtUpHistory: StateOpaque<SwarmProtocolName, MachineName, string, unknown>[] = []
-  private stateChangeHistory: {
-    state: StateOpaque<SwarmProtocolName, MachineName, string, unknown>
-    unhandled: MachineEvent.Any[]
-  }[] = []
-  private delayer = PromiseDelay.make()
-  private sub = Subscription.make<MachineEvent>()
-  public machine
-
-  public tag
-  /* eslint-disable @typescript-eslint/no-explicit-any */
-  constructor(
-    factory: StateFactory<SwarmProtocolName, MachineName, MachineEventFactories, any, Payload, any>,
-    payload: Payload,
-  ) {
-    const tag = Tag(factory.mechanism.protocol.swarmName).and('test-tag-and')
-    this.tag = tag
-    /* eslint-enable @typescript-eslint/no-explicit-any */
-    const machine = createMachineRunnerInternal(
-      this.sub.subscribe,
-      async (events) => {
-        const actyxEvents = events.map(
-          ({ event: payload, tags }): ActyxEvent<MachineEvent.Of<MachineEventFactories>> => ({
-            meta: { ...mockMeta(), tags },
-            payload: payload as MachineEvent.Of<MachineEventFactories>,
-          }),
-        )
-        this.persisted.push(...actyxEvents)
-        const pair = this.delayer.make()
-        const retval = pair[0].then(() => {
-          this.feed(
-            actyxEvents.map((e) => e.payload),
-            true,
-          )
-          return actyxEvents.map((e) => e.meta)
-        })
-        return retval
-      },
-      tag,
-      factory,
-      payload,
-    )
-
-    machine.events.addListener('audit.state', ({ state }) => {
-      if (!state) return
-      this.stateChangeHistory.unshift({
-        state,
-        unhandled: this.unhandled,
-      })
-      this.unhandled = []
-    })
-
-    machine.events.addListener('change', (snapshot) => {
-      this.caughtUpHistory.unshift(snapshot)
-    })
-
-    machine.events.addListener('audit.dropped', (dropped) => {
-      this.unhandled.push(dropped.event.payload)
-    })
-
-    this.machine = machine
-  }
-
-  resetStateChangeHistory = () => (this.stateChangeHistory = [])
-  resetCaughtUpHistory = () => (this.caughtUpHistory = [])
-
-  async toggleCommandDelay(
-    delayControl: { delaying: true } | { delaying: false; reject?: boolean },
-  ): Promise<void> {
-    await this.delayer.toggle(delayControl)
-  }
-
-  feed(ev: MachineEvent[], caughtUp: boolean) {
-    const cb = this.sub.cb
-    if (!cb) {
-      console.warn('not subscribed')
-      return
-    }
-    return cb({
-      type: MsgType.events,
-      caughtUp,
-      events: ev.map((payload) => ({
-        meta: mockMeta(),
-        payload,
-      })),
-    })
-  }
-
-  timeTravel() {
-    if (this.sub.cb === null) throw new Error('not subscribed')
-    const cb = this.sub.cb
-    cb({ type: MsgType.timetravel, trigger: { lamport: 0, offset: 0, stream: 'stream' } })
-    if (this.sub.cb === null) throw new Error('did not resubscribe')
-  }
-
-  error() {
-    const err = this.sub.err
-    if (!err) throw new Error('not subscribed')
-    err(new Error('boo!'))
-  }
-
-  /* eslint-disable @typescript-eslint/no-explicit-any */
-  assertLastStateChange<
-    Factory extends StateFactory<
-      SwarmProtocolName,
-      MachineName,
-      MachineEventFactories,
-      any,
-      any,
-      any
-    >,
-  >(
-    factory: Factory,
-    assertStateFurther?: (params: {
-      snapshot: State.Of<Factory>
-      unhandled: MachineEvent.Any[]
-    }) => void,
-  ) {
-    /* eslint-enable @typescript-eslint/no-explicit-any */
-    const last = this.stateChangeHistory.at(0)
-    if (!last) throw new Unreachable()
-
-    const { state, unhandled } = last
-
-    const snapshot = state.as(factory) as State.Of<Factory> | void
-    expect(snapshot).toBeTruthy()
-    if (assertStateFurther && !!snapshot) {
-      assertStateFurther({ snapshot, unhandled })
-    }
-    // expect(cmd0).toBe(cmd)
-  }
-
-  /* eslint-disable @typescript-eslint/no-explicit-any */
-  assertLastCaughtUp<
-    Factory extends StateFactory<
-      SwarmProtocolName,
-      MachineName,
-      MachineEventFactories,
-      any,
-      any,
-      any
-    >,
-  >(factory: Factory, assertStateFurther?: (params: { snapshot: State.Of<Factory> }) => void) {
-    /* eslint-enable @typescript-eslint/no-explicit-any */
-    const state = this.caughtUpHistory.at(0)
-    if (!state) throw new Unreachable()
-
-    const snapshot = state.as(factory) as State.Of<Factory> | void
-    expect(snapshot).toBeTruthy()
-    if (assertStateFurther && !!snapshot) {
-      assertStateFurther({ snapshot })
-    }
-    // expect(cmd0).toBe(cmd)
-  }
-
-  getLastUnhandled = () => [...this.unhandled]
-
-  assertNoStateChange = () => expect(this.stateChangeHistory.length).toBe(0)
-  assertNoCaughtUp = () => expect(this.caughtUpHistory.length).toBe(0)
-  assertNoCurrentUnhandled = () => expect(this.unhandled.length).toBe(0)
-
-  assertSubscribed(b: boolean) {
-    if (b) {
-      expect(this.sub.cb).not.toBeNull()
-      expect(this.sub.err).not.toBeNull()
-    } else {
-      expect(this.sub.cb).toBeNull()
-      expect(this.sub.err).toBeNull()
-    }
-  }
-
-  assertPersistedAsMachineEvent(...e: MachineEvent[]) {
-    expect(this.persisted.map((e) => e.payload)).toEqual(e)
-    this.persisted.length = 0
-  }
-
-  assertPersistedWithFn(fn: (events: ActyxEvent<MachineEvent.Any>[]) => void) {
-    fn([...this.persisted])
-    this.persisted.length = 0
-  }
-}
+beforeEach(() => {
+  emitter.removeAllListeners()
+})
 
 describe('machine runner', () => {
   const { Events, Initial, Second } = ProtocolOneTwo
@@ -449,7 +233,7 @@ describe('machine as async generator', () => {
 
     const issueToggleCommand = (snap: StateOpaque.Of<typeof machine> | null) => {
       const state = snap?.as(On) || snap?.as(Off)
-      return state?.commands?.toggle()
+      return state?.commands()?.toggle()
     }
 
     const promise1 = machine.next()
@@ -551,8 +335,8 @@ describe('machine as async generator', () => {
       if (i > 3) {
         break
       }
-      await state.as(On, (s) => s.commands?.toggle())
-      await state.as(Off, (s) => s.commands?.toggle())
+      await state.as(On, (s) => s.commands()?.toggle())
+      await state.as(Off, (s) => s.commands()?.toggle())
     }
     expect(r1.machine.isDestroyed()).toBe(true)
   })
@@ -563,6 +347,8 @@ describe('machine as async generator', () => {
     const r = new Runner(On, { toggleCount: 0 })
     const machine = r.machine
     r.feed([], true)
+
+    errorCatcher(machine.events) // silence global console.warn from error logs
 
     let toggleCount = 0
     let iterationCount = 0
@@ -580,32 +366,32 @@ describe('machine as async generator', () => {
           break
         }
 
-        // spam toggle commands
+        // spamming toggle commands
+        // to prove that 'next' is not affected by spam of command calls
+        const promise1 = whenOn.commands()?.toggle()
+        const promise2 = whenOn.commands()?.toggle()
+        const promise3 = whenOn.commands()?.toggle()
 
-        // two of these should go to "locked" case
-        const errorCatchersOnLocked = [errorCatcher(machine.events), errorCatcher(globals.emitter)]
-        const promises = [
-          whenOn.commands?.toggle(),
-          whenOn.commands?.toggle(),
-          whenOn.commands?.toggle(),
-        ]
+        const promises = [promise1, promise2, promise3].map((promise) =>
+          promise?.catch((e) => null),
+        )
+        // the last two commands() should return undefined starting from v0.5.0
+        expect(promise2).toBe(undefined)
+        expect(promise3).toBe(undefined)
         await Promise.all(promises)
-        errorCatchersOnLocked.forEach((ec) =>
-          expect(ec.error).toBeInstanceOf(MachineRunnerErrorCommandFiredAfterLocked),
-        )
 
-        const errorCatchersOnExpired = [errorCatcher(machine.events), errorCatcher(globals.emitter)]
-        // this one should go to the expired case
         await sleep(5) // should be enough so that the previous commands are received back and processed
-        await whenOn.commands?.toggle()
-        errorCatchersOnExpired.forEach((ec) =>
-          expect(ec.error).toBeInstanceOf(MachineRunnerErrorCommandFiredAfterExpired),
-        )
+
+        // attempt expired calls
+        // to prove that 'next' is not affected by spam of command calls
+        const command = whenOn.commands()
+        expect(command).toBe(undefined)
+        await whenOn.commands()?.toggle()
       }
 
       const whenOff = state.as(Off)
       if (whenOff) {
-        await whenOff.commands?.toggle()
+        await whenOff.commands()?.toggle()
       }
     }
 
@@ -735,176 +521,20 @@ describe('machine as async generator', () => {
 })
 
 describe('StateOpaque', () => {
-  const { Events, Initial, Second, XCommandParam } = ProtocolOneTwo
+  const { Events, Initial, Second, XCommandParam, XEmittedEvents, YEmittedEvents } = ProtocolOneTwo
   const { One, Two } = Events
+
   describe('Commands', () => {
-    it("should be undefined when StateOpaque hasn't caught up at snapshot-time", () => {
+    it('should emit protocol-determined events', async () => {
       const r1 = new Runner(Initial, { transitioned: false })
-      r1.feed([], true)
-      r1.feed([], false)
+      await r1.feed([], true)
 
-      const asInitial = r1.machine.get()?.as(Initial)
-      if (!asInitial) throw new Unreachable()
+      const whenInitial = r1.machine.get()?.as(Initial)
+      const commands = whenInitial?.commands()
+      if (!whenInitial || !commands) throw new Unreachable()
 
-      expect(asInitial.commands).toBe(undefined)
-    })
-
-    it("should be undefined when StateOpaque's queue isn't zero at snapshot-time", () => {
-      const r1 = new Runner(Initial, { transitioned: false })
-      r1.feed([], true)
-      r1.feed([One.make({ x: 1 })], true)
-
-      const asInitial = r1.machine.get()?.as(Initial)
-      if (!asInitial) throw new Unreachable()
-
-      expect(asInitial.commands).toBe(undefined)
-    })
-
-    it('should be ignored when expired', () => {
-      const r1 = new Runner(Initial, { transitioned: false })
-      r1.feed([], true)
-
-      const stateBeforeExpiry = r1.machine.get()?.as(Initial)
-      if (!stateBeforeExpiry) throw new Unreachable()
-
-      r1.assertPersistedAsMachineEvent()
-
-      // Expire here by transforming it
-      r1.feed([One.make({ x: 1 }), Two.make({ y: 1 })], true)
-
-      expect(stateBeforeExpiry.commands).toBeTruthy()
-      // Persisted should be 0
-      r1.assertPersistedAsMachineEvent()
-
-      const stateAfterExpiry = r1.machine.get()?.as(Second)
-      if (!stateAfterExpiry) throw new Unreachable()
-
-      expect(stateAfterExpiry.commands).toBeTruthy()
-      const commands = stateAfterExpiry.commands
-      // run command here
-      if (!commands) throw new Unreachable()
-
-      // should persist Two.make({ y: 2 })
-      commands.Y()
-
-      r1.assertPersistedAsMachineEvent(Two.make({ y: 2 }))
-    })
-
-    it('should be ignored when MachineRunner is destroyed', () => {
-      const r1 = new Runner(Initial, { transitioned: false })
-      r1.feed([], true)
-
-      const stateBeforeDestroy = r1.machine.get()
-      const state = stateBeforeDestroy?.as(Initial)
-      const commands = state?.commands
-
-      r1.machine.destroy()
-
-      if (!commands) throw new Unreachable()
-
-      const errorCatchers = [errorCatcher(r1.machine.events), errorCatcher(globals.emitter)]
-      commands.X(...XCommandParam)
-      errorCatchers.forEach((ec) =>
-        expect(ec.error).toBeInstanceOf(MachineRunnerErrorCommandFiredAfterDestroyed),
-      )
-
-      r1.assertPersistedAsMachineEvent()
-    })
-
-    it('should be locked after a command issued', async () => {
-      const r1 = new Runner(Initial, { transitioned: false })
-      r1.feed([], true)
-
-      const snapshot = r1.machine.get()?.as(Initial)
-      const commands = snapshot?.commands
-      if (!snapshot || !commands) throw new Unreachable()
-
-      await r1.toggleCommandDelay({ delaying: true })
-      commands.X(...XCommandParam)
-      r1.assertPersistedAsMachineEvent(One.make({ x: 42 }))
-
-      // subsequent command call is not issued
-      const errorCatchers = [errorCatcher(r1.machine.events), errorCatcher(globals.emitter)]
-      commands.X(...XCommandParam)
-      errorCatchers.forEach((ec) =>
-        expect(ec.error).toBeInstanceOf(MachineRunnerErrorCommandFiredAfterLocked),
-      )
-      r1.assertPersistedAsMachineEvent()
-
-      await r1.toggleCommandDelay({ delaying: false })
-
-      // subsequent command call is not issued
-      commands.X(...XCommandParam)
-      r1.assertPersistedAsMachineEvent()
-    })
-
-    it('should be unlocked after previous command is rejected', async () => {
-      const r1 = new Runner(Initial, { transitioned: false })
-      r1.feed([], true)
-
-      const snapshot = r1.machine.get()?.as(Initial)
-      const commands = snapshot?.commands
-      if (!snapshot || !commands) throw new Unreachable()
-
-      await r1.toggleCommandDelay({ delaying: true })
-
-      let rejectionSwitch1 = false
-      commands.X(...XCommandParam).catch(() => (rejectionSwitch1 = true))
-      r1.assertPersistedAsMachineEvent(One.make({ x: 42 }))
-
-      // subsequent command call is not issued
-      let rejectionSwitch2 = false
-      const errorCatchers = [errorCatcher(r1.machine.events), errorCatcher(globals.emitter)]
-      commands.X(...XCommandParam).catch(() => (rejectionSwitch2 = true))
-      errorCatchers.forEach((ec) =>
-        expect(ec.error).toBeInstanceOf(MachineRunnerErrorCommandFiredAfterLocked),
-      )
-
-      r1.assertPersistedAsMachineEvent()
-
-      await r1.toggleCommandDelay({ delaying: false, reject: true })
-
-      expect(rejectionSwitch1).toBe(true)
-      expect(rejectionSwitch2).toBe(false) // second commmand should not be issued
-
-      // subsequent command after previous rejection is issued
-      commands.X(...XCommandParam)
-      r1.assertPersistedAsMachineEvent(One.make({ x: 42 }))
-    })
-
-    it('should be unlocked after state-change', async () => {
-      const r1 = new Runner(Initial, { transitioned: false })
-      r1.feed([], true)
-
-      await r1.toggleCommandDelay({ delaying: true })
-      ;(() => {
-        const snapshot = r1.machine.get()?.as(Initial)
-        const commands = snapshot?.commands
-        if (!snapshot || !commands) throw new Unreachable()
-
-        commands.X(...XCommandParam)
-        r1.assertPersistedAsMachineEvent(One.make({ x: 42 }))
-
-        // subsequent command call is not issued
-        const errorCatchers = [errorCatcher(r1.machine.events), errorCatcher(globals.emitter)]
-        commands.X(...XCommandParam)
-        errorCatchers.forEach((ec) =>
-          expect(ec.error).toBeInstanceOf(MachineRunnerErrorCommandFiredAfterLocked),
-        )
-        r1.assertPersistedAsMachineEvent()
-      })()
-
-      // disable delay here, let all promise runs
-      await r1.toggleCommandDelay({ delaying: false })
-      // feed Two to transform r1
-      r1.feed([Two.make({ y: 2 })], true)
-      ;(() => {
-        const snapshot = r1.machine.get()?.as(Second)
-        if (!snapshot) throw new Unreachable()
-        // subsequent command call is not issued
-        snapshot.commands?.Y()
-        r1.assertPersistedAsMachineEvent(Two.make({ y: 2 }))
-      })()
+      await commands.X(...XCommandParam)
+      r1.assertPersistedAsMachineEvent(...XEmittedEvents)
     })
 
     describe('additional tags', () => {
@@ -932,13 +562,318 @@ describe('StateOpaque', () => {
       On.react([ToggleOff], Off, (context) => ({ toggleCount: context.self.toggleCount + 1 }))
       Off.react([ToggleOn], On, (context) => ({ toggleCount: context.self.toggleCount + 1 }))
 
-      it('should support additional tags via command definition', () => {
+      it('should support additional tags via command definition', async () => {
         const r1 = new Runner(On, { toggleCount: 0 })
         r1.feed([], true)
 
-        r1.machine.get()?.as(On)?.commands?.off()
+        await r1.machine.get()?.as(On)?.commands()?.off()
         r1.assertPersistedWithFn(([ev]) => {
           expect(ev.meta.tags).toContain('extra-tag-off')
+        })
+      })
+    })
+
+    describe('Errors', () => {
+      describe('When Not Caught Up', () => {
+        const setup = async () => {
+          const r1 = new Runner(Initial, { transitioned: false })
+
+          await r1.feed([], true) // trigger caughtUpFirstTime
+          const stashedCommands = r1.machine.get()?.as(Initial)?.commands()
+          if (!stashedCommands) throw new Unreachable()
+          expect(stashedCommands).toBeTruthy()
+          await r1.feed([], false) // trigger !caughtUp
+
+          return { r1, stashedCommands }
+        }
+
+        it('should be undefined', async () => {
+          const { r1 } = await setup()
+
+          const whenInitial = r1.machine.get()?.as(Initial)
+          if (!whenInitial) throw new Unreachable()
+          const commands = whenInitial.commands()
+
+          expect(commands).toBe(undefined)
+        })
+
+        it('should throw and emit nothing when force-called', async () => {
+          const { r1, stashedCommands } = await setup()
+
+          const errorCatchers = r1.makeErrorCatchers()
+          const returnedError = await stashedCommands
+            .X(...XCommandParam)
+            .then(() => null)
+            .catch((e) => e)
+
+          ;[...errorCatchers.map((catcher) => catcher.error), returnedError].map((error) => {
+            expect(error).toBeInstanceOf(MachineRunnerErrorCommandFiredWhenNotCaughtUp)
+          })
+
+          r1.assertPersistedAsMachineEvent()
+        })
+      })
+
+      describe('When Event Queue Is Not Empty', () => {
+        const setup = async () => {
+          const r1 = new Runner(Initial, { transitioned: false })
+          await r1.feed([], true)
+
+          const stashedCommands = r1.machine.get()?.as(Initial)?.commands()
+          if (!stashedCommands) throw new Unreachable()
+          expect(stashedCommands).toBeTruthy()
+
+          await r1.feed([One.make({ x: 1 })], true) // load the queue
+
+          return { r1, stashedCommands }
+        }
+
+        it('should be undefined', async () => {
+          const { r1 } = await setup()
+          const whenInitial = r1.machine.get()?.as(Initial)
+          if (!whenInitial) throw new Unreachable()
+
+          expect(whenInitial.commands()).toBe(undefined)
+        })
+
+        it(`should throw and emit nothing when force-called`, async () => {
+          const { r1, stashedCommands } = await setup()
+
+          const errorCatchers = r1.makeErrorCatchers()
+          const returnedError = await stashedCommands
+            .X(...XCommandParam)
+            .then(() => null)
+            .catch((e) => e)
+
+          ;[...errorCatchers.map((catcher) => catcher.error), returnedError].map((error) => {
+            expect(error).toBeInstanceOf(MachineRunnerErrorCommandFiredWhenQueueNotEmpty)
+          })
+
+          r1.assertPersistedAsMachineEvent()
+        })
+      })
+
+      describe('When Expired', () => {
+        const setup = async () => {
+          const r1 = new Runner(Initial, { transitioned: false })
+          await r1.feed([], true)
+
+          const state = r1.machine.get()?.as(Initial)
+          if (!state) throw new Unreachable()
+          const stashedCommands = state.commands()
+          if (!stashedCommands) throw new Unreachable()
+
+          // Expire by transforming
+          await r1.feed([One.make({ x: 1 }), Two.make({ y: 1 })], true)
+          return { r1, expiredState: state, stashedCommands }
+        }
+
+        it('should be undefined', async () => {
+          const { expiredState: state } = await setup()
+          expect(state.commands()).toBe(undefined)
+        })
+
+        it('should throw and emit nothing when force-called', async () => {
+          const { r1, stashedCommands } = await setup()
+
+          const errorCatchers = r1.makeErrorCatchers()
+          const returnedError = await stashedCommands
+            .X(...XCommandParam)
+            .then(() => null)
+            .catch((e) => e)
+
+          ;[...errorCatchers.map((catcher) => catcher.error), returnedError].map((error) => {
+            expect(error).toBeInstanceOf(MachineRunnerErrorCommandFiredAfterExpired)
+          })
+          r1.assertPersistedAsMachineEvent()
+        })
+      })
+
+      describe('When Destroyed', () => {
+        const setup = async () => {
+          const r1 = new Runner(Initial, { transitioned: false })
+          await r1.feed([], true)
+          const stashedCommands = r1.machine.get()?.as(Initial)?.commands()
+          if (!stashedCommands) throw new Unreachable()
+          r1.machine.destroy()
+          return { r1, stashedCommands }
+        }
+
+        it('should be undefined', async () => {
+          const { r1 } = await setup()
+          const whenInitial = r1.machine.get()?.as(Initial)
+          if (!whenInitial) throw new Unreachable()
+          expect(whenInitial.commands()).toBe(undefined)
+        })
+
+        it('should throw and emit nothing when force-called', async () => {
+          const { r1, stashedCommands } = await setup()
+
+          const errorCatchers = r1.makeErrorCatchers()
+          const returnedError = await stashedCommands
+            .X(...XCommandParam)
+            .then(() => null)
+            .catch((e) => e)
+
+          ;[...errorCatchers.map((catcher) => catcher.error), returnedError].map((error) => {
+            expect(error).toBeInstanceOf(MachineRunnerErrorCommandFiredAfterDestroyed)
+          })
+          r1.assertPersistedAsMachineEvent()
+        })
+      })
+
+      describe('When Locked and then Resolved', () => {
+        const setup = async () => {
+          const r1 = new Runner(Initial, { transitioned: false })
+          await r1.feed([], true)
+
+          const state = r1.machine.get()?.as(Initial)
+          const commands = state?.commands()
+          if (!state || !commands) throw new Unreachable()
+
+          // Delay publication promise resolution.
+          // Next command will locks the machine until delay is released
+          await r1.toggleCommandDelay({ delaying: true })
+          const delayRelease = async () => {
+            await r1.toggleCommandDelay({ delaying: false, reject: false })
+            await lockingCommandPromise
+            r1.clearPersisted()
+          }
+
+          // Locks the machine
+          const lockingCommandPromise = commands.X(...XCommandParam)
+          r1.clearPersisted()
+
+          return { r1, delayRelease, stashedCommands: commands }
+        }
+
+        it('should be undefined', async () => {
+          const { r1, delayRelease } = await setup()
+          const state = r1.machine.get()?.as(Initial)
+          if (!state) throw new Unreachable()
+
+          // both commands from the pre-resolution state will be undefined
+          // lock stays after its publication succeeded
+          // because soon either 1.) the state is expired, 2.) the emitter has a non-empty queue
+
+          expect(state.commands()).toBe(undefined)
+          // release delay, wait until all commands are published
+          await delayRelease()
+          expect(state.commands()).toBe(undefined)
+        })
+
+        it('should throw and emit nothing when force-called', async () => {
+          const { r1, delayRelease, stashedCommands } = await setup()
+
+          // both commands from the pre-resolution state will be undefined
+          // lock stays after its publication succeeded
+          // because soon either 1.) the state is expired, 2.) the emitter has a non-empty queue
+
+          await (async () => {
+            const errorCatchers = r1.makeErrorCatchers()
+            const returnedError = await stashedCommands
+              .X(...XCommandParam)
+              .then(() => null)
+              .catch((e) => e)
+
+            ;[...errorCatchers.map((catcher) => catcher.error), returnedError].map((error) => {
+              expect(error).toBeInstanceOf(MachineRunnerErrorCommandFiredAfterLocked)
+            })
+            r1.assertPersistedAsMachineEvent()
+          })()
+
+          // release delay, wait until all commands are published
+          await delayRelease()
+
+          await (async () => {
+            // Tests for either of these errors: expiry, locked, non-empty queue
+            const errorCatchers = r1.makeErrorCatchers()
+            const returnedError = await stashedCommands
+              .X(...XCommandParam)
+              .then(() => null)
+              .catch((e) => e)
+
+            ;[...errorCatchers.map((catcher) => catcher.error), returnedError].map((error) => {
+              expect(error).toBeTruthy()
+            })
+            r1.assertPersistedAsMachineEvent()
+          })()
+        })
+
+        describe('new state after resolution', () => {
+          it('should be unlocked', async () => {
+            const { delayRelease, r1 } = await setup()
+            await delayRelease()
+
+            // trigger reaction
+            await r1.feed([Two.make({ y: 1 })], true)
+
+            // state created after resolution
+            // assuming no queued events
+            const state = r1.machine.get()?.as(Second)
+            const commands = state?.commands()
+            expect(state).toBeTruthy()
+            expect(commands).toBeTruthy()
+            if (!state || !commands) throw new Unreachable()
+
+            const error = await commands
+              .Y()
+              .then(() => null)
+              .catch((e) => e)
+
+            expect(error).toBe(null)
+            r1.assertPersistedAsMachineEvent(...YEmittedEvents)
+          })
+        })
+      })
+
+      describe('When Locked and then Rejected', () => {
+        const setup = async () => {
+          const r1 = new Runner(Initial, { transitioned: false })
+          await r1.feed([], true)
+
+          const state = r1.machine.get()?.as(Initial)
+          const commands = state?.commands()
+          if (!state || !commands) throw new Unreachable()
+
+          // Delay publication promise resolution.
+          // Next command will locks the machine until delay is released
+          await r1.toggleCommandDelay({ delaying: true })
+          const delayRelease = async () => {
+            await r1.toggleCommandDelay({ delaying: false, reject: true })
+            await lockingCommandPromise.catch(() => {})
+          }
+
+          // Locks the machine
+          const lockingCommandPromise = commands.X(...XCommandParam)
+          r1.clearPersisted()
+
+          return { r1, delayRelease, stashedCommands: commands }
+        }
+
+        it('should not be undefined after previous persist fails', async () => {
+          const { r1, delayRelease } = await setup()
+          const state = r1.machine.get()?.as(Initial)
+          if (!state) throw new Unreachable()
+          await delayRelease()
+          expect(state.commands()).not.toBe(undefined)
+        })
+
+        it('should be unlocked after previous persist fails', async () => {
+          const { r1, delayRelease, stashedCommands } = await setup()
+          await delayRelease()
+          await (async () => {
+            const errorCatchers = r1.makeErrorCatchers()
+            const returnedError = await stashedCommands
+              .X(...XCommandParam)
+              .then(() => null)
+              .catch((e) => e)
+
+            ;[...errorCatchers.map((catcher) => catcher.error), returnedError].map((error) => {
+              expect(error).toBe(null)
+            })
+            r1.assertPersistedAsMachineEvent(...XEmittedEvents)
+          })()
         })
       })
     })
@@ -998,7 +933,7 @@ describe('StateOpaque', () => {
 
       if (!s.is(Initial)) throw new Unreachable()
       const snapshot = s.cast()
-      expect(snapshot.commands?.X).toBeTruthy()
+      expect(snapshot.commands()?.X).toBeTruthy()
     })
   })
 
@@ -1025,7 +960,7 @@ describe('StateOpaque', () => {
 
         if (!snapshot1) throw new Unreachable()
 
-        expect(snapshot1.commands?.X).toBeTruthy()
+        expect(snapshot1.commands()?.X).toBeTruthy()
         expect(snapshot1.payload.transitioned).toBe(false)
       })()
 
@@ -1098,381 +1033,5 @@ describe('MachineAnalysisResource.syntheticEventName', () => {
   it('should be as formatted in the test', () => {
     expect(MachineAnalysisResource.syntheticEventName(Initial, [One, Two])).toBe('§Initial§One§Two')
     expect(MachineAnalysisResource.syntheticEventName(Second, [One])).toBe('§Second§One')
-  })
-})
-
-const nameOf = (m: StateMechanism.Any | StateFactory.Any | string): string =>
-  typeof m === 'string' ? m : ('mechanism' in m ? m.mechanism : m).name
-
-const expectExecute = (
-  analysisData: MachineAnalysisResource,
-  factory: StateMechanism.Any | StateFactory.Any,
-  commandName: string,
-  logType: { type: string }[],
-) => {
-  const transitionFound = analysisData.transitions.find(
-    (t) =>
-      t.source === nameOf(factory) &&
-      t.target === nameOf(factory) &&
-      t.label.tag === 'Execute' &&
-      t.label.cmd === commandName,
-  )
-  expect(transitionFound).toBeTruthy()
-  expect(transitionFound?.label.tag === 'Execute' && transitionFound.label.logType).toEqual(
-    logType.map((item) => item.type),
-  )
-}
-
-const extractInput = (
-  analysisData: MachineAnalysisResource,
-  source: string | StateMechanism.Any | StateFactory.Any,
-  eventType: { type: string },
-  target: string | StateMechanism.Any | StateFactory.Any,
-) =>
-  analysisData.transitions.find(
-    (t) =>
-      t.source === nameOf(source) &&
-      t.target === nameOf(target) &&
-      t.label.tag === 'Input' &&
-      t.label.eventType === eventType.type,
-  )
-
-describe('protocol.createJSONForAnalysis', () => {
-  const E1 = MachineEvent.design('E1').withoutPayload()
-  const E2 = MachineEvent.design('E2').withoutPayload()
-  const protocol = SwarmProtocol.make('example', [E1, E2])
-  const machine = protocol.makeMachine('example')
-  const S1 = machine
-    .designEmpty('S1')
-    .command('a', [E1], () => [E1.make({})])
-    .finish()
-  const S2 = machine
-    .designEmpty('S2')
-    .command('b', [E2], () => [E2.make({})])
-    .finish()
-  S1.react([E1, E2], S1, () => S1.make())
-  S1.react([E2], S2, () => S2.make())
-  S2.react([E2, E1], S2, () => S2.make())
-  S2.react([E1], S1, () => S1.make())
-
-  it('should have all required data', () => {
-    const analysisData = machine.createJSONForAnalysis(S1)
-
-    expect(analysisData.initial).toBe(S1.mechanism.name)
-    // 2 commands
-    expect(analysisData.transitions.filter((t) => t.label.tag === 'Execute')).toHaveLength(2)
-    // 6 reactions
-    expect(analysisData.transitions.filter((t) => t.label.tag === 'Input')).toHaveLength(6)
-
-    // expect each command
-    expectExecute(analysisData, S1, 'a', [E1])
-    expectExecute(analysisData, S2, 'b', [E2])
-
-    const synthetic = MachineAnalysisResource.syntheticEventName
-
-    // expect each reaction
-    // S1.react([E1, E2], S1, () => S1.make())
-    expect(extractInput(analysisData, S1, E1, synthetic(S1, [E1]))).toBeTruthy()
-    expect(extractInput(analysisData, synthetic(S1, [E1]), E2, S1)).toBeTruthy()
-    // S1.react([E2], S2, () => S2.make())
-    expect(extractInput(analysisData, S1, E2, S2)).toBeTruthy()
-    // S2.react([E2, E1], S2, () => S2.make())
-    expect(extractInput(analysisData, S2, E2, synthetic(S2, [E2]))).toBeTruthy()
-    expect(extractInput(analysisData, synthetic(S2, [E2]), E1, S2)).toBeTruthy()
-    // S2.react([E1], S1, () => S1.make())
-    expect(extractInput(analysisData, S2, E1, S1)).toBeTruthy()
-  })
-})
-
-/**
- * In this particular test group, bad-good assertions are not required.
- * This blocks only tests types by making type assignments.
- * Bad type definitions are expected to fail the compilation
- */
-describe('typings', () => {
-  // Type Tests
-  // ==========
-
-  type MachineRunnerIsCommonlyUsableTypes = MachineRunner<'SomeSwarmName', 'SomeMachineName'>
-
-  // Reusables
-  // ==========
-  const { Initial, Second } = ProtocolOneTwo
-
-  const E1 = MachineEvent.design('E1').withoutPayload()
-  const E2 = MachineEvent.design('E2').withoutPayload()
-  const E3 = MachineEvent.design('E3').withPayload<{ property: string }>()
-
-  const protocol = SwarmProtocol.make('example', [E1, E2])
-
-  it('event type transformation should be working well', () => {
-    true as Expect<Equal<MachineEvent.Of<typeof E1>, { type: 'E1' } & Record<never, never>>>
-    true as Expect<Equal<MachineEvent.Of<typeof E3>, { type: 'E3' } & { property: string }>>
-    true as Expect<
-      Equal<
-        MachineEvent.Factory.MapToActyxEvent<readonly [typeof E1, typeof E2, typeof E3]>,
-        [
-          ActyxEvent<MachineEvent.Of<typeof E1>>,
-          ActyxEvent<MachineEvent.Of<typeof E2>>,
-          ActyxEvent<MachineEvent.Of<typeof E3>>,
-        ]
-      >
-    >
-    true as Expect<
-      Equal<
-        MachineEvent.Factory.MapToMachineEvent<readonly [typeof E1, typeof E2, typeof E3]>,
-        [MachineEvent.Of<typeof E1>, MachineEvent.Of<typeof E2>, MachineEvent.Of<typeof E3>]
-      >
-    >
-    true as Expect<
-      Equal<
-        MachineEvent.Factory.MapToPayload<readonly [typeof E1, typeof E2, typeof E3]>,
-        [
-          MachineEvent.Payload.Of<typeof E1>,
-          MachineEvent.Payload.Of<typeof E2>,
-          MachineEvent.Payload.Of<typeof E3>,
-        ]
-      >
-    >
-    true as Expect<
-      Equal<
-        MachineEvent.Factory.Reduce<readonly [typeof E1, typeof E2, typeof E3]>,
-        typeof E1 | typeof E2 | typeof E3
-      >
-    >
-    true as Expect<
-      Equal<
-        MachineEvent.Of<MachineEvent.Factory.Reduce<readonly [typeof E1, typeof E2, typeof E3]>>,
-        MachineEvent.Of<typeof E1> | MachineEvent.Of<typeof E2> | MachineEvent.Of<typeof E3>
-      >
-    >
-  })
-
-  it("tags parameter from protocol should match createMachineRunner's", () => {
-    // Accepted parameter type
-    type TagsParamType = Parameters<
-      typeof createMachineRunner<any, any, typeof E1 | typeof E2, any>
-    >[1]
-
-    // Argument type
-    type TagsArgType = ReturnType<typeof protocol['tagWithEntityId']>
-
-    type ExpectedTagsType = Tags<MachineEvent.Of<typeof E1> | MachineEvent.Of<typeof E2>>
-
-    NOP<[TagsParamType]>(undefined as any as TagsArgType)
-    NOP<[NotAnyOrUnknown<TagsParamType>]>(undefined as any)
-    NOP<[NotAnyOrUnknown<TagsArgType>]>(undefined as any)
-    true as Expect<Equal<ExpectedTagsType, TagsParamType>>
-  })
-
-  it("state.as should not return 'any'", () => {
-    const r = new Runner(Initial, { transitioned: false })
-    const snapshot = r.machine.get()
-    if (!snapshot) return
-
-    const state = snapshot.as(Initial)
-    if (!state) return
-
-    const commands = state.commands
-    if (!commands) return
-    // This will fail to compile if `as` function returns nothing other than
-    // "Initial", including if it returns any
-    const supposedStateName: NotAnyOrUnknown<State.NameOf<typeof state>> = 'Initial'
-    NOP(supposedStateName)
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const xTypeTest: NotAnyOrUnknown<typeof commands.X> = undefined as any
-    const paramsOfXTypeTest: NotAnyOrUnknown<Parameters<typeof commands.X>> = [
-      true,
-      1,
-      '',
-      { specificField: 'literal-a' },
-      Symbol(),
-    ]
-    NOP(xTypeTest, paramsOfXTypeTest)
-
-    const transformedTypeTest = snapshot.as(Initial, (initial) => initial.payload.transitioned)
-    const supposedBooleanOrUndefined: NotAnyOrUnknown<typeof transformedTypeTest> = true as
-      | true
-      | false
-      | undefined
-
-    NOP(transformedTypeTest, supposedBooleanOrUndefined)
-    r.machine.destroy()
-  })
-
-  it("state.is should not return 'any' and should narrow cast", () => {
-    const r = new Runner(Initial, { transitioned: false })
-    const snapshot = r.machine.get()
-    const snapshotTypeTest: NotAnyOrUnknown<typeof snapshot> = snapshot
-    NOP(snapshotTypeTest)
-
-    if (!snapshot) return
-
-    if (snapshot.is(Initial)) {
-      const state = snapshot.cast()
-      const typetest: NotAnyOrUnknown<typeof state> = state
-      const commands = state.commands
-      if (commands) {
-        const typetestCommands: NotAnyOrUnknown<typeof commands.X> = () =>
-          Promise.resolve() as Promise<void>
-        NOP(typetest, typetestCommands)
-      }
-    }
-
-    snapshot.as(Initial)
-    snapshot.as(Second)
-
-    r.machine.destroy()
-  })
-
-  it("machine.refineStateType refines the type of the StateOpaque's payload", () => {
-    const r = new Runner(ProtocolScorecard.Initial, undefined)
-    const machine = r.machine
-    const refinedMachine = machine.refineStateType(ProtocolScorecard.AllStates)
-
-    // Partial param should throw
-    expect(() => machine.refineStateType([ProtocolScorecard.Initial])).toThrow()
-
-    const stateOpaque = machine.get()
-    if (!stateOpaque) return
-
-    const refinedStateOpaque = refinedMachine.get()
-    if (!refinedStateOpaque) return
-
-    true as Expect<Equal<typeof stateOpaque['payload'], unknown>>
-    true as Expect<
-      Equal<
-        typeof refinedStateOpaque['payload'],
-        | StateFactory.PayloadOf<typeof ProtocolScorecard.Initial>
-        | StateFactory.PayloadOf<typeof ProtocolScorecard.Result>
-        | StateFactory.PayloadOf<typeof ProtocolScorecard.ScoreKeeping>
-      >
-    >
-  })
-
-  describe('different-machines', () => {
-    const E1 = MachineEvent.design('E1').withoutPayload()
-    const E2 = MachineEvent.design('E2').withoutPayload()
-    const protocol = SwarmProtocol.make('swarm', [E1, E2])
-
-    const M1 = protocol.makeMachine('machine1')
-    const M2 = protocol.makeMachine('machine2')
-
-    const M1S = M1.designEmpty('m1s').finish()
-    const M2S = M2.designEmpty('m2s').finish()
-
-    it("should err when the wrong StateFactory is passed on react's NextFactory parameter", () => {
-      type ExpectedFactory = Parameters<typeof M1S.react>[1]
-      type IncorrectFactory = typeof M2S
-      true as Expect<Equal<ExpectedFactory['mechanism']['protocol']['name'], 'machine1'>>
-      true as Expect<Equal<ExpectedFactory['mechanism']['protocol']['swarmName'], 'swarm'>>
-      true as Expect<
-        NotEqual<
-          ExpectedFactory['mechanism']['protocol']['name'],
-          IncorrectFactory['mechanism']['protocol']['name']
-        >
-      >
-    })
-
-    it('should err when the wrong parameter is passed on `is`', () => {
-      const runner = new Runner(M1S, undefined)
-      const state = runner.machine.get()
-      if (!state) return
-      type ExpectedFactory = Parameters<typeof state.is>[0]
-      type IncorrectFactory = typeof M2S
-      true as Expect<
-        NotEqual<
-          ExpectedFactory['mechanism']['protocol']['name'],
-          IncorrectFactory['mechanism']['protocol']['name']
-        >
-      >
-    })
-
-    it('should err when the wrong parameter is passed on `as`', () => {
-      const runner = new Runner(M1S, undefined)
-      const state = runner.machine.get()
-      if (!state) return
-      type ExpectedFactory = Parameters<typeof state.as>[0]
-      type IncorrectFactory = typeof M2S
-      true as Expect<
-        NotEqual<
-          ExpectedFactory['mechanism']['protocol']['name'],
-          IncorrectFactory['mechanism']['protocol']['name']
-        >
-      >
-    })
-  })
-
-  describe('serializable-object', () => {
-    it('should work correctly', () => {
-      const s = (_s: SerializableValue) => {
-        // empty
-      }
-      // @ts-expect-error undefined
-      s(undefined)
-      s(null)
-      s(true)
-      s(42)
-      s('hello')
-      // @ts-expect-error undefined
-      s([undefined])
-      s([null])
-      s([true])
-      s([42])
-      s(['hello'])
-      // @ts-expect-error undefined
-      s({ c: undefined })
-      s({ c: null })
-      s({ c: true })
-      s({ c: 42 })
-      s({ c: 'hello' })
-
-      // @ts-expect-error undefined
-      s({} as { [_: string]: undefined })
-      s({} as { [_: string]: null })
-      s({} as { [_: string]: boolean })
-      s({} as { [_: string]: number })
-      s({} as { [_: string]: string })
-      // @ts-expect-error function
-      s({} as { [_: string]: () => void })
-      s({} as Record<string, string>)
-
-      const o = <T extends SerializableObject>() => {
-        // empty
-      }
-      const somesymbol: unique symbol = Symbol()
-      type somesymbol = typeof somesymbol
-
-      o<{
-        a: boolean
-        b: null
-        c: true
-        d: 42
-        e: 'hello'
-        f: string
-        g: {
-          a: boolean
-          b: null
-          c: true
-          d: 42
-          e: 'hello'
-          f: string
-        }
-      }>()
-      o<{ a: Record<string, string>; b: Record<string, string>[] }>()
-      o<{ a: { b: Record<string, { c: number }[]> } }>()
-      o<{ a: { b: Record<string, { c: number }[]>[] }[] }>()
-      // @ts-expect-error Date as property value
-      o<{ a: Date; b: { c: Date } }>()
-      // @ts-expect-error function as property value
-      o<{ a: () => unknown; b: { c: () => unknown } }>()
-      // @ts-expect-error bigint as property value
-      o<{ a: bigint; b: { c: bigint } }>()
-      // @ts-expect-error symbol as property value
-      o<{ a: symbol; b: { c: symbol } }>()
-      // @ts-expect-error symbol as property key
-      o<{ [somesymbol]: boolean }>()
-    })
   })
 })

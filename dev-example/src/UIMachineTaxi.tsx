@@ -12,7 +12,7 @@ type UITaxiFirstBidProps = { state: State.Of<typeof Taxi.FirstBid> }
 
 export const UITaxiFirstBid = ({ state }: UITaxiFirstBidProps) => {
   const [price, setPrice] = useState<number | null>(null)
-  const buttonEnabled = state.commands !== undefined
+  const buttonEnabled = state!== undefined
   return (
     <div>
       <input
@@ -36,7 +36,7 @@ export const UITaxiFirstBid = ({ state }: UITaxiFirstBidProps) => {
         disabled={!buttonEnabled}
         onClick={() => {
           if (price !== null) {
-            state.commands?.bid({
+            state.commands()?.bid({
               price: price,
               time: new Date(),
             })
@@ -53,7 +53,7 @@ type UITaxiAuctionProps = { state: State.Of<typeof Taxi.Auction> }
 
 export const UITaxiAuction = ({ state }: UITaxiAuctionProps) => {
   const [price, setPrice] = useState<number | null>(null)
-  const buttonEnabled = state.commands !== undefined
+  const buttonEnabled = state.commands() !== undefined
   return (
     <div>
       <input
@@ -77,7 +77,7 @@ export const UITaxiAuction = ({ state }: UITaxiAuctionProps) => {
         disabled={!buttonEnabled}
         onClick={() => {
           if (price !== null) {
-            state.commands?.bid({
+            state.commands()?.bid({
               price: price,
               time: new Date(),
             })
