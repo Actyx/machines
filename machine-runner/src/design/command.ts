@@ -52,7 +52,7 @@ export type ToCommandSignatureMap<
 
 export type CommandGeneratorCriteria = {
   /**
-   * Expired: a state snapshot is expired when it is not the host runner's curren state
+   * Expired: a state snapshot is expired when it is not the host runner's current state
    */
   isNotExpired: () => boolean
   /**
@@ -68,7 +68,7 @@ export type CommandGeneratorCriteria = {
    */
   isCaughtUp: () => boolean
   /**
-   * Queue Empty: the host runner is not withholding an event that MAY results in a future transormation to its current state
+   * Queue Empty: the host runner is not withholding an event that MAY results in a future transformation to its current state
    */
   isQueueEmpty: () => boolean
 }
