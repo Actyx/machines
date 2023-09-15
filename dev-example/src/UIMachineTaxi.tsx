@@ -12,7 +12,7 @@ type UITaxiFirstBidProps = { state: State.Of<typeof Taxi.FirstBid> }
 
 export const UITaxiFirstBid = ({ state }: UITaxiFirstBidProps) => {
   const [price, setPrice] = useState<number | null>(null)
-  const buttonEnabled = state!== undefined
+  const buttonEnabled = state.commands() !== undefined
   return (
     <div>
       <input

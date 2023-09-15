@@ -4,7 +4,6 @@ import {
   MachineRunnerErrorCommandFiredAfterDestroyed,
   MachineRunnerErrorCommandFiredAfterLocked,
   MachineRunnerErrorCommandFiredWhenNotCaughtUp,
-  MachineRunnerErrorCommandFiredWhenQueueNotEmpty,
   MachineRunnerErrorCommandFiredAfterExpired,
 } from '../errors.js'
 /**
@@ -110,7 +109,7 @@ export namespace CommandGeneratorCriteria {
       if (!isCaughtUp()) return MachineRunnerErrorCommandFiredWhenNotCaughtUp
       if (!isNotDestroyed()) return MachineRunnerErrorCommandFiredAfterDestroyed
       if (!isNotExpired()) return MachineRunnerErrorCommandFiredAfterExpired
-      if (!isQueueEmpty()) return MachineRunnerErrorCommandFiredWhenQueueNotEmpty
+      if (!isQueueEmpty()) return MachineRunnerErrorCommandFiredAfterExpired
       if (!isNotLocked()) return MachineRunnerErrorCommandFiredAfterLocked
       return null
     })()

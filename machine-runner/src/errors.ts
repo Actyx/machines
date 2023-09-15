@@ -35,10 +35,3 @@ export class MachineRunnerErrorCommandFiredWhenNotCaughtUp extends MachineRunner
     Object.setPrototypeOf(this, MachineRunnerErrorCommandFiredWhenNotCaughtUp.prototype)
   }
 }
-export class MachineRunnerErrorCommandFiredWhenQueueNotEmpty extends MachineRunnerError {
-  constructor(message?: string) {
-    super(message)
-    this.name = 'MachineRunnerErrorCommandFiredWhenQueueNotEmpty'
-    Object.setPrototypeOf(this, MachineRunnerErrorCommandFiredWhenQueueNotEmpty.prototype)
-  }
-}

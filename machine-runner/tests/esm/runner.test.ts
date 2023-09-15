@@ -8,7 +8,6 @@ import {
   MachineRunnerErrorCommandFiredAfterDestroyed,
   MachineRunnerErrorCommandFiredAfterExpired,
   MachineRunnerErrorCommandFiredWhenNotCaughtUp,
-  MachineRunnerErrorCommandFiredWhenQueueNotEmpty,
 } from '../../lib/esm/index.js'
 import { NOP } from '../../lib/esm/utils/misc.js'
 import { NotAnyOrUnknown } from '../../lib/esm/utils/type-utils.js'
@@ -646,7 +645,7 @@ describe('StateOpaque', () => {
             .catch((e) => e)
 
           ;[...errorCatchers.map((catcher) => catcher.error), returnedError].map((error) => {
-            expect(error).toBeInstanceOf(MachineRunnerErrorCommandFiredWhenQueueNotEmpty)
+            expect(error).toBeInstanceOf(MachineRunnerErrorCommandFiredAfterExpired)
           })
 
           r1.assertPersistedAsMachineEvent()

@@ -259,36 +259,54 @@ The passing of time might have invalidated the detection result, which is the st
 await whenParticularState.commands()?.someCommand()
 
 // Bad
-const commands = whenParticularState.commands();
-await someLongRunningTask();   // this may have invalidated the error detection when finished executing 
-await commands?.someCommand(); 
+const commands = whenParticularState.commands()
+await someLongRunningTask() // this may have invalidated the error detection when finished executing
+await commands?.someCommand()
+```
+
+Avoid accidentally not issuing commands by using state objects produced by `next`,
+`peek`, and `for-await` loop, as opposed to the `get` method. These methods
+ensure the newly retrieved state objects are not expired. It is recommended to
+only use `get` method when it is necessary to retrieve state objects immediately
+(without waiting for the machine to finish processing the next event batch) at
+the cost of possibly getting expired, locked, or non-caught-up state objects,
+such as when observing a machine runner's state passively.
+
+```typescript
+// Guaranteed working, assuming there's no other
+const whenOn = (await r.machine.peek()).value?.as(On)
+if (whenOn) {
+  await whenOn.commands()?.toggle() // returns promise
+}
+
+// There's a chance that commands is not available
+const whenOn = r.machine.get().value?.as(On)
+if (whenOn) {
+  await whenOn.commands()?.toggle() // may be undefined
+}
 ```
 
 The list of errors that may arise is as follows.
 
 - `MachineRunnerErrorCommandFiredAfterExpired`:
 
-  This error results from a command call to an expired state.
+  This error results from a command call to an expired state or a machine-runner with a non-empty event queue.
 
   An "Expired" state object is a state object that does not match its machine-runner's current state object. An expired state object can be obtained by means of storing a state object's reference in a variable and using it at a later time when the machine-runner has transitioned to another state.
+
+  The non-empty event queue condition happens when a machine-runner is waiting for the completion of a multi-events transition. In a multi-events transition, different parts of this ordered events chain can arrive at different points in time. The queue is not empty in the period between the first and the last arrival.
 
 - `MachineRunnerErrorCommandFiredAfterLocked`:
 
   This error results from a command call to a locked state object/machine-runner. It is generally avoidable by not having a command being called twice in a concurrent fashion in the same state.
 
-  "Locked" is a transitionary state object/machine-runner between the time a command is called and it receives a rejection. When a command results in a failed publication, the source state objects are unlocked, thus subsequent commands will be available. When a command results in a successful publication, the machine-runner is unlocked, but the origin state object is kept locked to prevent subsequent command calls.
+  "Locked" is a transitionary state object/machine-runner between the time a command is called and it receives a rejection. When a command results in a failed publication, the source state objects are unlocked, thus subsequent commands will be available. When a command results in a successful publication, the machine-runner is unlocked, but the issuing state object is kept locked to prevent subsequent command calls. The machine-runner will immediately produce a new state object with commands enabled, accessible via `next`, `peek`, and `for-await` loop.
 
 - `MachineRunnerErrorCommandFiredAfterDestroyed`:
 
   This error results from a command call to a state object of a destroyed machine.
 
   "Destroyed" is the status of a machine-runner that has been destroyed, either by explicitly calling its `.destroy()` method or by breaking out of the `for-await` that is applied to the runner.
-
-- `MachineRunnerErrorCommandFiredWhenQueueNotEmpty`:
-
-  This error results from a command call to a state object when the machine is in the middle of processing multi-events transitions.
-
-  Machine-runner supports multi-event transitions. In a multi-events transition, a runner buffers events of an incomplete ordered events chain in a queue. If the queue is not empty, or in other words, the machine-runner is waiting for a later part of an events chain, then it will not be able to issue a command.
 
 - `MachineRunnerErrorCommandFiredWhenNotCaughtUp`:
 
