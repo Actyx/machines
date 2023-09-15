@@ -5,7 +5,7 @@ use crate::{
 use bitvec::{bitvec, vec::BitVec};
 use itertools::Itertools;
 use petgraph::{
-    visit::{Bfs, Dfs, DfsPostOrder, EdgeRef, Walker},
+    visit::{Dfs, DfsPostOrder, EdgeRef, Walker},
     Direction::{Incoming, Outgoing},
 };
 use std::{
@@ -184,7 +184,8 @@ fn to_swarm(graph: &Graph) -> super::Graph {
 }
 
 fn all_nodes_reachable(graph: &Graph, initial: NodeId) -> Vec<Error> {
-    let visited = Bfs::new(&graph, initial)
+    // Traversal order choice (Bfs vs Dfs vs DfsPostOrder) does not matter
+    let visited = Dfs::new(&graph, initial)
         .iter(&graph)
         .collect::<BTreeSet<_>>();
 
