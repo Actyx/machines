@@ -238,7 +238,7 @@ The following section describes various unavoidable errors that can arise due to
 
 #### Errors Emittable On Command Calls
 
-A command call returns a promise. The promise's resolution marks the success of the events publication to Actyx.
+A command call returns a promise. The promise's resolution marks the success of the events' publication to Actyx.
 
 ```typescript
 const whenParticularState = state.as(ParticularState)
