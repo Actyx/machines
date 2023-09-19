@@ -17,6 +17,7 @@ use std::{
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Error {
     InitialStateDisconnected,
+    StateUnreachable(NodeId),
     LogTypeEmpty(EdgeId),
     ActiveRoleNotSubscribed(EdgeId),
     LaterActiveRoleNotSubscribed(EdgeId, Role),
@@ -39,6 +40,12 @@ impl Error {
         match self {
             Error::InitialStateDisconnected => {
                 format!("initial swarm protocol state has no transitions")
+            }
+            Error::StateUnreachable(node) => {
+                format!(
+                    "state {} is unreachable from initial state",
+                    &graph[*node].state_name()
+                )
             }
             Error::LogTypeEmpty(edge) => {
                 format!("log type must not be empty {}", Edge(graph, *edge))
@@ -167,12 +174,26 @@ pub fn check(
         (g, Some(i), e) => (g, i, e),
         (g, None, e) => return (to_swarm(&g), None, e),
     };
+    errors.extend(all_nodes_reachable(&graph, initial));
     errors.extend(well_formed(&graph, initial, subs));
     (to_swarm(&graph), Some(initial), errors)
 }
 
 fn to_swarm(graph: &Graph) -> super::Graph {
     graph.map(|_, n| n.name.clone(), |_, x| x.clone())
+}
+
+fn all_nodes_reachable(graph: &Graph, initial: NodeId) -> Vec<Error> {
+    // Traversal order choice (Bfs vs Dfs vs DfsPostOrder) does not matter
+    let visited = Dfs::new(&graph, initial)
+        .iter(&graph)
+        .collect::<BTreeSet<_>>();
+
+    graph
+        .node_indices()
+        .filter(|node| !visited.contains(node))
+        .map(|node| Error::StateUnreachable(node))
+        .collect()
 }
 
 fn well_formed(graph: &Graph, initial: NodeId, subs: &Subscriptions) -> Vec<Error> {
