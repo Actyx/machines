@@ -15,6 +15,7 @@ const protocol = SwarmProtocol.make('TestSwarm', Events.all)
 const machine = protocol.makeMachine('TestMachine')
 
 export const XCommandParam = [true, 1, '', { specificField: 'literal-a' }, Symbol()] as const
+export const XEmittedEvents = [Events.One.make({ x: 42 })] as const
 export const Initial = machine
   .designState('Initial')
   .withPayload<{ transitioned: boolean }>()
@@ -29,14 +30,15 @@ export const Initial = machine
       _supposedString: string,
       _supposedObject: { specificField: 'literal-a' },
       _supposedSymbol: symbol,
-    ) => [Events.One.make({ x: 42 })],
+    ) => [...XEmittedEvents],
   )
   .finish()
 
+export const YEmittedEvents = [Events.Two.make({ y: 2 })] as const
 export const Second = machine
   .designState('Second')
   .withPayload<{ x: number; y: number }>()
-  .command('Y', [Events.Two], () => [Events.Two.make({ y: 2 })])
+  .command('Y', [Events.Two], () => [...YEmittedEvents])
   .finish()
 
 // Reactions

@@ -28,3 +28,10 @@ export class MachineRunnerErrorCommandFiredAfterExpired extends MachineRunnerErr
     Object.setPrototypeOf(this, MachineRunnerErrorCommandFiredAfterExpired.prototype)
   }
 }
+export class MachineRunnerErrorCommandFiredWhenNotCaughtUp extends MachineRunnerError {
+  constructor(message?: string) {
+    super(message)
+    this.name = 'MachineRunnerErrorCommandFiredWhenNotCaughtUp'
+    Object.setPrototypeOf(this, MachineRunnerErrorCommandFiredWhenNotCaughtUp.prototype)
+  }
+}

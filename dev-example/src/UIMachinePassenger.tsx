@@ -10,7 +10,7 @@ export const UIPassengerInitial = ({ state }: UIPassengerInitialProps) => {
   const [pickup, setPickup] = useState('')
   const [destination, setDestination] = useState('')
   const buttonEnabled =
-    pickup.trim().length > 0 && destination.trim().length > 0 && state.commands !== undefined
+    pickup.trim().length > 0 && destination.trim().length > 0 && state.commands() !== undefined
   return (
     <div>
       <label>
@@ -19,17 +19,13 @@ export const UIPassengerInitial = ({ state }: UIPassengerInitialProps) => {
       </label>
       <label>
         Destination
-        <input
-          type="text"
-          value={destination}
-          onChange={(e) => setDestination(e.target.value)}
-        ></input>
+        <input type="text" value={destination} onChange={(e) => setDestination(e.target.value)}></input>
       </label>
       <button
         type="button"
         disabled={!buttonEnabled}
         onClick={() =>
-          state.commands?.request({
+          state.commands()?.request({
             pickup,
             destination,
           })
@@ -47,7 +43,7 @@ export type UIPassengerAuctionProps = {
 
 export const UIPassengerAuction = ({ state }: UIPassengerAuctionProps) => {
   const [selection, setSelection] = useState<BidData | null>(state.payload.bids[0] || null)
-  const buttonEnabled = selection !== null && state.commands !== undefined
+  const buttonEnabled = selection !== null && state.commands() !== undefined
 
   return (
     <div>
@@ -72,7 +68,7 @@ export const UIPassengerAuction = ({ state }: UIPassengerAuctionProps) => {
         disabled={!buttonEnabled}
         onClick={() => {
           if (selection !== null) {
-            state.commands?.select(selection.bidderID)
+            state.commands()?.select(selection.bidderID)
           }
         }}
       >
@@ -88,7 +84,7 @@ export type UIPassengerRideProps = {
 
 // Extracted for unit test demo
 export const isTaxiRideCancelEnabled = (state: UIPassengerRideProps['state']) =>
-  state.commands !== undefined
+  state.commands() !== undefined
 
 export const UIPassengerRide = ({ state }: UIPassengerRideProps) => {
   const buttonEnabled = isTaxiRideCancelEnabled(state)
@@ -97,7 +93,7 @@ export const UIPassengerRide = ({ state }: UIPassengerRideProps) => {
       <button
         disabled={!buttonEnabled}
         onClick={() => {
-          state.commands?.cancel()
+          state.commands()?.cancel()
         }}
       >
         Cancel Ride

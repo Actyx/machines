@@ -18,12 +18,9 @@ import {
   CommandDefinerMap,
   ToCommandSignatureMap,
   convertCommandMapToCommandSignatureMap,
-  CommandFiredAfterDestroyed,
-  CommandFiredAfterLocked,
   Contained,
   CommandContext,
-  CommandFiredExpiry,
-  MachineProtocol,
+  CommandGeneratorCriteria,
 } from '../design/state.js'
 import { Destruction } from '../utils/destruction.js'
 import { CommandCallback, RunnerInternals, StateAndFactory } from './runner-internals.js'
@@ -37,11 +34,6 @@ import { Machine, SwarmProtocol } from '../design/protocol.js'
 import { NOP } from '../utils/misc.js'
 import { deepEqual } from 'fast-equals'
 import { deepCopy } from '../utils/object-utils.js'
-import {
-  MachineRunnerErrorCommandFiredAfterDestroyed,
-  MachineRunnerErrorCommandFiredAfterExpired,
-  MachineRunnerErrorCommandFiredAfterLocked,
-} from '../errors.js'
 import * as globals from '../globals.js'
 
 /**
@@ -311,8 +303,6 @@ export const createMachineRunnerInternal = <
     }
   }
 
-  const destruction = Destruction.make()
-
   const persist: PersistFn<MachineEvents> = (containedEvents) => {
     const taggedEvents = containedEvents.map((containedEvent) =>
       MachineRunner.tagContainedEvent(tags as Tags<MachineEvents>, containedEvent),
@@ -321,43 +311,27 @@ export const createMachineRunnerInternal = <
   }
 
   const internals = RunnerInternals.make(initialFactory, initialPayload, (props) => {
-    const makeCommandErrorMessageDetail = () =>
+    const error = CommandGeneratorCriteria.produceError(props.commandGeneratorCriteria, () =>
       makeIdentityStringForCommandError(
         initialFactory.mechanism.protocol.swarmName,
         initialFactory.mechanism.protocol.name,
         tags.toString(),
         props.commandKey,
-      )
+      ),
+    )
 
-    if (props.isExpired()) {
-      emitErrorIfSubscribed(
-        new MachineRunnerErrorCommandFiredAfterExpired(makeCommandErrorMessageDetail()),
-      )
-      return Promise.resolve(CommandFiredExpiry)
+    if (error) {
+      emitErrorIfSubscribed(error)
+      return Promise.reject(error)
     }
 
-    if (destruction.isDestroyed()) {
-      emitErrorIfSubscribed(
-        new MachineRunnerErrorCommandFiredAfterDestroyed(makeCommandErrorMessageDetail()),
-      )
-      return Promise.resolve(CommandFiredAfterDestroyed)
-    }
-
-    if (internals.commandLock) {
-      emitErrorIfSubscribed(
-        new MachineRunnerErrorCommandFiredAfterLocked(makeCommandErrorMessageDetail()),
-      )
-      return Promise.resolve(CommandFiredAfterLocked)
-    }
-
-    const currentCommandLock = Symbol()
+    const currentCommandLock = Symbol(Math.random())
 
     internals.commandLock = currentCommandLock
 
     const events = props.generateEvents()
-    const persistResult = persist(events)
 
-    persistResult.catch((err) => {
+    const unlockAndLogOnPersistFailure = (err: unknown) => {
       emitter.emit(
         'log',
         `error publishing ${err} ${events.map((e) => JSON.stringify(e)).join(', ')}`,
@@ -369,6 +343,11 @@ export const createMachineRunnerInternal = <
       if (currentCommandLock !== internals.commandLock) return
       internals.commandLock = null
       emitter.emit('change', ImplStateOpaque.make(internals, internals.current))
+    }
+
+    const persistResult = persist(events).catch((err) => {
+      unlockAndLogOnPersistFailure(err)
+      return Promise.reject(err)
     })
 
     emitter.emit('change', ImplStateOpaque.make(internals, internals.current))
@@ -376,7 +355,7 @@ export const createMachineRunnerInternal = <
   })
 
   // Actyx Subscription management
-  destruction.addDestroyHook(() => emitter.emit('destroyed'))
+  internals.destruction.addDestroyHook(() => emitter.emit('destroyed'))
 
   let refToUnsubFunction = null as null | (() => void)
 
@@ -384,12 +363,12 @@ export const createMachineRunnerInternal = <
     refToUnsubFunction?.()
     refToUnsubFunction = null
   }
-  destruction.addDestroyHook(unsubscribeFromActyx)
+  internals.destruction.addDestroyHook(unsubscribeFromActyx)
 
   const restartActyxSubscription = () => {
     unsubscribeFromActyx()
 
-    if (destruction.isDestroyed()) return
+    if (internals.destruction.isDestroyed()) return
 
     const bootTimeLogger = makeBootTimeLogger(
       {
@@ -515,8 +494,8 @@ export const createMachineRunnerInternal = <
     events: emitter,
     get: getSnapshot,
     initial: (): ThisStateOpaque => ImplStateOpaque.make(internals, internals.initial),
-    destroy: destruction.destroy,
-    isDestroyed: destruction.isDestroyed,
+    destroy: internals.destruction.destroy,
+    isDestroyed: internals.destruction.isDestroyed,
     noAutoDestroy: () =>
       MachineRunnerIterableIterator.make({
         events: emitter,
@@ -526,7 +505,7 @@ export const createMachineRunnerInternal = <
   const defaultIterator: MachineRunnerIterableIterator<SwarmProtocolName, MachineName, StateUnion> =
     MachineRunnerIterableIterator.make({
       events: emitter,
-      inheritedDestruction: destruction,
+      inheritedDestruction: internals.destruction,
     })
 
   const refineStateType = <
@@ -910,7 +889,7 @@ export interface StateOpaque<
    * if (state.is(HangarControlIdle)) {
    *   const typedState = state.cast()                  // typedState is an instance of HangarControlIdle
    *   console.log(typedState.payload.dockingRequests)  // payload is accessible
-   *   console.log(typedState.commands)                 // commands MAY be accessible depending on the state of the MachineRunners
+   *   console.log(typedState.commands())                 // commands MAY be accessible depending on the state of the MachineRunners
    * }
    */
   cast(): State<StateName, Payload, Commands>
@@ -962,6 +941,9 @@ export namespace ImplStateOpaque {
   export const isCommandLocked = (internals: RunnerInternals.Any): boolean =>
     !!internals.commandLock
 
+  export const isRunnerDestroyed = (internals: RunnerInternals.Any): boolean =>
+    internals.destruction.isDestroyed()
+
   export const make = <
     SwarmProtocolName extends string,
     MachineName extends string,
@@ -973,20 +955,21 @@ export namespace ImplStateOpaque {
     type ThisStateOpaque = StateOpaque<SwarmProtocolName, MachineName, string, StateUnion>
 
     // Captured data at snapshot call-time
-    const commandLockAtSnapshot = internals.commandLock
     const stateAtSnapshot = stateAndFactoryForSnapshot.data
     const factoryAtSnapshot = stateAndFactoryForSnapshot.factory as StateFactory.Any
-    const caughtUpAtSnapshot = internals.caughtUp
-    const caughtUpFirstTimeAtSnapshot = internals.caughtUpFirstTime
-    const queueLengthAtSnapshot = internals.queue.length
-    const commandEnabledAtSnapshot =
-      !commandLockAtSnapshot &&
-      caughtUpAtSnapshot &&
-      caughtUpFirstTimeAtSnapshot &&
-      queueLengthAtSnapshot === 0
 
-    // TODO: write unit test on expiry
-    const isExpired = () => ImplStateOpaque.isExpired(internals, stateAndFactoryForSnapshot)
+    const commandGeneratorCriteria: CommandGeneratorCriteria = {
+      isCaughtUp: () => internals.caughtUp && internals.caughtUpFirstTime,
+      isQueueEmpty: () => internals.queue.length === 0,
+      isNotExpired: () => !ImplStateOpaque.isExpired(internals, stateAndFactoryForSnapshot),
+      isNotLocked: () => !ImplStateOpaque.isCommandLocked(internals),
+      isNotDestroyed: () => !ImplStateOpaque.isRunnerDestroyed(internals),
+    }
+
+    const commandEnabledAtSnapshot =
+      CommandGeneratorCriteria.allOkForSnapshotTimeCommandEnablementAssessment(
+        commandGeneratorCriteria,
+      )
 
     const is: ThisStateOpaque['is'] = (factory) => factoryAtSnapshot.mechanism === factory.mechanism
 
@@ -1002,7 +985,7 @@ export namespace ImplStateOpaque {
         const snapshot = ImplState.makeForSnapshot({
           factory: factoryAtSnapshot,
           commandEmitFn: internals.commandEmitFn,
-          isExpired,
+          commandGeneratorCriteria,
           commandEnabledAtSnapshot,
           stateAtSnapshot,
         })
@@ -1015,7 +998,7 @@ export namespace ImplStateOpaque {
       ImplState.makeForSnapshot({
         factory: factoryAtSnapshot,
         commandEmitFn: internals.commandEmitFn,
-        isExpired,
+        commandGeneratorCriteria,
         commandEnabledAtSnapshot,
         stateAtSnapshot,
       })
@@ -1064,12 +1047,18 @@ export type State<
    * a promise that is resolved when persisting is successful and rejects when
    * persisting is failed.
    */
-  commands?: CommandsOfState<Commands>
+  commands: CommandsOfStateGenerator<Commands>
 }
 
 type CommandsOfState<
   Commands extends CommandDefinerMap<any, any, Contained.ContainedEvent<MachineEvent.Any>[]>,
 > = ToCommandSignatureMap<Commands, any, Contained.ContainedEvent<MachineEvent.Any>[]>
+
+type CommandsOfStateGenerator<
+  Commands extends CommandDefinerMap<any, any, Contained.ContainedEvent<MachineEvent.Any>[]>,
+> = () =>
+  | ToCommandSignatureMap<Commands, any, Contained.ContainedEvent<MachineEvent.Any>[]>
+  | undefined
 
 /**
  * A collection of type utilities around the State.
@@ -1095,7 +1084,7 @@ export namespace State {
    * // this function accepts a typed state instance of Active
    * const deactivate = (state: StateOf<Active>) => {
    *   if (SOME_THRESHOLD()) {
-   *     state.commands?.deactivate()
+   *     state.commands()?.deactivate()
    *   }
    * }
    *
@@ -1124,7 +1113,7 @@ namespace ImplState {
     Commands extends CommandDefinerMap<any, any, Contained.ContainedEvent<MachineEvent.Any>[]>,
   >({
     factory,
-    isExpired,
+    commandGeneratorCriteria,
     commandEnabledAtSnapshot,
     commandEmitFn,
     stateAtSnapshot,
@@ -1137,20 +1126,21 @@ namespace ImplState {
       StatePayload,
       Commands
     >
-    isExpired: () => boolean
+    commandGeneratorCriteria: CommandGeneratorCriteria
     commandEnabledAtSnapshot: boolean
     commandEmitFn: CommandCallback<MachineEventFactories>
     stateAtSnapshot: StateRaw<StateName, StatePayload>
   }): State<StateName, StatePayload, Commands> => {
     const mechanism = factory.mechanism
-    const commands = commandEnabledAtSnapshot
-      ? makeCommandsOfState({
-          mechanismCommands: mechanism.commands,
-          stateAtSnapshot,
-          isExpired,
-          commandEmitFn,
-        })
-      : undefined
+    const commands = () =>
+      commandEnabledAtSnapshot && CommandGeneratorCriteria.allOk(commandGeneratorCriteria)
+        ? makeCommandsOfState({
+            mechanismCommands: mechanism.commands,
+            stateAtSnapshot,
+            commandGeneratorCriteria,
+            commandEmitFn,
+          })
+        : undefined
 
     const snapshot = {
       type: stateAtSnapshot.type,
@@ -1168,13 +1158,13 @@ namespace ImplState {
     Commands extends CommandDefinerMap<any, any, Contained.ContainedEvent<MachineEvent.Any>[]>,
   >({
     mechanismCommands,
-    isExpired,
+    commandGeneratorCriteria,
     commandEmitFn,
     stateAtSnapshot,
   }: {
     mechanismCommands: Commands
     stateAtSnapshot: StateRaw<StateName, StatePayload>
-    isExpired: () => boolean
+    commandGeneratorCriteria: CommandGeneratorCriteria
     commandEmitFn: CommandCallback<MachineEventFactories>
   }): CommandsOfState<Commands> => {
     const commandCalls: ToCommandSignatureMap<
@@ -1186,7 +1176,7 @@ namespace ImplState {
       CommandContext<StatePayload, MachineEvent.Factory.Any>,
       Contained.ContainedEvent<MachineEvent.Of<MachineEventFactories>>[]
     >(mechanismCommands, {
-      isExpired,
+      commandGeneratorCriteria,
       getActualContext: () => makeContextGetter(stateAtSnapshot),
       onReturn: commandEmitFn,
     })

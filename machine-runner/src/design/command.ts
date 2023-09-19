@@ -1,4 +1,11 @@
 import { Metadata } from '@actyx/sdk'
+import {
+  MachineRunnerError,
+  MachineRunnerErrorCommandFiredAfterDestroyed,
+  MachineRunnerErrorCommandFiredAfterLocked,
+  MachineRunnerErrorCommandFiredWhenNotCaughtUp,
+  MachineRunnerErrorCommandFiredAfterExpired,
+} from '../errors.js'
 /**
  * DO NOT CHANGE `any` usage in this file! TypeScript's behavior towards extends
  * `any` is completely different than `object`. `any` here tells TypeScript that
@@ -21,16 +28,7 @@ export type CommandDefinerMap<
   [key in keyof Dictionary]: Dictionary[key]
 }
 
-export const CommandFiredAfterLocked: unique symbol = Symbol()
-export type CommandFiredAfterLocked = typeof CommandFiredAfterLocked
-
-export const CommandFiredAfterDestroyed: unique symbol = Symbol()
-export type CommandFiredAfterDestroyed = typeof CommandFiredAfterDestroyed
-
-export const CommandFiredExpiry: unique symbol = Symbol()
-export type CommandFiredExpiry = typeof CommandFiredExpiry
-
-export type CommandSignature<Args extends unknown[]> = (...args: Args) => Promise<Metadata[] | void>
+export type CommandSignature<Args extends unknown[]> = (...args: Args) => Promise<Metadata[]>
 
 export type CommandSignatureMap<Dictionary extends { [key: string]: CommandSignature<unknown[]> }> =
   {
@@ -51,6 +49,76 @@ export type ToCommandSignatureMap<
     : never
 }
 
+export type CommandGeneratorCriteria = {
+  /**
+   * Expired: a state snapshot is expired when it is not the host runner's current state
+   */
+  isNotExpired: () => boolean
+  /**
+   * Locked: the host runner is already processing a command publication
+   */
+  isNotLocked: () => boolean
+  /**
+   * Destroyed: the host runner is destroyed
+   */
+  isNotDestroyed: () => boolean
+  /**
+   * Caught Up: the host runner has processed all published events from Actyx from an active subscription
+   */
+  isCaughtUp: () => boolean
+  /**
+   * Queue Empty: the host runner is not withholding an event that MAY results in a future transformation to its current state
+   */
+  isQueueEmpty: () => boolean
+}
+export namespace CommandGeneratorCriteria {
+  export const allOk = ({
+    isCaughtUp,
+    isNotDestroyed,
+    isNotExpired,
+    isNotLocked,
+    isQueueEmpty,
+  }: CommandGeneratorCriteria) =>
+    isCaughtUp() && isNotDestroyed() && isNotExpired() && isNotLocked() && isQueueEmpty()
+
+  /**
+   * On snapshot, being locked does not constitute as one of the reason a command is unavailable permanently
+   * Because locking is an undoable status.
+   * A state that is unlocked after it has been produced is a valid state
+   * Meanwhile, the other conditions are not so.
+   */
+  export const allOkForSnapshotTimeCommandEnablementAssessment = ({
+    isCaughtUp,
+    isNotDestroyed,
+    isNotExpired,
+    isQueueEmpty,
+  }: CommandGeneratorCriteria) =>
+    isCaughtUp() && isNotDestroyed() && isNotExpired() && isQueueEmpty()
+
+  export const produceError = (
+    {
+      isCaughtUp,
+      isNotDestroyed,
+      isNotExpired,
+      isNotLocked,
+      isQueueEmpty,
+    }: CommandGeneratorCriteria,
+    messageGenerator: () => string,
+  ): MachineRunnerError | null => {
+    const prototype = (() => {
+      if (!isCaughtUp()) return MachineRunnerErrorCommandFiredWhenNotCaughtUp
+      if (!isNotDestroyed()) return MachineRunnerErrorCommandFiredAfterDestroyed
+      if (!isNotExpired()) return MachineRunnerErrorCommandFiredAfterExpired
+      if (!isQueueEmpty()) return MachineRunnerErrorCommandFiredAfterExpired
+      if (!isNotLocked()) return MachineRunnerErrorCommandFiredAfterLocked
+      return null
+    })()
+
+    if (!prototype) return null
+    return new prototype(messageGenerator())
+  }
+}
+
 /**
  * Used by StateContainers to get the current context of the StateContainer. It
  * is in the form of getter function so that it can be called when a command is
@@ -62,19 +130,13 @@ export type ToCommandSignatureMap<
 export type ActualContextGetter<Context> = () => Readonly<Context>
 
 export type ConvertCommandMapParams<Context, RetVal> = {
+  commandGeneratorCriteria: CommandGeneratorCriteria
   getActualContext: ActualContextGetter<Context>
   onReturn: (props: {
     commandKey: string
-    isExpired: () => boolean
+    commandGeneratorCriteria: CommandGeneratorCriteria
     generateEvents: () => RetVal
-  }) => Promise<
-    Metadata[] | CommandFiredAfterLocked | CommandFiredAfterDestroyed | CommandFiredExpiry
-  >
-  /**
-   * isExpired is intended to flag if a snapshot that owns the reference to a
-   * command is not up to date with the state container's state.
-   */
-  isExpired: () => boolean
+  }) => Promise<Metadata[]>
 }
 
 export const convertCommandMapToCommandSignatureMap = <
@@ -95,21 +157,17 @@ export const convertCommandMapToCommandSignatureMap = <
 export const convertCommandDefinerToCommandSignature = <Context, Args extends unknown[], RetVal>(
   key: string,
   definer: CommandDefiner<Context, Args, RetVal>,
-  { getActualContext, onReturn, isExpired }: ConvertCommandMapParams<Context, RetVal>,
+  {
+    getActualContext,
+    onReturn,
+    commandGeneratorCriteria,
+  }: ConvertCommandMapParams<Context, RetVal>,
 ): CommandSignature<Args> => {
-  return async (...args: Args) => {
-    const generateEvents = () => definer(getActualContext(), ...args)
-
-    const result = await onReturn({
+  return (...args: Args) => {
+    return onReturn({
       commandKey: key,
-      generateEvents,
-      isExpired,
+      generateEvents: () => definer(getActualContext(), ...args),
+      commandGeneratorCriteria,
     })
-
-    if (Array.isArray(result)) {
-      return result
-    }
-
-    return
   }
 }

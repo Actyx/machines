@@ -84,7 +84,7 @@ const warehouse = createMachineRunner(actyx, tags, InitialWarehouse, { id: '4711
 
 for await (const state of warehouse) {
   if (state.is(InitialWarehouse)) {
-    await state.cast().commands?.request('from', 'to')
+    await state.cast().commands()?.request('from', 'to')
   } else {
     // this role is done
     break
@@ -97,10 +97,10 @@ for await (const state of robot1) {
   if (state.is(Auction)) {
     const open = state.cast()
     if (!open.payload.scores.find((s) => s.robot === open.payload.robot)) {
-      await open.commands?.bid(1)
+      await open.commands()?.bid(1)
       setTimeout(() => {
         const open = robot1.get()?.as(Auction)
-        open && open.commands?.select(bestRobot(open.payload.scores))
+        open && open.commands()?.select(bestRobot(open.payload.scores))
       }, 5000)
     }
   } else if (state.is(DoIt)) {

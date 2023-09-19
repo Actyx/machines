@@ -1,12 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { ActyxEvent, Metadata } from '@actyx/sdk'
 import { deepCopy } from '../utils/object-utils.js'
-import {
-  CommandDefinerMap,
-  CommandFiredAfterDestroyed,
-  CommandFiredAfterLocked,
-  CommandFiredExpiry,
-} from '../design/command.js'
+import { CommandDefinerMap, CommandGeneratorCriteria } from '../design/command.js'
 import { Contained, MachineEvent } from '../design/event.js'
 import {
   Reaction,
@@ -15,14 +10,13 @@ import {
   StateRaw,
   StateFactory,
 } from '../design/state.js'
+import { Destruction } from '../utils/destruction.js'
 
 export type CommandCallback<MachineEventFactories extends MachineEvent.Factory.Any> = (_: {
   commandKey: string
-  isExpired: () => boolean
+  commandGeneratorCriteria: CommandGeneratorCriteria
   generateEvents: () => Contained.ContainedEvent<MachineEvent.Of<MachineEventFactories>>[]
-}) => Promise<
-  CommandFiredAfterDestroyed | CommandFiredAfterLocked | CommandFiredExpiry | Metadata[]
->
+}) => Promise<Metadata[]>
 
 export type RunnerInternals<
   SwarmProtocolName extends string,
@@ -32,6 +26,7 @@ export type RunnerInternals<
   StatePayload,
   Commands extends CommandDefinerMap<any, any, Contained.ContainedEvent<MachineEvent.Any>[]>,
 > = {
+  destruction: Destruction
   caughtUpFirstTime: boolean
   caughtUp: boolean
   readonly initial: StateAndFactory<
@@ -102,6 +97,7 @@ export namespace RunnerInternals {
         type: factory.mechanism.name,
       },
     }
+
     const internals: RunnerInternals<
       SwarmProtocolName,
       MachineName,
@@ -110,6 +106,7 @@ export namespace RunnerInternals {
       StatePayload,
       Commands
     > = {
+      destruction: Destruction.make(),
       initial,
       current: {
         factory,
