@@ -1,0 +1,22 @@
+{
+  "name": "swarm-workflow-example",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "compile": "tsc",
+    "start": "npm run compile && node dist/index.js",
+    "test": "npm run compile && node dist/index.test.js"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@actyx/machine-check": "^0.2.2",
+    "@actyx/machine-runner": "^0.4.4",
+    "@actyx/sdk": "^0.5.7",
+    "@types/uuid": "^9.0.2",
+    "prettier": "^3.0.1",
+    "typescript": "^5.1.6",
+    "uuid": "^9.0.0"
+  }
+}
