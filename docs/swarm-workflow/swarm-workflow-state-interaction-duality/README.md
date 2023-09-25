@@ -69,13 +69,16 @@ We can then generalize that a swarm workflow is a loop of state change (technica
 
 ### Simplifying The Iteration As State
 
-Now we know that a swarm workflow is a loop of state change, a local task, and an event publication.
-The interaction of pattern and the various agents can be deprioritized and we can now focus on the order of state variants within the swarm workflow.
+Now we know that a swarm workflow is a loop interactions with uniform pattern.
+Within the loop, one iteration does not trample over the other.
+Therefore, we can treat each iteration as a state;
+Disregard the uniform interations and focus on the order of the swarm's state variants.
 
 To put it more concretely, we can say the solution workflow for the example-problem involves five states: `Initial`, `Docking`, `DrawingWater`, `Undocking`, `Done`.
 
-And then we can further describe the state, for example: in the `Initial` state, the pump, the active agent executes a local task where it ensures the docks is clear, and then publish `DockAvailable` which them moves the swarm workflow forward to the `Docking` state, and so on.
+A state implies its local task and next transition if any.
+For example, in the `Initial` state, the pump, the active agent executes a local task where it ensures the docks is clear, and then publish `DockAvailable` which them moves the swarm workflow forward to the `Docking` state, and so on.
 
-Therefore we can picture the order of state variants of the workflow with a much more simple state diagram:
+Illustrated with a state diagram:
 
 ![state-diagram](../state-diagram.svg)

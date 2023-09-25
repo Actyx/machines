@@ -193,9 +193,9 @@ Undocking \-\-> Done: "RobotIsUndocked" by robot
 
 ![state diagram](./state-diagram.svg)
 
-> **Note**
+> **Info**
 >
-> Those are sequence of interactions between agents.
+> Those are interacting agents.
 > [Why is it not represented in a sequence diagram instead?](./swarm-workflow-state-interaction-duality)
 
 Now that we've figured out the interaction sequence, we can write a protocol with `machine-runner`.
@@ -736,6 +736,397 @@ robot finishes task: a7df8979-cf2b-44a9-996e-1bd93a6fe1ab
 You can see that different agent sees the same state every time (e.g. `ClearingDock/WaitingForAvailableDock`, `WaitingForRobotToDock/Docking`).
 This is the behavior guaranteed by using `machine-runner` and `Actyx`.
 
+## Signaling
+
+The simulation assumes that the agents know the `dockingId`,
+but how did the agents know the `dockingId` in the first place?
+We have left out a small but important process: signaling the request.
+
+Signaling can use events within the protocol, but our protocol's first event is `DockAvailable` which we cannot use since requesting must come before it.
+
+Therefore, let us make some rules:
+
+- a request event is tagged with `water-drawing-exchange-request` because it must be different from the protocol to make sure that it does not interfere any process inside the protocol.
+- a request contains a `dockingId` as its payload
+- a `dockingId` is a UUID
+- a request is unprocessed if no `water-drawing-exchange:{dockingId}` of type `RobotIsUndocked` exists.
+- It is assumed that only 1 pump exists in the environment so that the scope of this example-problem does not expand further than what's relevant to the basic usage of machine-runner.
+
+We will implement signaling with [`@actyx/sdk`](https://www.npmjs.com/package/@actyx/sdk) and [`AQL`](https://developer.actyx.com/docs/reference/aql).
+`AQL` is a part of Actyx and so no additional dependency is needed.
+
+### Signaling Module
+
+Create a file `src/machines/signaling.ts`.
+This file will contain the module for both sending and receiving signals.
+
+First, import everything we need: types and modules from `@actyx/sdk` and `uuid` to generate `dockingId`
+
+```typescript title="src/machines/signaling.ts"
+import { Actyx, AqlEventMessage, Tag } from "@actyx/sdk";
+import * as uuid from "uuid";
+```
+
+Then, according to the rules we have invented, write the payload and the tag as a type and a constant.
+
+```typescript title="src/machines/signaling.ts"
+type Payload = string;
+
+const REQUEST_TAG = "water-drawing-exchange-request";
+```
+
+#### Sending the Request
+
+```typescript title="src/machines/signaling.ts"
+export const requestDocking = async (actyx: Actyx) => {
+  // The payload
+  const dockingId: Payload = uuid.v4();
+  await actyx.publish(Tag(REQUEST_TAG).apply(dockingId));
+  return dockingId;
+};
+```
+
+`requestDocking` publishes a `dockingId` as an event to Actyx and returns said `dockingId` to its caller, which is a robot that is initiating a "conversation" with the pump.
+
+`TAG(REQUEST_TAG)` turns a `payload` into a TaggedEvent.
+Subsequentially, the same event will be queriable by the `REQUEST_TAG`.
+
+#### Receiving The Request
+
+Next, the pump must be able to query requests it has not serve and we will implement this with AQL.
+
+```typescript title="src/machines/signaling.ts"
+const AQL = `
+PRAGMA features := subQuery interpolation
+FROM "${REQUEST_TAG}"
+LET done_events := FROM \`water-drawing-exchange:{_}\` FILTER _.type = 'RobotIsUndocked' LIMIT 1 END
+FILTER !IsDefined(done_events[0] ?? null)
+`.trim();
+
+export const receiveDockingRequestId = async (
+  actyx: Actyx
+): Promise<string | undefined> =>
+  (await actyx.queryAql(AQL))
+    .filter((msg): msg is AqlEventMessage => msg.type === "event")
+    .map((msg) => msg.payload as Payload)
+    .at(0);
+```
+
+Above are an AQL and a function that executes it. To paraphrase the AQL:
+
+- Enable beta features: `subQuery` and `interpolation`
+- Fetch all events tagged with `REQUEST_TAG`
+- Run a subquery and put the result as `done_events`:
+  - The subqueyr fetch one event tagged with `water-drawing-exchange:{_}` and whose type is `RobotIsUndocked`
+  - `water-drawing-exchange:{_}` is an interpolation. `{_}` will be replaced by the payload of the parent's event, which we have declared in the previous function to be the `dockingId`
+- Filter the events so that only events whose its `done_events` counterpart does not exist.
+
+`receiveDockingRequestId` executes the AQL, extracts its paylods, and fetch the first item found.
+
+The AQL and the function fulfills the rule:
+
+> a request is unprocessed if no `water-drawing-exchange:{dockingId}` of type `RobotIsUndocked` exists.
+
+### Simulating The Complete Application
+
+Let us simulate the docking process alongside the signaling.
+This will be the more advanced and dynamic version of our previous simulation.
+
+Write the pump's and the robot's complete routine.
+
+<details>
+<summary><strong>Code <code>src/simulate-robot.ts</code></strong></summary>
+
+```typescript title="src/simulate-robot.ts"
+import { Actyx } from "@actyx/sdk";
+import { dockAndDrawWater } from "./consumers/watering-robot";
+import { requestDocking } from "./machines/signaling";
+import * as uuid from "uuid";
+
+async function main() {
+  console.log("robot started");
+
+  const APP_MANIFEST = {
+    appId: "com.example.tomato-robot",
+    displayName: "Tomato Robot",
+    version: "1.0.0",
+  };
+
+  const sdk = await Actyx.of(APP_MANIFEST);
+
+  while (true) {
+    // randomize which robots issue docking request first
+    await sleep(Math.round(Math.random() * 1000));
+    const dockingId = await requestDocking(sdk);
+    console.log(`dockingId issued`, dockingId);
+    await dockAndDrawWater(sdk, dockingId);
+  }
+}
+
+const sleep = (dur: number) => new Promise((res) => setTimeout(res, dur));
+
+// Monkey patch console log
+// So that it is easier to read
+const agentId = uuid.v4();
+const originalConsoleLog = console.log;
+const patchedConsoleLog = (...x: string[]) =>
+  originalConsoleLog(`robot:${agentId} :`, ...x);
+console.log = patchedConsoleLog;
+
+main();
+```
+
+</details>
+
+A robot runs a loop, within which it request a docking process and then runs the
+machine runner for the `water-drawing-exchange` protocol with the resulting
+`dockingId`.
+
+<details>
+<summary><strong>Code <code>src/simulate-pump.ts</code></strong></summary>
+
+```typescript title="src/simulate-pump.ts"
+import { Actyx } from "@actyx/sdk";
+import { supplyWater } from "./consumers/water-pump";
+import { receiveDockingRequestId } from "./machines/signaling";
+
+async function main() {
+  const APP_MANIFEST = {
+    appId: "com.example.tomato-robot",
+    displayName: "Tomato Robot",
+    version: "1.0.0",
+  };
+
+  const sdk = await Actyx.of(APP_MANIFEST);
+
+  while (true) {
+    const dockingId = await receiveDockingRequestId(sdk);
+    if (!dockingId) {
+      console.log("no dockingId found");
+      await sleep(1000);
+      continue;
+    }
+    console.log(`dockingId found: ${dockingId}`);
+    await supplyWater(sdk, dockingId);
+  }
+}
+
+const sleep = (dur: number) => new Promise((res) => setTimeout(res, dur));
+
+// Monkey patch console log
+// So that it is easier to read
+const originalConsoleLog = console.log;
+const patchedConsoleLog = (...x: string[]) =>
+  originalConsoleLog(`pump :`, ...x);
+console.log = patchedConsoleLog;
+
+main();
+```
+
+</details>
+
+The pump runs a loop, within which it receives one pending docking requests out
+of many and then runs the machine runner for the `water-drawing-exchange`
+protocol with the resulting `dockingId`.
+
+In this simulation we will run one pump and two robots.
+
+Install this npm package to make it easy to run concurrent processes.
+
+```bash
+npm i concurrently
+```
+
+Write the script to run the pump and the two robots.
+
+```json title="package.json"
+{
+  "scripts": {
+    "start-with-signaling": "npm run compile && concurrently \"node dist/simulate-pump\" \"node dist/simulate-robot\" \"node dist/simulate-robot\""
+    // ...rest of scripts
+  }
+}
+```
+
+#### Running the complete simulation
+
+> **Warning:**
+>
+> Before running this simulation, change the topic of the node to ensure that
+> the pump does not handle a request for non-existant robots. Our simulation
+> code does not gracefully handle this case right now.
+>
+> Changing the topic [is easily done with node-manager](https://developer.actyx.com/docs/reference/node-manager#5-settings).
+> In `Nodes > Settings`, change the value of `swarm/topic` with some other random string.
+
+```bash
+npm run start-with-signaling
+```
+
+The simulation will yield unique results everytime it is run.
+Watch how the simulation go, how the pump and the robots interact, and how requests are done in ordered manner.
+
+Also, watch how the pump's control flow, a single while loop, also determines how the swarm cooperate.
+The pump handles one task and a time, and so the robots take turns interacting with the single pump.
+It is done purely with events, without manual coordination between the robots.
+
+<details>
+<summary><strong>In one of the run, this is the result:</code></strong></summary>
+
+```text
+[0] pump : no dockingId found
+[1] robot:adcda6e1-b318-4cc4-95f1-2e4364edb35d : robot started
+[2] robot:0a069632-dbec-4c3c-92c2-d03f7a4e0577 : robot started
+```
+
+The pump cannot find any request at first because no one has issued any.
+At the same time, the two robots starts.
+
+```text
+[1] robot:adcda6e1-b318-4cc4-95f1-2e4364edb35d : dockingId issued da5868b6-95c1-489c-ba18-64dfb0aa1b99
+[1] robot:adcda6e1-b318-4cc4-95f1-2e4364edb35d : robot starts task: da5868b6-95c1-489c-ba18-64dfb0aa1b99
+[1] robot:adcda6e1-b318-4cc4-95f1-2e4364edb35d : robot is: WaitingForAvailableDock
+[2] robot:0a069632-dbec-4c3c-92c2-d03f7a4e0577 : dockingId issued a8b59d73-9c9f-41ac-bde3-0ee7c00b3d3f
+[2] robot:0a069632-dbec-4c3c-92c2-d03f7a4e0577 : robot starts task: a8b59d73-9c9f-41ac-bde3-0ee7c00b3d3f
+[2] robot:0a069632-dbec-4c3c-92c2-d03f7a4e0577 : robot is: WaitingForAvailableDock
+```
+
+Both robots issue their own requests and start their own machine.
+Both machine yield `WaitingForAvailableDock`.
+
+```text
+[0] pump : dockingId found: da5868b6-95c1-489c-ba18-64dfb0aa1b99
+[0] pump : pump starts task: da5868b6-95c1-489c-ba18-64dfb0aa1b99
+[0] pump : pump is: ClearingDock
+[1] robot:adcda6e1-b318-4cc4-95f1-2e4364edb35d : robot is: Docking
+[0] pump : pump is: WaitingForRobotToDock
+[1] robot:adcda6e1-b318-4cc4-95f1-2e4364edb35d : robot is: WaitingForWater
+[0] pump : pump is: PumpingWater
+[1] robot:adcda6e1-b318-4cc4-95f1-2e4364edb35d : robot is: Undocking
+[0] pump : pump is: WaitingForRobotToUndock
+[1] robot:adcda6e1-b318-4cc4-95f1-2e4364edb35d : robot is: Done
+[1] robot:adcda6e1-b318-4cc4-95f1-2e4364edb35d : robot finishes task: da5868b6-95c1-489c-ba18-64dfb0aa1b99
+[0] pump : pump is: Done
+[0] pump : pump finishes task: da5868b6-95c1-489c-ba18-64dfb0aa1b99
+```
+
+The pump find a request (a `dockingId`) and starts its machine for that request.
+The pump and the robot `adcda6e1-b318-4cc4-95f1-2e4364edb35d` (whose the request
+is received earlier by the pump) cooperate on the task to its completion, when the pump is `ClearingDock` and the robot is `Done`.
+
+```text
+[0] pump : dockingId found: a8b59d73-9c9f-41ac-bde3-0ee7c00b3d3f
+[0] pump : pump starts task: a8b59d73-9c9f-41ac-bde3-0ee7c00b3d3f
+[0] pump : pump is: ClearingDock
+[1] robot:adcda6e1-b318-4cc4-95f1-2e4364edb35d : dockingId issued a9778273-c035-49df-8624-6f93729a8636
+[1] robot:adcda6e1-b318-4cc4-95f1-2e4364edb35d : robot starts task: a9778273-c035-49df-8624-6f93729a8636
+[1] robot:adcda6e1-b318-4cc4-95f1-2e4364edb35d : robot is: WaitingForAvailableDock
+```
+
+The pump founds another `dockingId`, meanwhile robot
+`adcda6e1-b318-4cc4-95f1-2e4364edb35d` issued another request.
+
+```text
+[2] robot:0a069632-dbec-4c3c-92c2-d03f7a4e0577 : robot is: Docking
+[0] pump : pump is: WaitingForRobotToDock
+[2] robot:0a069632-dbec-4c3c-92c2-d03f7a4e0577 : robot is: WaitingForWater
+[0] pump : pump is: PumpingWater
+[2] robot:0a069632-dbec-4c3c-92c2-d03f7a4e0577 : robot is: Undocking
+[0] pump : pump is: WaitingForRobotToUndock
+[0] pump : pump is: Done
+[0] pump : pump finishes task: a8b59d73-9c9f-41ac-bde3-0ee7c00b3d3f
+[2] robot:0a069632-dbec-4c3c-92c2-d03f7a4e0577 : robot is: Done
+[2] robot:0a069632-dbec-4c3c-92c2-d03f7a4e0577 : robot finishes task: a8b59d73-9c9f-41ac-bde3-0ee7c00b3d3f
+```
+
+Now the robot `0a069632-dbec-4c3c-92c2-d03f7a4e0577` and the pump works toward
+the completion of their task while the other robot,
+`adcda6e1-b318-4cc4-95f1-2e4364edb35d`, is waiting for the pump to start
+interacting with it.
+
+The rest of the log will show how the robot take turns and the pump work on
+requests one by one. This behavior scales regardless of the number robots are
+spawned, whether it is 2, 3, 5, etc.
+
+```text
+[0] pump : dockingId found: a9778273-c035-49df-8624-6f93729a8636
+[0] pump : pump starts task: a9778273-c035-49df-8624-6f93729a8636
+[0] pump : pump is: ClearingDock
+[2] robot:0a069632-dbec-4c3c-92c2-d03f7a4e0577 : dockingId issued f4949baa-f961-4692-8558-4543fdeb19bd
+[2] robot:0a069632-dbec-4c3c-92c2-d03f7a4e0577 : robot starts task: f4949baa-f961-4692-8558-4543fdeb19bd
+[2] robot:0a069632-dbec-4c3c-92c2-d03f7a4e0577 : robot is: WaitingForAvailableDock
+[0] pump : pump is: WaitingForRobotToDock
+[1] robot:adcda6e1-b318-4cc4-95f1-2e4364edb35d : robot is: Docking
+[1] robot:adcda6e1-b318-4cc4-95f1-2e4364edb35d : robot is: WaitingForWater
+[0] pump : pump is: PumpingWater
+[0] pump : pump is: WaitingForRobotToUndock
+[1] robot:adcda6e1-b318-4cc4-95f1-2e4364edb35d : robot is: Undocking
+[1] robot:adcda6e1-b318-4cc4-95f1-2e4364edb35d : robot is: Done
+[1] robot:adcda6e1-b318-4cc4-95f1-2e4364edb35d : robot finishes task: a9778273-c035-49df-8624-6f93729a8636
+[0] pump : pump is: Done
+[0] pump : pump finishes task: a9778273-c035-49df-8624-6f93729a8636
+[0] pump : dockingId found: f4949baa-f961-4692-8558-4543fdeb19bd
+[0] pump : pump starts task: f4949baa-f961-4692-8558-4543fdeb19bd
+[0] pump : pump is: ClearingDock
+[1] robot:adcda6e1-b318-4cc4-95f1-2e4364edb35d : dockingId issued db983ac9-9701-4092-a326-6327d0cf8f0c
+[1] robot:adcda6e1-b318-4cc4-95f1-2e4364edb35d : robot starts task: db983ac9-9701-4092-a326-6327d0cf8f0c
+[1] robot:adcda6e1-b318-4cc4-95f1-2e4364edb35d : robot is: WaitingForAvailableDock
+[2] robot:0a069632-dbec-4c3c-92c2-d03f7a4e0577 : robot is: Docking
+[0] pump : pump is: WaitingForRobotToDock
+[2] robot:0a069632-dbec-4c3c-92c2-d03f7a4e0577 : robot is: WaitingForWater
+[0] pump : pump is: PumpingWater
+[0] pump : pump is: WaitingForRobotToUndock
+[2] robot:0a069632-dbec-4c3c-92c2-d03f7a4e0577 : robot is: Undocking
+[2] robot:0a069632-dbec-4c3c-92c2-d03f7a4e0577 : robot is: Done
+[2] robot:0a069632-dbec-4c3c-92c2-d03f7a4e0577 : robot finishes task: f4949baa-f961-4692-8558-4543fdeb19bd
+[0] pump : pump is: Done
+[0] pump : pump finishes task: f4949baa-f961-4692-8558-4543fdeb19bd
+[0] pump : dockingId found: db983ac9-9701-4092-a326-6327d0cf8f0c
+[0] pump : pump starts task: db983ac9-9701-4092-a326-6327d0cf8f0c
+[0] pump : pump is: ClearingDock
+[2] robot:0a069632-dbec-4c3c-92c2-d03f7a4e0577 : dockingId issued 0bbe5224-b13c-4585-8f84-a9510c693e10
+[2] robot:0a069632-dbec-4c3c-92c2-d03f7a4e0577 : robot starts task: 0bbe5224-b13c-4585-8f84-a9510c693e10
+[2] robot:0a069632-dbec-4c3c-92c2-d03f7a4e0577 : robot is: WaitingForAvailableDock
+[0] pump : pump is: WaitingForRobotToDock
+[1] robot:adcda6e1-b318-4cc4-95f1-2e4364edb35d : robot is: Docking
+[0] pump : pump is: PumpingWater
+[1] robot:adcda6e1-b318-4cc4-95f1-2e4364edb35d : robot is: WaitingForWater
+[0] pump : pump is: WaitingForRobotToUndock
+[1] robot:adcda6e1-b318-4cc4-95f1-2e4364edb35d : robot is: Undocking
+[1] robot:adcda6e1-b318-4cc4-95f1-2e4364edb35d : robot is: Done
+[1] robot:adcda6e1-b318-4cc4-95f1-2e4364edb35d : robot finishes task: db983ac9-9701-4092-a326-6327d0cf8f0c
+[0] pump : pump is: Done
+[0] pump : pump finishes task: db983ac9-9701-4092-a326-6327d0cf8f0c
+[0] pump : dockingId found: 0bbe5224-b13c-4585-8f84-a9510c693e10
+[0] pump : pump starts task: 0bbe5224-b13c-4585-8f84-a9510c693e10
+[0] pump : pump is: ClearingDock
+[1] robot:adcda6e1-b318-4cc4-95f1-2e4364edb35d : dockingId issued a48601b9-047f-4837-96ff-46474dd27855
+[1] robot:adcda6e1-b318-4cc4-95f1-2e4364edb35d : robot starts task: a48601b9-047f-4837-96ff-46474dd27855
+[1] robot:adcda6e1-b318-4cc4-95f1-2e4364edb35d : robot is: WaitingForAvailableDock
+[0] pump : pump is: WaitingForRobotToDock
+[2] robot:0a069632-dbec-4c3c-92c2-d03f7a4e0577 : robot is: Docking
+[0] pump : pump is: PumpingWater
+[2] robot:0a069632-dbec-4c3c-92c2-d03f7a4e0577 : robot is: WaitingForWater
+[0] pump : pump is: WaitingForRobotToUndock
+[2] robot:0a069632-dbec-4c3c-92c2-d03f7a4e0577 : robot is: Undocking
+[0] pump : pump is: Done
+[0] pump : pump finishes task: 0bbe5224-b13c-4585-8f84-a9510c693e10
+[2] robot:0a069632-dbec-4c3c-92c2-d03f7a4e0577 : robot is: Done
+[2] robot:0a069632-dbec-4c3c-92c2-d03f7a4e0577 : robot finishes task: 0bbe5224-b13c-4585-8f84-a9510c693e10
+[0] pump : dockingId found: a48601b9-047f-4837-96ff-46474dd27855
+[0] pump : pump starts task: a48601b9-047f-4837-96ff-46474dd27855
+[0] pump : pump is: ClearingDock
+[2] robot:0a069632-dbec-4c3c-92c2-d03f7a4e0577 : dockingId issued e6db1e06-27a9-4e1e-ae73-877db9b5bee1
+[2] robot:0a069632-dbec-4c3c-92c2-d03f7a4e0577 : robot starts task: e6db1e06-27a9-4e1e-ae73-877db9b5bee1
+[2] robot:0a069632-dbec-4c3c-92c2-d03f7a4e0577 : robot is: WaitingForAvailableDock
+[0] pump : pump is: WaitingForRobotToDock
+[1] robot:adcda6e1-b318-4cc4-95f1-2e4364edb35d : robot is: Docking
+[1] robot:adcda6e1-b318-4cc4-95f1-2e4364edb35d : robot is: WaitingForWater
+[0] pump : pump is: PumpingWater
+```
+
+</details>
+
 ## Download The Code
 
-The code can be found in [// TODO: add link to sample code]
+The code can be found [here](../examplex/swarm-workflow-example)
