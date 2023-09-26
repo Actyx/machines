@@ -1,15 +1,15 @@
 # Implementing a Swarm Workflow
 
-Machine Runner's main purpose is to enable a heterogenous swarm system---a system of dynamically participating agents of different role---to work on a swarm workflow.
-A swarm workflow in this context is a collection of tasks done by different agents that must be executed with a certain order (aka. sequentially); consequentially, a swarm workflow has a finite lifetime.
+Machine Runner's main purpose is to enable a heterogeneous swarm system (a system of dynamically participating agents of different roles) to work on a swarm workflow.
+A swarm workflow in this context is a collection of tasks done by different agents that must be executed in a certain order (aka. sequentially); consequentially, a swarm workflow has a finite lifetime.
 
 Machine Runner enables this by creating a swarm protocol, which can be pictured as an imaginary distributed ledger.
 The ledger acts as a coordination point between agents.
-An agent that finished a task can write a record on the ledger to let the others know that the system has reached a point where it needs another agent to act.
-Agents coordinate with the ledger by writing a record to indicate that the system reached a point which needs some agent of a certain role to act.
+An agent who finished a task can write a record on the ledger to let the others know that the system has reached a point where it needs another agent to act.
+Agents coordinate with the ledger by writing a record to indicate that the system reached a point where it needs an agent of a certain role to act.
 
 Swarm protocol is imaginary and distributed because it does not possess a single central physical structure.
-Instead it is sustained by its physical representation: events replicated by all agents---or to be more precise Actyx Events replicated by all Actyx Nodes.
+Instead, it is sustained by its physical representation: events replicated by all agents---or to be more precise Actyx Events replicated by all Actyx Nodes.
 
 ## The Thirsty Tomato Plant
 
@@ -107,7 +107,7 @@ $ npm run start
 
 In a day of a robot's life:
 It stands by, listening to signals from sensors.
-A sensor occasionaly sends a signal that a tomato plant needs water.
+A sensor occasionally sends a signal that a tomato plant needs water.
 When the robot receives that signal, it finds a nearby pump, draws water, and then runs to water the plant.
 
 To illustrate that in pseudo-code _(no need to type this in)_:
@@ -151,7 +151,7 @@ Within the robot's and the pump's `dockAndDrawWater` and `supplyWater` is a comp
 The workflow involves several activities that involve back-and-forth communication in between.
 
 `dockingId` in the code above uniquely identifies the instance of the workflow.
-Each workflow occasion uses different `dockingId`.
+Each workflow occasion uses a different `dockingId`.
 In analogy, `dockingId` serves the same role as the order number on a receipt when ordering a drive-thru.
 
 ## Building The Protocol
@@ -246,7 +246,7 @@ export namespace ProtocolEvents {
 }
 ```
 
-Create the swarm protocol, name it `water-drawing-exchange`.
+Create the swarm protocol; name it `water-drawing-exchange`.
 
 ```typescript title="src/machines/protocol.ts"
 export const protocol = SwarmProtocol.make(
@@ -661,7 +661,7 @@ async function main() {
 }
 ```
 
-At the end call `dispose` of the `sdks`,
+At the end of the function, call `dispose` method of `sdk1` and `sdk2` (the `Actyx` objects),
 killing all Actyx connections and ending the simulation.
 
 <details>
@@ -705,7 +705,7 @@ main();
 Before running the simulation:
 
 - Make sure [Actyx is running](/docs/how-to/local-development/install-actyx)
-- Make sure [project setup](#setting-up) is done.
+- Make sure the [project setup](#setting-up) is done.
 
 When everything is ready, run:
 
@@ -746,14 +746,14 @@ Signaling can use events within the protocol, but our protocol's first event is 
 
 Therefore, let us make some rules:
 
-- a request event is tagged with `water-drawing-exchange-request` because it must be different from the protocol to make sure that it does not interfere any process inside the protocol.
+- a request event is tagged with `water-drawing-exchange-request` because it must be different from the protocol to make sure that it does not interfere with any process inside the protocol.
 - a request contains a `dockingId` as its payload
 - a `dockingId` is a UUID
 - a request is unprocessed if no `water-drawing-exchange:{dockingId}` of type `RobotIsUndocked` exists.
-- It is assumed that only 1 pump exists in the environment so that the scope of this example-problem does not expand further than what's relevant to the basic usage of machine-runner.
+- It is assumed that only 1 pump exists in the environment so the scope of this example-problem does not expand further than what's relevant to the basic usage of machine-runner.
 
 We will implement signaling with [`@actyx/sdk`](https://www.npmjs.com/package/@actyx/sdk) and [`AQL`](https://developer.actyx.com/docs/reference/aql).
-`AQL` is a part of Actyx and so no additional dependency is needed.
+`AQL` is a part of Actyx so no additional dependency is needed.
 
 ### Signaling Module
 
@@ -793,7 +793,7 @@ Subsequentially, the same event will be queriable by the `REQUEST_TAG`.
 
 #### Receiving The Request
 
-Next, the pump must be able to query requests it has not serve and we will implement this with AQL.
+Next, the pump must be able to query requests it has not served and we will implement this with AQL.
 
 ```typescript title="src/machines/signaling.ts"
 const AQL = `
@@ -817,13 +817,13 @@ Above are an AQL and a function that executes it. To paraphrase the AQL:
 - Enable beta features: `subQuery` and `interpolation`
 - Fetch all events tagged with `REQUEST_TAG`
 - Run a subquery and put the result as `done_events`:
-  - The subqueyr fetch one event tagged with `water-drawing-exchange:{_}` and whose type is `RobotIsUndocked`
+  - The subquery fetches one event tagged with `water-drawing-exchange:{_}` and whose type is `RobotIsUndocked`
   - `water-drawing-exchange:{_}` is an interpolation. `{_}` will be replaced by the payload of the parent's event, which we have declared in the previous function to be the `dockingId`
-- Filter the events so that only events whose its `done_events` counterpart does not exist.
+- Filter the events so that only events whose `done_events` counterpart does not exist.
 
-`receiveDockingRequestId` executes the AQL, extracts its paylods, and fetch the first item found.
+`receiveDockingRequestId` executes the AQL, extracts its payloads, and fetches the first item found.
 
-The AQL and the function fulfills the rule:
+The AQL and the function fulfill the rule:
 
 > a request is unprocessed if no `water-drawing-exchange:{dockingId}` of type `RobotIsUndocked` exists.
 
@@ -878,8 +878,8 @@ main();
 
 </details>
 
-A robot runs a loop, within which it request a docking process and then runs the
-machine runner for the `water-drawing-exchange` protocol with the resulting
+A robot runs a loop, within which it requests a docking process, and then runs
+the machine runner for the `water-drawing-exchange` protocol with the resulting
 `dockingId`.
 
 <details>
@@ -925,11 +925,11 @@ main();
 
 </details>
 
-The pump runs a loop, within which it receives one pending docking requests out
+The pump runs a loop, within which it receives one pending docking request out
 of many and then runs the machine runner for the `water-drawing-exchange`
 protocol with the resulting `dockingId`.
 
-In this simulation we will run one pump and two robots.
+In this simulation, we will run one pump and two robots.
 
 Install this npm package to make it easy to run concurrent processes.
 
@@ -943,7 +943,6 @@ Write the script to run the pump and the two robots.
 {
   "scripts": {
     "start-with-signaling": "npm run compile && concurrently \"node dist/simulate-pump\" \"node dist/simulate-robot\" \"node dist/simulate-robot\""
-    // ...rest of scripts
   }
 }
 ```
@@ -953,25 +952,26 @@ Write the script to run the pump and the two robots.
 > **Warning:**
 >
 > Before running this simulation, change the topic of the node to ensure that
-> the pump does not handle a request for non-existant robots. Our simulation
+> the pump does not handle a request for non-existent robots. Our simulation
 > code does not gracefully handle this case right now.
 >
-> Changing the topic [is easily done with node-manager](https://developer.actyx.com/docs/reference/node-manager#5-settings).
+> Changing the topic [is easily done with the node-manager](https://developer.actyx.com/docs/reference/node-manager#5-settings).
 > In `Nodes > Settings`, change the value of `swarm/topic` with some other random string.
 
 ```bash
 npm run start-with-signaling
 ```
 
-The simulation will yield unique results everytime it is run.
-Watch how the simulation go, how the pump and the robots interact, and how requests are done in ordered manner.
+The simulation will yield unique results every time it is run.
+Watch how the simulation goes, how the pump and the robots interact, and how
+requests are done in an ordered manner.
 
-Also, watch how the pump's control flow, a single while loop, also determines how the swarm cooperate.
+Also, watch how the pump's control flow, a single while loop, also determines how the swarm cooperates.
 The pump handles one task and a time, and so the robots take turns interacting with the single pump.
 It is done purely with events, without manual coordination between the robots.
 
 <details>
-<summary><strong>In one of the run, this is the result:</code></strong></summary>
+<summary><strong>In one of the runs, this is the result:</code></strong></summary>
 
 ```text
 [0] pump : no dockingId found
