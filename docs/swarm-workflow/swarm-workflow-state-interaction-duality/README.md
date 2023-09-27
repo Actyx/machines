@@ -28,7 +28,7 @@ Crudely and directly translated into this sequence diagram.
 
 ![seq-concrete](./sequence-diagram-concrete.svg)
 
-In the diagram we can see exactly when an agent executes the local task (which does not involve data-exchange with another agents), when it publishes and event, and how the agents cooperate to form a sequential workflow.
+In the diagram we can see exactly when an agent executes the local task (which does not involve data-exchange with another agents), when it publishes an event, and how the agents cooperate to form a sequential workflow.
 
 > **Note:**
 >
