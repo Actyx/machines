@@ -9,6 +9,7 @@ import {
   MachineRunnerErrorCommandFiredAfterDestroyed,
   MachineRunnerErrorCommandFiredAfterExpired,
   MachineRunnerErrorCommandFiredAfterLocked,
+  MachineRunnerFailure,
 } from '../errors.js'
 
 /**
@@ -22,6 +23,7 @@ type EmittableErrors =
   | MachineRunnerErrorCommandFiredAfterLocked
   | MachineRunnerErrorCommandFiredAfterDestroyed
   | MachineRunnerErrorCommandFiredAfterExpired
+  | MachineRunnerFailure
 
 export type GlobalEmitter = TypedEventEmitter<GlobalMachineEmitterEventMap>
 
@@ -42,6 +44,7 @@ export type CommonEmitterEventMap = {
     eventCount: number
   }) => unknown
   error: (_: EmittableErrors) => unknown
+  failure: (_: MachineRunnerFailure) => unknown
 }
 
 export type GlobalMachineEmitterEventMap = CommonEmitterEventMap

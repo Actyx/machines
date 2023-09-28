@@ -8,6 +8,8 @@ import {
   MachineRunnerErrorCommandFiredAfterDestroyed,
   MachineRunnerErrorCommandFiredAfterExpired,
   MachineRunnerErrorCommandFiredWhenNotCaughtUp,
+  MachineRunnerFailure,
+  MachineRunner,
 } from '../../lib/esm/index.js'
 import { NOP } from '../../lib/esm/utils/misc.js'
 import { NotAnyOrUnknown } from '../../lib/esm/utils/type-utils.js'
@@ -16,6 +18,7 @@ import * as ProtocolSwitch from './protocol-switch.js'
 import * as ProtocolOneTwo from './protocol-one-two.js'
 import * as ProtocolScorecard from './protocol-scorecard.js'
 import * as ProtocolThreeSwitch from './protocol-three-times-for-zod.js'
+import * as ProtocolFaulty from './protocol-faulty.js'
 import { Runner, Unreachable, errorCatcher, sleep } from './helper.js'
 import { emitter } from '../../lib/esm/globals.js'
 
@@ -136,6 +139,123 @@ describe('machine runner', () => {
 
       // because the valid three events have values 1,2,4, the sum of the value captured by the On state should be 1 + 2 + 4
       expect(whenOn.payload.sum).toBe(1 + 2 + 4)
+    })
+  })
+
+  describe('failure', () => {
+    const { Events, Initial, ThrownError } = ProtocolFaulty
+
+    const initialize = () => {
+      const runner = new Runner(Initial, undefined)
+      const machine = runner.machine
+      machine.events.on('error', () => {
+        // silence error
+      })
+      return {
+        runner,
+        machine,
+      }
+    }
+
+    const expectError = (error: unknown) => {
+      expect(error).toBeInstanceOf(MachineRunnerFailure)
+      if (!(error instanceof MachineRunnerFailure)) throw new Unreachable()
+      expect(error.cause).toBe(ThrownError)
+    }
+
+    describe('next method', () => {
+      it('should reject held promise', async () => {
+        const { runner, machine } = initialize()
+
+        const promise = machine.next() // held promise = promise before throw
+        await runner.feed([Events.Throw], true)
+
+        const error = await promise.then((t) => null).catch((e) => e)
+        expectError(error)
+      })
+
+      it('should reject subsequent promise', async () => {
+        const { runner, machine } = initialize()
+
+        await runner.feed([Events.Throw], true)
+        const promise = machine.next() // subsequent promise = promise after throw
+
+        const error = await promise.then((t) => null).catch((e) => e)
+        expectError(error)
+      })
+    })
+
+    describe('peek method', () => {
+      it('should reject held promise', async () => {
+        const { runner, machine } = initialize()
+
+        const promise = machine.peek() // held promise = promise before throw
+        await runner.feed([Events.Throw], true)
+
+        const error = await promise.then((t) => null).catch((e) => e)
+        expectError(error)
+      })
+
+      it('should reject subsequent promise', async () => {
+        const { runner, machine } = initialize()
+
+        await runner.feed([Events.Throw], true)
+        const promise = machine.peek() // subsequent promise = promise after throw
+
+        const error = await promise.then((t) => null).catch((e) => e)
+        expectError(error)
+      })
+    })
+
+    describe('for-await', () => {
+      const test = async (machine: ReturnType<MachineRunner.Any['noAutoDestroy']>) => {
+        let afterLoopExecuted = false
+        const run = async () => {
+          for await (const s of machine) {
+            await s.as(Initial, (whenInitial) => whenInitial.commands()?.throw())
+          }
+          afterLoopExecuted = true
+        }
+
+        const error = await run()
+          .then(() => null)
+          .catch((e) => e)
+
+        expect(afterLoopExecuted).toBe(false)
+        expect(error).toBeInstanceOf(MachineRunnerFailure)
+        if (!(error instanceof MachineRunnerFailure)) throw new Unreachable()
+        expect(error.cause).toBe(ThrownError)
+      }
+
+      describe('main machine', () => {
+        it('should throw in-loop failure', async () => {
+          const { runner, machine } = initialize()
+          await runner.feed([], true)
+          await test(machine)
+        })
+
+        it('should throw failure before loop', async () => {
+          const { runner, machine } = initialize()
+          await runner.feed([Events.Throw], true)
+          await test(machine)
+        })
+      })
+
+      describe('noAutoDestroy', () => {
+        it('should throw in-loop failure', async () => {
+          const { runner, machine } = initialize()
+          await runner.feed([], true)
+          await test(machine.noAutoDestroy())
+          machine.destroy()
+        })
+
+        it('should throw failure before the loop', async () => {
+          const { runner, machine } = initialize()
+          await runner.feed([Events.Throw], true)
+          await test(machine.noAutoDestroy())
+          machine.destroy()
+        })
+      })
     })
   })
 })
@@ -458,8 +578,9 @@ describe('machine as async generator', () => {
 
       r.feed([{ type: ToggleOff.type }], true)
 
+      // peek should come before next
+      const cres1 = await cloned.peek()
       const mres1 = await machine.next()
-      const cres1 = await cloned.next()
       const mval1 = (!mres1.done && mres1.value) || null
       const cval1 = (!cres1.done && cres1.value) || null
 
@@ -468,8 +589,9 @@ describe('machine as async generator', () => {
 
       r.feed([{ type: ToggleOn.type }], true)
 
+      // peek should come before next
+      const cres2 = await cloned.peek()
       const mres2 = await machine.next()
-      const cres2 = await cloned.next()
       const mval2 = (!mres2.done && mres2.value) || null
       const cval2 = (!cres2.done && cres2.value) || null
 
@@ -482,20 +604,22 @@ describe('machine as async generator', () => {
       const machine = r.machine
       const cloned = machine.noAutoDestroy()
 
-      r.feed([{ type: ToggleOff.type }], true)
+      await r.feed([{ type: ToggleOff.type }], true)
+      // peek should come before next
+      const cres1 = await cloned.peek()
       const mres1 = await machine.next()
-      const cres1 = await cloned.next()
       expect(mres1.done).toBeFalsy()
       expect(cres1.done).toBeFalsy()
 
-      r.feed([{ type: ToggleOn.type }], true)
+      await r.feed([{ type: ToggleOn.type }], true)
 
       // attempt to kill
       cloned.return?.()
       cloned.throw?.()
 
+      // peek should come before next
+      const cres2 = await cloned.peek()
       const mres2 = await machine.next()
-      const cres2 = await cloned.next()
 
       expect(mres2.done).toBeFalsy()
       expect(cres2.done).toBeTruthy()
@@ -515,6 +639,22 @@ describe('machine as async generator', () => {
 
       expect(mres1.done).toBeTruthy()
       expect(cres1.done).toBeTruthy()
+    })
+
+    it('should share stored held promise with parent', async () => {
+      const r = new Runner(On, { toggleCount: 0 })
+      const machine = r.machine
+
+      // trigger caught up before cloning
+      await r.feed([{ type: ToggleOff.type }], true)
+      const mres1 = await machine.peek()
+
+      // clone after caught up
+      // the `peek` below must not require another `caughtUp`
+      const cloned = machine.noAutoDestroy()
+      const cres1 = await cloned.peek()
+
+      expect(mres1).toEqual(cres1)
     })
   })
 })

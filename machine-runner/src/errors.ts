@@ -35,3 +35,13 @@ export class MachineRunnerErrorCommandFiredWhenNotCaughtUp extends MachineRunner
     Object.setPrototypeOf(this, MachineRunnerErrorCommandFiredWhenNotCaughtUp.prototype)
   }
 }
+
+export class MachineRunnerFailure extends MachineRunnerError {
+  cause: unknown
+  constructor(message?: string, cause?: unknown) {
+    super(message)
+    this.name = 'MachineRunnerFailure'
+    this.cause = cause
+    Object.setPrototypeOf(this, MachineRunnerFailure.prototype)
+  }
+}

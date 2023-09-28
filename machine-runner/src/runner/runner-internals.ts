@@ -11,6 +11,7 @@ import {
   StateFactory,
 } from '../design/state.js'
 import { Destruction } from '../utils/destruction.js'
+import { MachineRunnerFailure } from '../errors.js'
 
 export type CommandCallback<MachineEventFactories extends MachineEvent.Factory.Any> = (_: {
   commandKey: string
@@ -59,8 +60,13 @@ export type RunnerInternals<
 
   // TODO: document how it behaves
   commandLock: null | symbol
-}
 
+  /**
+   * When not null: indicates that the machine is failing from a miscalculation
+   * inside a reaction
+   */
+  failure: null | MachineRunnerFailure
+}
 export namespace RunnerInternals {
   export type Any = RunnerInternals<any, any, any, any, any, any>
 
@@ -118,6 +124,7 @@ export namespace RunnerInternals {
       caughtUpFirstTime: false,
       commandLock: null,
       previouslyEmittedToNext: null,
+      failure: null,
     }
 
     return internals
@@ -193,14 +200,14 @@ export namespace RunnerInternals {
     )
 
     if (!queueDeterminationResult.shouldQueue) {
-      return { executionHappened: false, discardable: event }
+      return { type: PushEventTypes.Discard, discarded: event }
     } else {
       internals.queue.push(event)
 
       const matchingReaction = queueDeterminationResult.matchingReaction
 
       if (matchingReaction.eventChainTrigger.length !== internals.queue.length) {
-        return { executionHappened: false }
+        return { type: PushEventTypes.Push }
       } else {
         const nextFactory = matchingReaction.next
 
@@ -211,26 +218,35 @@ export namespace RunnerInternals {
         const triggeringEvents = internals.queue
         internals.queue = []
 
-        const nextPayload = matchingReaction.handler(
-          {
-            self: internals.current.data.payload,
-          },
-          ...triggeringEvents,
-        )
+        try {
+          const nextPayload = matchingReaction.handler(
+            {
+              self: internals.current.data.payload,
+            },
+            ...triggeringEvents,
+          )
 
-        internals.current = {
-          data: {
-            type: nextFactory.mechanism.name,
-            payload: nextPayload,
-          },
-          factory: nextFactory,
-        }
+          internals.current = {
+            data: {
+              type: nextFactory.mechanism.name,
+              payload: nextPayload,
+            },
+            factory: nextFactory,
+          }
 
-        internals.commandLock = null
+          internals.commandLock = null
 
-        return {
-          executionHappened: true,
-          triggeringEvents,
+          return { type: PushEventTypes.React, triggeringEvents }
+        } catch (error) {
+          const failure = {
+            error,
+            current: internals.current.factory,
+            next: internals.current.factory,
+          }
+          return {
+            type: PushEventTypes.Failure,
+            failure: { ...failure },
+          }
         }
       }
     }
@@ -260,12 +276,29 @@ export namespace StateAndFactory {
   export type Any = StateAndFactory<any, any, any, any, any, any>
 }
 
+export namespace PushEventTypes {
+  export const Discard: unique symbol = Symbol('Discard')
+  export type Discard = typeof Discard
+
+  export const Push: unique symbol = Symbol('Push')
+  export type Push = typeof Push
+
+  export const React: unique symbol = Symbol('React')
+  export type React = typeof React
+
+  export const Failure: unique symbol = Symbol('Failure')
+  export type Failure = typeof Failure
+}
+
 export type PushEventResult =
+  | { type: PushEventTypes.Push }
+  | { type: PushEventTypes.Discard; discarded: ActyxEvent<MachineEvent.Any> }
+  | { type: PushEventTypes.React; triggeringEvents: ActyxEvent<MachineEvent.Any>[] }
   | {
-      executionHappened: false
-      discardable?: ActyxEvent<MachineEvent.Any>
-    }
-  | {
-      executionHappened: true
-      triggeringEvents: ActyxEvent<MachineEvent.Any>[]
+      type: PushEventTypes.Failure
+      failure: {
+        error: unknown
+        current: StateFactory.Any
+        next: StateFactory.Any
+      }
     }
