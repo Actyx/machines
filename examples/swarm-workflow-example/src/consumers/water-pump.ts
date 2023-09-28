@@ -16,7 +16,7 @@ export const supplyWater = async (actyx: Actyx, dockingId: string) => {
       // Here the actual work would happen
       // Sleeping for a second as the customary replacement
       await sleep(1000);
-      await whenInitial.commands?.dockAvailable();
+      await whenInitial.commands()?.dockAvailable();
     }
 
     const whenPumping = state.as(WaterPump.PumpingWater);
@@ -24,7 +24,7 @@ export const supplyWater = async (actyx: Actyx, dockingId: string) => {
       // Here the actual work would happen
       // Sleeping for a second as the customary replacement
       await sleep(1000);
-      await whenPumping.commands?.waterSupplied();
+      await whenPumping.commands()?.waterSupplied();
     }
 
     const whenCleared = state.as(WaterPump.Done);

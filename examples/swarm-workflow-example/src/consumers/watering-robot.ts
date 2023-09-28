@@ -16,7 +16,7 @@ export const dockAndDrawWater = async (actyx: Actyx, dockingId: string) => {
       // Here the actual work would happen
       // Sleeping for a second as the customary replacement
       await sleep(1000);
-      await whenDocking.commands?.docked();
+      await whenDocking.commands()?.docked();
     }
 
     const whenWaterPumped = state.as(WateringRobot.Undocking);
@@ -24,7 +24,7 @@ export const dockAndDrawWater = async (actyx: Actyx, dockingId: string) => {
       // Here the actual work would happen
       // Sleeping for a second as the customary replacement
       await sleep(1000);
-      await whenWaterPumped.commands?.undocked();
+      await whenWaterPumped.commands()?.undocked();
     }
 
     const whenDone = state.as(WateringRobot.Done);

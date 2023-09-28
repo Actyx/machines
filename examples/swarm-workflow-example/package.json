@@ -13,7 +13,7 @@
   "license": "ISC",
   "dependencies": {
     "@actyx/machine-check": "^0.2.2",
-    "@actyx/machine-runner": "^0.4.4",
+    "@actyx/machine-runner": "^0.5.0",
     "@actyx/sdk": "^0.5.7",
     "@types/uuid": "^9.0.2",
     "concurrently": "^8.2.1",

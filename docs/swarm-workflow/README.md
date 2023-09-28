@@ -466,7 +466,7 @@ export const supplyWater = async (actyx: Actyx, dockingId: string) => {
       // Notice this command call;
       //  it maps directly to the state design phase
       // .command("dockAvailable", ....)
-      await whenInitial.commands?.dockAvailable();
+      await whenInitial.commands()?.dockAvailable();
     }
   }
 };
@@ -494,12 +494,12 @@ export const supplyWater = async (actyx: Actyx, dockingId: string) => {
 
     const whenInitial = state.as(WaterPump.ClearingDock);
     if (whenInitial) {
-      await whenInitial.commands?.dockAvailable();
+      await whenInitial.commands()?.dockAvailable();
     }
 
     const whenPumping = state.as(WaterPump.PumpingWater);
     if (whenPumping) {
-      await whenPumping.commands?.waterSupplied();
+      await whenPumping.commands()?.waterSupplied();
     }
 
     const whenCleared = state.as(WaterPump.Done);
@@ -536,7 +536,7 @@ This concludes The Pump's part of the bargain.
 >   // open the valve, let water out, close after `amountOfWater`
 >   await openValveFor(amountOfWater);
 >   // after the local task is done, let the robot know
->   await whenPumping.commands?.waterSupplied();
+>   await whenPumping.commands()?.waterSupplied();
 > }
 > ```
 
@@ -587,12 +587,12 @@ export const dockAndDrawWater = async (actyx: Actyx, dockingId: string) => {
 
     const whenDocking = state.as(WateringRobot.Docking);
     if (whenDocking) {
-      await whenDocking.commands?.docked();
+      await whenDocking.commands()?.docked();
     }
 
     const whenWaterPumped = state.as(WateringRobot.Undocking);
     if (whenWaterPumped) {
-      await whenWaterPumped.commands?.Done();
+      await whenWaterPumped.commands()?.Done();
     }
 
     const whenDone = state.as(WateringRobot.Done);
