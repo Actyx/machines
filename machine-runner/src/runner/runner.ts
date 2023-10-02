@@ -588,7 +588,32 @@ export type MachineRunnerIterableIterator<
 > = AsyncIterable<StateOpaque<SwarmProtocolName, MachineName, string, StateUnion>> &
   AsyncIterableIterator<StateOpaque<SwarmProtocolName, MachineName, string, StateUnion>> &
   AsyncIterator<StateOpaque<SwarmProtocolName, MachineName, string, StateUnion>, null> & {
+    /**
+     * @deprecated use `peekNext` instead
+     *
+     * The returned promise resolves when the machine-runner async iterator has received more events and computed the next ready-state.
+     * Ready state is invalidated by calls to `next` method which returns the same promise.
+     *
+     * Unlike `next`, it does not invalidate current ready-state.
+     *
+     * Unilke `get`, it waits for a ready-state instead of returning the immediate state of the machine runner, which is nullable
+     *
+     * @returns Promise<{ done: false, value: StateOpaque } | { done: true, value: null }>
+     */
     peek: () => Promise<
+      IteratorResult<StateOpaque<SwarmProtocolName, MachineName, string, StateUnion>, null>
+    >
+    /**
+     * The returned promise resolves when the machine-runner async iterator has received more events and computed the next ready-state.
+     * Ready state is invalidated by calls to `next` method which returns the same promise.
+     *
+     * Unlike `next`, it does not invalidate current ready-state.
+     *
+     * Unilke `get`, it waits for a ready-state instead of returning the immediate state of the machine runner, which is nullable
+     *
+     * @returns Promise<{ done: false, value: StateOpaque } | { done: true, value: null }>
+     */
+    peekNext: () => Promise<
       IteratorResult<StateOpaque<SwarmProtocolName, MachineName, string, StateUnion>, null>
     >
   }
@@ -617,6 +642,9 @@ namespace MachineRunnerIterableIterator {
     }
 
     const iterator: MachineRunnerIterableIterator<SwarmProtocolName, MachineName, StateUnion> = {
+      peekNext: (): Promise<
+        IteratorResult<StateOpaque<SwarmProtocolName, MachineName, string, StateUnion>>
+      > => nextValueAwaiterConsume.peek(),
       peek: (): Promise<
         IteratorResult<StateOpaque<SwarmProtocolName, MachineName, string, StateUnion>>
       > => nextValueAwaiterConsume.peek(),
