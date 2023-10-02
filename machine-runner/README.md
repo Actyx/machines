@@ -7,6 +7,8 @@ The detailed documentation of this library is provided in its JsDoc comments.
 
 ## Example usage
 
+[More detailed tutorial can be found here](../docs/swarm-workflow)
+
 We demonstrate the usage of our decentralized state machines on an example from manufacturing automation, i.e. the factory shop floor: a warehouse requests the fleet of logistics robots to pick something up and bring it somewhere else.
 Our task is to write the logic for the warehouse and for each of the robots so that the job will eventually be done.
 Since there are many robots we use an auction to settle who will do it.

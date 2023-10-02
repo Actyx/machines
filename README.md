@@ -6,6 +6,8 @@ These roles may differ in their business logic as well as in the events they are
 
 ## Machine Runner
 
+Library documentation: [machine-runner](https://github.com/Actyx/machines/tree/master/machine-runner)
+
 This library offers a TypeScript DSL for defining machines in the above sense.
 Each such machine belongs to an overarching _swarm protocol_, i.e. it plays a role within that protocol and works together with other machines also following this protocol.
 A machine more precisely is a [finite-state automaton](https://en.wikipedia.org/wiki/Finite-state_machine) with the following features:
