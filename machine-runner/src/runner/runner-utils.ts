@@ -11,6 +11,7 @@ import {
   MachineRunnerErrorCommandFiredAfterLocked,
   MachineRunnerFailure,
 } from '../errors.js'
+import { EventEmitter } from 'events'
 
 /**
  * Imported this way because it cannot be imported via normal import ... from
@@ -78,3 +79,25 @@ export type MachineEmitterEventMap<
   destroyed: (_: void) => unknown
   log: (_: string) => unknown
 } & CommonEmitterEventMap
+
+class ThrowIgnoringEmitter extends EventEmitter {
+  emit(eventName: string, ...args: unknown[]) {
+    const listeners = this.rawListeners(eventName)
+
+    listeners.forEach((listener) => {
+      try {
+        listener(...args)
+      } catch (error) {
+        console.error(error)
+      }
+    })
+
+    return listeners.length > 0
+  }
+}
+
+export const makeEmitter = <
+  SwarmProtocolName extends string,
+  MachineName extends string,
+  StateUnion extends unknown = unknown,
+>() => new ThrowIgnoringEmitter() as MachineEmitter<SwarmProtocolName, MachineName, StateUnion>

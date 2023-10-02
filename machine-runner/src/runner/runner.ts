@@ -10,7 +10,6 @@ import {
   TaggedEvent,
   Tags,
 } from '@actyx/sdk'
-import { EventEmitter } from 'events'
 import {
   MachineEvent,
   StateRaw,
@@ -34,6 +33,7 @@ import {
   MachineEmitter,
   TypedEventEmitter,
   MachineEmitterEventMap,
+  makeEmitter,
 } from './runner-utils.js'
 import { Machine, SwarmProtocol } from '../design/protocol.js'
 import { deepEqual } from 'fast-equals'
@@ -287,7 +287,7 @@ export const createMachineRunnerInternal = <
   type ThisStateOpaque = StateOpaque<SwarmProtocolName, MachineName, string, StateUnion>
   type ThisMachineRunner = MachineRunner<SwarmProtocolName, MachineName, StateUnion>
 
-  const emitter = new EventEmitter() as MachineEmitter<SwarmProtocolName, MachineName, StateUnion>
+  const emitter = makeEmitter<SwarmProtocolName, MachineName, StateUnion>()
 
   const emitErrorIfSubscribed: MachineEmitterEventMap<
     SwarmProtocolName,

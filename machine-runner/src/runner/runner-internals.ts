@@ -245,7 +245,7 @@ export namespace RunnerInternals {
           }
           return {
             type: PushEventTypes.Failure,
-            failure: { ...failure },
+            failure,
           }
         }
       }

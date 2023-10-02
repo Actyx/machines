@@ -1,10 +1,9 @@
-import { ActyxEvent, Metadata, MsgType, Tag, Tags } from '@actyx/sdk'
+import { ActyxEvent, MsgType, Tag } from '@actyx/sdk'
 import { expect } from '@jest/globals'
 import { StateOpaque, MachineEvent, StateFactory, State, globals } from '../../lib/esm/index.js'
 import { createMachineRunnerInternal } from '../../lib/esm/runner/runner.js'
 import { PromiseDelay, Subscription, mockMeta } from '../../lib/esm/test-utils/mock-runner.js'
 import { CommonEmitterEventMap, TypedEventEmitter } from '../../lib/esm/runner/runner-utils.js'
-import { MachineAnalysisResource } from '../../lib/esm/design/protocol.js'
 
 export const sleep = (dur: number) => new Promise((res) => setTimeout(res, dur))
 
@@ -220,5 +219,20 @@ export class Runner<
 
   makeErrorCatchers() {
     return [errorCatcher(this.machine.events), errorCatcher(globals.emitter)]
+  }
+}
+
+export const createBufferLog = () => {
+  let buffer = ''
+
+  const log: typeof console['error'] = (...args: []) => {
+    args.forEach((arg) => {
+      buffer = buffer + String(arg)
+    })
+  }
+
+  return {
+    log,
+    get: () => buffer,
   }
 }

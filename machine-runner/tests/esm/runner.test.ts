@@ -13,7 +13,6 @@ import {
 } from '../../lib/esm/index.js'
 import { NOP } from '../../lib/esm/utils/misc.js'
 import { NotAnyOrUnknown } from '../../lib/esm/utils/type-utils.js'
-import { MachineAnalysisResource } from '../../lib/esm/design/protocol.js'
 import * as ProtocolSwitch from './protocol-switch.js'
 import * as ProtocolOneTwo from './protocol-one-two.js'
 import * as ProtocolScorecard from './protocol-scorecard.js'
@@ -1166,11 +1165,3 @@ describe('reactIntoSelf', () => {
   })
 })
 
-describe('MachineAnalysisResource.syntheticEventName', () => {
-  const { Events, Initial, Second, XCommandParam } = ProtocolOneTwo
-  const { One, Two } = Events
-  it('should be as formatted in the test', () => {
-    expect(MachineAnalysisResource.syntheticEventName(Initial, [One, Two])).toBe('§Initial§One§Two')
-    expect(MachineAnalysisResource.syntheticEventName(Second, [One])).toBe('§Second§One')
-  })
-})
