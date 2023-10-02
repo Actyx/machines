@@ -10,7 +10,6 @@ import {
   TaggedEvent,
   Tags,
 } from '@actyx/sdk'
-import { EventEmitter } from 'events'
 import {
   MachineEvent,
   StateRaw,
@@ -23,18 +22,24 @@ import {
   CommandGeneratorCriteria,
 } from '../design/state.js'
 import { Destruction } from '../utils/destruction.js'
-import { CommandCallback, RunnerInternals, StateAndFactory } from './runner-internals.js'
+import {
+  CommandCallback,
+  PushEventTypes,
+  RunnerInternals,
+  StateAndFactory,
+} from './runner-internals.js'
 import {
   CommonEmitterEventMap,
   MachineEmitter,
   TypedEventEmitter,
   MachineEmitterEventMap,
+  makeEmitter,
 } from './runner-utils.js'
 import { Machine, SwarmProtocol } from '../design/protocol.js'
-import { NOP } from '../utils/misc.js'
 import { deepEqual } from 'fast-equals'
 import { deepCopy } from '../utils/object-utils.js'
 import * as globals from '../globals.js'
+import { MachineRunnerFailure } from '../errors.js'
 
 /**
  * Contains and manages the state of a machine by subscribing and publishing
@@ -282,7 +287,7 @@ export const createMachineRunnerInternal = <
   type ThisStateOpaque = StateOpaque<SwarmProtocolName, MachineName, string, StateUnion>
   type ThisMachineRunner = MachineRunner<SwarmProtocolName, MachineName, StateUnion>
 
-  const emitter = new EventEmitter() as MachineEmitter<SwarmProtocolName, MachineName, StateUnion>
+  const emitter = makeEmitter<SwarmProtocolName, MachineName, StateUnion>()
 
   const emitErrorIfSubscribed: MachineEmitterEventMap<
     SwarmProtocolName,
@@ -357,6 +362,15 @@ export const createMachineRunnerInternal = <
   // Actyx Subscription management
   internals.destruction.addDestroyHook(() => emitter.emit('destroyed'))
 
+  const fail = (cause: MachineRunnerFailure) => {
+    // order of execution is very important here
+    // if changing causes issue in test, revert
+    internals.failure = cause
+    emitter.emit('failure', cause)
+    emitErrorIfSubscribed(cause)
+    internals.destruction.destroy()
+  }
+
   let refToUnsubFunction = null as null | (() => void)
 
   const unsubscribeFromActyx = () => {
@@ -409,26 +423,34 @@ export const createMachineRunnerInternal = <
               })
 
               // Effects of handlingReport on emitters
-              ;(() => {
-                if (pushEventResult.executionHappened) {
-                  if (emitter.listenerCount('audit.state') > 0) {
-                    emitter.emit('audit.state', {
-                      state: ImplStateOpaque.make<SwarmProtocolName, MachineName, StateUnion>(
-                        internals,
-                        internals.current,
-                      ),
-                      events: pushEventResult.triggeringEvents,
-                    })
-                  }
-                }
-
-                if (!pushEventResult.executionHappened && pushEventResult.discardable) {
-                  emitter.emit('audit.dropped', {
-                    state: internals.current.data,
-                    event: pushEventResult.discardable,
+              if (pushEventResult.type === PushEventTypes.React) {
+                if (emitter.listenerCount('audit.state') > 0) {
+                  emitter.emit('audit.state', {
+                    state: ImplStateOpaque.make<SwarmProtocolName, MachineName, StateUnion>(
+                      internals,
+                      internals.current,
+                    ),
+                    events: pushEventResult.triggeringEvents,
                   })
                 }
-              })()
+              } else if (pushEventResult.type === PushEventTypes.Discard) {
+                emitter.emit('audit.dropped', {
+                  state: internals.current.data,
+                  event: pushEventResult.discarded,
+                })
+              } else if (pushEventResult.type === PushEventTypes.Failure) {
+                const nameOf = ({ mechanism }: StateFactory.Any) =>
+                  `${mechanism.protocol.swarmName}/${mechanism.protocol.name}/${mechanism.name}`
+
+                return fail(
+                  new MachineRunnerFailure(
+                    `Exception thrown while transitioning from ${nameOf(
+                      pushEventResult.failure.current,
+                    )} to ${nameOf(pushEventResult.failure.next)}`,
+                    pushEventResult.failure.error,
+                  ),
+                )
+              }
             }
 
             if (d.caughtUp) {
@@ -462,8 +484,7 @@ export const createMachineRunnerInternal = <
             }
           }
         } catch (error) {
-          // TODO: handle error gracefully
-          console.error(error)
+          return fail(new MachineRunnerFailure(`Unknown Error`, error))
         }
       },
       (err) => {
@@ -484,6 +505,17 @@ export const createMachineRunnerInternal = <
   // AsyncIterator part
   // ==================
 
+  const nextValueAwaiter = NextValueAwaiter.make<
+    StateOpaque<SwarmProtocolName, MachineName, string, StateUnion>
+  >({
+    topLevelDestruction: internals.destruction,
+    failure: () => internals.failure,
+  })
+
+  emitter.on('next', nextValueAwaiter.push)
+  emitter.on('failure', nextValueAwaiter.fail)
+  internals.destruction.addDestroyHook(nextValueAwaiter.kill)
+
   // Self API construction
 
   const getSnapshot = (): ThisStateOpaque | null =>
@@ -498,14 +530,25 @@ export const createMachineRunnerInternal = <
     isDestroyed: internals.destruction.isDestroyed,
     noAutoDestroy: () =>
       MachineRunnerIterableIterator.make({
-        events: emitter,
+        nextValueAwaiter,
+        destruction: (() => {
+          const childDestruction = Destruction.make()
+
+          internals.destruction.addDestroyHook(() => childDestruction.destroy())
+
+          if (internals.destruction.isDestroyed()) {
+            childDestruction.destroy()
+          }
+
+          return childDestruction
+        })(),
       }),
   }
 
   const defaultIterator: MachineRunnerIterableIterator<SwarmProtocolName, MachineName, StateUnion> =
     MachineRunnerIterableIterator.make({
-      events: emitter,
-      inheritedDestruction: internals.destruction,
+      nextValueAwaiter,
+      destruction: internals.destruction,
     })
 
   const refineStateType = <
@@ -556,46 +599,30 @@ namespace MachineRunnerIterableIterator {
     MachineName extends string,
     StateUnion extends unknown,
   >({
-    events,
-    inheritedDestruction: inheritedDestruction,
+    nextValueAwaiter,
+    destruction,
   }: {
-    events: MachineEmitter<SwarmProtocolName, MachineName, StateUnion>
-    inheritedDestruction?: Destruction
+    nextValueAwaiter: NextValueAwaiter<
+      StateOpaque<SwarmProtocolName, MachineName, string, StateUnion>
+    >
+    destruction: Destruction
   }): MachineRunnerIterableIterator<SwarmProtocolName, MachineName, StateUnion> => {
-    const destruction =
-      inheritedDestruction ||
-      (() => {
-        const destruction = Destruction.make()
-
-        // Destruction iis
-        const onDestroy = () => {
-          destruction.destroy()
-          events.off('destroyed', onDestroy)
-        }
-        events.on('destroyed', onDestroy)
-
-        return destruction
-      })()
-
-    const nextValueAwaiter = NextValueAwaiter.make({
-      events,
-      destruction,
-    })
+    const nextValueAwaiterConsume = nextValueAwaiter.generateConsumeAPI(destruction)
 
     const onThrowOrReturn = async (): Promise<
       IteratorResult<StateOpaque<SwarmProtocolName, MachineName, string, StateUnion>, null>
     > => {
       destruction.destroy()
-      return nextValueAwaiter.consume()
+      return Promise.resolve({ done: true, value: null })
     }
 
     const iterator: MachineRunnerIterableIterator<SwarmProtocolName, MachineName, StateUnion> = {
       peek: (): Promise<
         IteratorResult<StateOpaque<SwarmProtocolName, MachineName, string, StateUnion>>
-      > => nextValueAwaiter.peek(),
+      > => nextValueAwaiterConsume.peek(),
       next: (): Promise<
         IteratorResult<StateOpaque<SwarmProtocolName, MachineName, string, StateUnion>>
-      > => nextValueAwaiter.consume(),
+      > => nextValueAwaiterConsume.consume(),
       return: onThrowOrReturn,
       throw: onThrowOrReturn,
       [Symbol.asyncIterator]: (): AsyncIterableIterator<
@@ -610,121 +637,105 @@ namespace MachineRunnerIterableIterator {
 /**
  * Object to help "awaiting" next value.
  */
-export type NextValueAwaiter = ReturnType<typeof NextValueAwaiter['make']>
+export type NextValueAwaiter<S extends any> = ReturnType<typeof NextValueAwaiter.make<S>>
 
 namespace NextValueAwaiter {
-  export const make = <
-    SwarmProtocolName extends string,
-    MachineName extends string,
-    StateUnion extends unknown,
-  >({
-    events,
-    destruction,
+  export const make = <S extends any>({
+    topLevelDestruction,
+    failure,
   }: {
-    events: MachineEmitter<SwarmProtocolName, MachineName, StateUnion>
-    destruction: Destruction
+    topLevelDestruction: Destruction
+    failure: () => MachineRunnerFailure | null
   }) => {
-    type ThisStateOpaque = StateOpaque<SwarmProtocolName, MachineName, string, StateUnion>
-    type ThisMachineEmitterEventMap = MachineEmitterEventMap<
-      SwarmProtocolName,
-      MachineName,
-      StateUnion
-    >
+    const Done: IteratorResult<S, null> = { done: true, value: null }
+    const wrapAsIteratorResult = (value: S): IteratorResult<S, null> => ({ done: false, value })
 
-    let store:
-      | null
-      | ThisStateOpaque
-      | RequestedPromisePair<SwarmProtocolName, MachineName, StateUnion> = null
+    let store: null | { state: S } | RequestedPromisePair<IteratorResult<S, null>> = null
 
-    const onNext: ThisMachineEmitterEventMap['next'] = (state) => {
-      if (destruction.isDestroyed()) return
+    /**
+     * Allows different level of destructions
+     * For no-auto-destroy
+     *
+     * shared behavior:
+     *  kill, fail, push
+     *
+     * destruction-dependant behavior:
+     *  peek, next
+     */
+    const generateConsumeAPI = (currentLevelDestruction: Destruction) => {
+      const peek = (): Promise<IteratorResult<S, null>> => {
+        const failureCause = failure()
+        if (failureCause) return Promise.reject(failureCause)
+        if (currentLevelDestruction.isDestroyed()) return Promise.resolve(Done)
+        if (store && 'state' in store) return Promise.resolve(wrapAsIteratorResult(store.state))
 
-      if (Array.isArray(store)) {
-        store[1](intoIteratorResult(state))
-        store = null
-      } else {
-        store = state
+        const promisePair = store || createPromisePair()
+        store = promisePair
+        return promisePair.promise
+      }
+      return {
+        peek,
+        consume: () => {
+          const shouldNullify = !!store && 'state' in store
+          const retval = peek()
+          if (shouldNullify) {
+            store = null
+          }
+          return retval
+        },
       }
     }
-
-    events.on('next', onNext)
-
-    destruction.addDestroyHook(() => {
-      events.off('next', onNext)
-      if (Array.isArray(store)) {
-        store[1](Done)
-        store = null
-      }
-    })
 
     return {
-      consume: (): Promise<IteratorResult<ThisStateOpaque, null>> => {
-        if (destruction.isDestroyed()) return Promise.resolve(Done)
+      kill: () => {
+        if (store && 'control' in store) {
+          store.control.resolve(Done)
+        }
+        store = null
+      },
+      fail: (f: MachineRunnerFailure) => {
+        if (store && 'control' in store) {
+          store.control.reject(f)
+        }
+        store = null
+      },
+      push: (state: S) => {
+        if (topLevelDestruction.isDestroyed()) return
 
-        if (store && !Array.isArray(store)) {
-          const retVal = Promise.resolve(intoIteratorResult(store))
+        if (store && 'control' in store) {
+          store.control.resolve(wrapAsIteratorResult(state))
           store = null
-          return retVal
         } else {
-          const promisePair = store || createPromisePair()
-          store = promisePair
-          return promisePair[0]
+          store = { state }
         }
       },
-
-      peek: (): Promise<IteratorResult<ThisStateOpaque, null>> => {
-        if (destruction.isDestroyed()) return Promise.resolve(Done)
-
-        if (store && !Array.isArray(store)) {
-          const retVal = Promise.resolve(intoIteratorResult(store))
-          return retVal
-        } else {
-          const promisePair = store || createPromisePair()
-          store = promisePair
-          return promisePair[0]
-        }
-      },
+      generateConsumeAPI,
     }
   }
 
-  type RequestedPromisePair<
-    SwarmProtocolName extends string,
-    MachineName extends string,
-    StateUnion extends unknown,
-  > = [
-    Promise<IteratorResult<StateOpaque<SwarmProtocolName, MachineName, string, StateUnion>, null>>,
-    (
-      _: IteratorResult<StateOpaque<SwarmProtocolName, MachineName, string, StateUnion>, null>,
-    ) => unknown,
-  ]
-
-  const createPromisePair = <
-    SwarmProtocolName extends string,
-    MachineName extends string,
-    StateUnion extends unknown,
-  >(): RequestedPromisePair<SwarmProtocolName, MachineName, StateUnion> => {
-    type Ret = RequestedPromisePair<SwarmProtocolName, MachineName, StateUnion>
-    type ThisStateOpaque = StateOpaque<SwarmProtocolName, MachineName, string, StateUnion>
-
-    const pair: Ret = [undefined as any, NOP]
-    pair[0] = new Promise<IteratorResult<ThisStateOpaque, null>>((resolve) => (pair[1] = resolve))
-    return pair
+  type RequestedPromisePair<T extends any> = {
+    promise: Promise<T>
+    control: {
+      resolve: (_: T) => unknown
+      reject: (_: unknown) => unknown
+    }
   }
 
-  const intoIteratorResult = <
-    SwarmProtocolName extends string,
-    MachineName extends string,
-    StateUnion extends unknown,
-  >(
-    value: StateOpaque<SwarmProtocolName, MachineName, string, StateUnion>,
-  ): IteratorResult<StateOpaque<SwarmProtocolName, MachineName, string, StateUnion>, null> => ({
-    done: false,
-    value,
-  })
+  const createPromisePair = <T extends any>(): RequestedPromisePair<T> => {
+    const self: RequestedPromisePair<T> = {
+      promise: null as any,
+      control: null as any,
+    }
 
-  export const Done: IteratorResult<StateOpaque<any, any, string, any>, null> = {
-    done: true,
-    value: null,
+    self.promise = new Promise<T>(
+      (resolve, reject) =>
+        (self.control = {
+          resolve,
+          reject,
+        }),
+    )
+
+    return self
   }
 }
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from '@jest/globals'
 import { MachineEvent, SwarmProtocol, StateFactory, StateMechanism } from '../../lib/esm/index.js'
 import { MachineAnalysisResource } from '../../lib/esm/design/protocol.js'
+import * as ProtocolOneTwo from './protocol-one-two.js'
 
 describe('protocol.createJSONForAnalysis', () => {
   const E1 = MachineEvent.design('E1').withoutPayload()
@@ -73,6 +74,15 @@ const expectExecute = (
     logType.map((item) => item.type),
   )
 }
+
+describe('MachineAnalysisResource.syntheticEventName', () => {
+  const { Events, Initial, Second, XCommandParam } = ProtocolOneTwo
+  const { One, Two } = Events
+  it('should be as formatted in the test', () => {
+    expect(MachineAnalysisResource.syntheticEventName(Initial, [One, Two])).toBe('§Initial§One§Two')
+    expect(MachineAnalysisResource.syntheticEventName(Second, [One])).toBe('§Second§One')
+  })
+})
 
 const extractInput = (
   analysisData: MachineAnalysisResource,
