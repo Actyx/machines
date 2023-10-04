@@ -34,6 +34,7 @@ import {
   TypedEventEmitter,
   MachineEmitterEventMap,
   makeEmitter,
+  ActiveRunnerRegistryRegisterSymbol,
 } from './runner-utils.js'
 import { Machine, SwarmProtocol } from '../design/protocol.js'
 import { deepEqual } from 'fast-equals'
@@ -577,6 +578,11 @@ export const createMachineRunnerInternal = <
     ...defaultIterator,
     refineStateType,
   }
+
+  globals.activeRunners[ActiveRunnerRegistryRegisterSymbol](self, {
+    initialFactory,
+    tags,
+  })
 
   return self
 }
