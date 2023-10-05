@@ -19,12 +19,12 @@ import * as ProtocolScorecard from './protocol-scorecard.js'
 import * as ProtocolThreeSwitch from './protocol-three-times-for-zod.js'
 import * as ProtocolFaulty from './protocol-faulty.js'
 import { Runner, Unreachable, errorCatcher, sleep } from './helper.js'
-import { emitter } from '../../lib/esm/globals.js'
+import * as globals from '../../lib/esm/globals.js'
 
 // Mock Runner
 
 beforeEach(() => {
-  emitter.removeAllListeners()
+  globals.emitter.removeAllListeners()
 })
 
 describe('machine runner', () => {
@@ -1165,3 +1165,37 @@ describe('reactIntoSelf', () => {
   })
 })
 
+describe('globals.activeRunners', () => {
+  it('should contain all living runners', () => {
+    const r1 = new Runner(ProtocolSwitch.On, { toggleCount: 0 })
+    const r2 = new Runner(ProtocolThreeSwitch.On, { sum: 0 })
+    const r3 = new Runner(ProtocolScorecard.Initial, undefined)
+
+    const findMachine = (machine: MachineRunner.Any) =>
+      globals.activeRunners.all().find((x) => x[0] === machine)
+
+    const entries = [
+      findMachine(r1.machine),
+      findMachine(r2.machine),
+      findMachine(r3.machine),
+    ] as const
+
+    expect(entries[0]).toBeTruthy()
+    expect(entries[1]).toBeTruthy()
+    expect(entries[2]).toBeTruthy()
+
+    if (!entries[0]) throw new Unreachable()
+    if (!entries[1]) throw new Unreachable()
+    if (!entries[2]) throw new Unreachable()
+
+    expect(entries[0][1]).toEqual({ tags: r1.tag, initialFactory: ProtocolSwitch.On })
+    expect(entries[1][1]).toEqual({ tags: r2.tag, initialFactory: ProtocolThreeSwitch.On })
+    expect(entries[2][1]).toEqual({ tags: r3.tag, initialFactory: ProtocolScorecard.Initial })
+
+    r3.machine.destroy()
+    // the remaining 2 exists but the destroyed one has been registered
+    expect(findMachine(r1.machine)).toBeTruthy()
+    expect(findMachine(r2.machine)).toBeTruthy()
+    expect(findMachine(r3.machine)).toBe(undefined)
+  })
+})

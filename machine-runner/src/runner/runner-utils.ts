@@ -101,3 +101,7 @@ export const makeEmitter = <
   MachineName extends string,
   StateUnion extends unknown = unknown,
 >() => new ThrowIgnoringEmitter() as MachineEmitter<SwarmProtocolName, MachineName, StateUnion>
+
+export const ActiveRunnerRegistryRegisterSymbol: unique symbol = Symbol(
+  'ActiveRunnerRegistryRegisterSymbol',
+)
