@@ -577,7 +577,12 @@ describe('machine as async generator', () => {
       r1.feed([], true)
 
       const peekResult = (await machine.peekNext()).value
-      for await (const state of machine.noAutoDestroy()) {
+      const copy = machine.noAutoDestroy()
+      expect(await Promise.race([machine.next(), sleep(1)])).toEqual({
+        done: false,
+        value: peekResult,
+      })
+      for await (const state of copy) {
         expect(state).toBe(peekResult)
         break
       }

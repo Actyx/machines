@@ -506,16 +506,22 @@ export const createMachineRunnerInternal = <
   // AsyncIterator part
   // ==================
 
-  const nextValueAwaiter = NextValueAwaiter.make<
-    StateOpaque<SwarmProtocolName, MachineName, string, StateUnion>
-  >({
-    topLevelDestruction: internals.destruction,
-    failure: () => internals.failure,
-  })
+  type S = StateOpaque<SwarmProtocolName, MachineName, string, StateUnion>
+  const nextValueAwaiter = (state?: S | undefined) => {
+    const nva = NextValueAwaiter.make<S>({
+      topLevelDestruction: internals.destruction,
+      failure: () => internals.failure,
+      cloneFrom: state,
+    })
 
-  emitter.on('next', nextValueAwaiter.push)
-  emitter.on('failure', nextValueAwaiter.fail)
-  internals.destruction.addDestroyHook(nextValueAwaiter.kill)
+    emitter.on('next', nva.push)
+    emitter.on('failure', nva.fail)
+    internals.destruction.addDestroyHook(nva.kill)
+
+    return nva
+  }
+
+  const defaultNextValueAwaiter = nextValueAwaiter()
 
   // Self API construction
 
@@ -531,7 +537,7 @@ export const createMachineRunnerInternal = <
     isDestroyed: internals.destruction.isDestroyed,
     noAutoDestroy: () =>
       MachineRunnerIterableIterator.make({
-        nextValueAwaiter,
+        nextValueAwaiter: nextValueAwaiter(defaultNextValueAwaiter.state()),
         destruction: (() => {
           const childDestruction = Destruction.make()
 
@@ -548,7 +554,7 @@ export const createMachineRunnerInternal = <
 
   const defaultIterator: MachineRunnerIterableIterator<SwarmProtocolName, MachineName, StateUnion> =
     MachineRunnerIterableIterator.make({
-      nextValueAwaiter,
+      nextValueAwaiter: defaultNextValueAwaiter,
       destruction: internals.destruction,
     })
 
@@ -677,14 +683,17 @@ namespace NextValueAwaiter {
   export const make = <S extends any>({
     topLevelDestruction,
     failure,
+    cloneFrom,
   }: {
     topLevelDestruction: Destruction
     failure: () => MachineRunnerFailure | null
+    cloneFrom?: S
   }) => {
     const Done: IteratorResult<S, null> = { done: true, value: null }
     const wrapAsIteratorResult = (value: S): IteratorResult<S, null> => ({ done: false, value })
 
-    let store: null | { state: S } | RequestedPromisePair<IteratorResult<S, null>> = null
+    let store: null | { state: S } | RequestedPromisePair<IteratorResult<S, null>> =
+      cloneFrom === undefined ? null : { state: cloneFrom }
 
     /**
      * Allows different level of destructions
@@ -743,6 +752,7 @@ namespace NextValueAwaiter {
           store = { state }
         }
       },
+      state: () => (store && 'state' in store ? store.state : undefined),
       generateConsumeAPI,
     }
   }
