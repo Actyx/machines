@@ -506,16 +506,26 @@ export const createMachineRunnerInternal = <
   // AsyncIterator part
   // ==================
 
-  const nextValueAwaiter = NextValueAwaiter.make<
-    StateOpaque<SwarmProtocolName, MachineName, string, StateUnion>
-  >({
-    topLevelDestruction: internals.destruction,
-    failure: () => internals.failure,
-  })
+  type S = StateOpaque<SwarmProtocolName, MachineName, string, StateUnion>
+  const nextValueAwaiter = (
+    currentLevelDestruction: Destruction,
+    state?: { state: S } | undefined,
+  ) => {
+    const nva = NextValueAwaiter.make<S>({
+      topLevelDestruction: internals.destruction,
+      currentLevelDestruction,
+      failure: () => internals.failure,
+      cloneFrom: state,
+    })
 
-  emitter.on('next', nextValueAwaiter.push)
-  emitter.on('failure', nextValueAwaiter.fail)
-  internals.destruction.addDestroyHook(nextValueAwaiter.kill)
+    emitter.on('next', nva.push)
+    emitter.on('failure', nva.fail)
+    internals.destruction.addDestroyHook(nva.kill)
+
+    return nva
+  }
+
+  const defaultNextValueAwaiter = nextValueAwaiter(internals.destruction)
 
   // Self API construction
 
@@ -529,26 +539,29 @@ export const createMachineRunnerInternal = <
     initial: (): ThisStateOpaque => ImplStateOpaque.make(internals, internals.initial),
     destroy: internals.destruction.destroy,
     isDestroyed: internals.destruction.isDestroyed,
-    noAutoDestroy: () =>
-      MachineRunnerIterableIterator.make({
-        nextValueAwaiter,
-        destruction: (() => {
-          const childDestruction = Destruction.make()
+    noAutoDestroy: () => {
+      const childDestruction = (() => {
+        const childDestruction = Destruction.make()
 
-          internals.destruction.addDestroyHook(() => childDestruction.destroy())
+        internals.destruction.addDestroyHook(() => childDestruction.destroy())
 
-          if (internals.destruction.isDestroyed()) {
-            childDestruction.destroy()
-          }
+        if (internals.destruction.isDestroyed()) {
+          childDestruction.destroy()
+        }
 
-          return childDestruction
-        })(),
-      }),
+        return childDestruction
+      })()
+
+      return MachineRunnerIterableIterator.make({
+        nextValueAwaiter: nextValueAwaiter(childDestruction, defaultNextValueAwaiter.state()),
+        destruction: childDestruction,
+      })
+    },
   }
 
   const defaultIterator: MachineRunnerIterableIterator<SwarmProtocolName, MachineName, StateUnion> =
     MachineRunnerIterableIterator.make({
-      nextValueAwaiter,
+      nextValueAwaiter: defaultNextValueAwaiter,
       destruction: internals.destruction,
     })
 
@@ -638,8 +651,6 @@ namespace MachineRunnerIterableIterator {
     >
     destruction: Destruction
   }): MachineRunnerIterableIterator<SwarmProtocolName, MachineName, StateUnion> => {
-    const nextValueAwaiterConsume = nextValueAwaiter.generateConsumeAPI(destruction)
-
     const onThrowOrReturn = async (): Promise<
       IteratorResult<StateOpaque<SwarmProtocolName, MachineName, string, StateUnion>, null>
     > => {
@@ -650,13 +661,13 @@ namespace MachineRunnerIterableIterator {
     const iterator: MachineRunnerIterableIterator<SwarmProtocolName, MachineName, StateUnion> = {
       peekNext: (): Promise<
         IteratorResult<StateOpaque<SwarmProtocolName, MachineName, string, StateUnion>>
-      > => nextValueAwaiterConsume.peek(),
+      > => nextValueAwaiter.peek(),
       peek: (): Promise<
         IteratorResult<StateOpaque<SwarmProtocolName, MachineName, string, StateUnion>>
-      > => nextValueAwaiterConsume.peek(),
+      > => nextValueAwaiter.peek(),
       next: (): Promise<
         IteratorResult<StateOpaque<SwarmProtocolName, MachineName, string, StateUnion>>
-      > => nextValueAwaiterConsume.consume(),
+      > => nextValueAwaiter.consume(),
       return: onThrowOrReturn,
       throw: onThrowOrReturn,
       [Symbol.asyncIterator]: (): AsyncIterableIterator<
@@ -676,48 +687,40 @@ export type NextValueAwaiter<S extends any> = ReturnType<typeof NextValueAwaiter
 namespace NextValueAwaiter {
   export const make = <S extends any>({
     topLevelDestruction,
+    currentLevelDestruction,
     failure,
+    cloneFrom,
   }: {
     topLevelDestruction: Destruction
+    currentLevelDestruction: Destruction
     failure: () => MachineRunnerFailure | null
+    cloneFrom?: { state: S }
   }) => {
     const Done: IteratorResult<S, null> = { done: true, value: null }
     const wrapAsIteratorResult = (value: S): IteratorResult<S, null> => ({ done: false, value })
 
-    let store: null | { state: S } | RequestedPromisePair<IteratorResult<S, null>> = null
+    let store: null | { state: S } | RequestedPromisePair<IteratorResult<S, null>> = cloneFrom
+      ? { ...cloneFrom }
+      : null
 
-    /**
-     * Allows different level of destructions
-     * For no-auto-destroy
-     *
-     * shared behavior:
-     *  kill, fail, push
-     *
-     * destruction-dependant behavior:
-     *  peek, next
-     */
-    const generateConsumeAPI = (currentLevelDestruction: Destruction) => {
-      const peek = (): Promise<IteratorResult<S, null>> => {
-        const failureCause = failure()
-        if (failureCause) return Promise.reject(failureCause)
-        if (currentLevelDestruction.isDestroyed()) return Promise.resolve(Done)
-        if (store && 'state' in store) return Promise.resolve(wrapAsIteratorResult(store.state))
+    const peek = (): Promise<IteratorResult<S, null>> => {
+      const failureCause = failure()
+      if (failureCause) return Promise.reject(failureCause)
+      if (currentLevelDestruction.isDestroyed()) return Promise.resolve(Done)
+      if (store && 'state' in store) return Promise.resolve(wrapAsIteratorResult(store.state))
 
-        const promisePair = store || createPromisePair()
-        store = promisePair
-        return promisePair.promise
+      const promisePair = store || createPromisePair()
+      store = promisePair
+      return promisePair.promise
+    }
+
+    const consume = () => {
+      const shouldNullify = !!store && 'state' in store
+      const retval = peek()
+      if (shouldNullify) {
+        store = null
       }
-      return {
-        peek,
-        consume: () => {
-          const shouldNullify = !!store && 'state' in store
-          const retval = peek()
-          if (shouldNullify) {
-            store = null
-          }
-          return retval
-        },
-      }
+      return retval
     }
 
     return {
@@ -743,7 +746,10 @@ namespace NextValueAwaiter {
           store = { state }
         }
       },
-      generateConsumeAPI,
+      state: (): { state: S } | undefined =>
+        store && 'state' in store ? { state: store.state } : undefined,
+      consume,
+      peek,
     }
   }
 

@@ -18,7 +18,7 @@ import * as ProtocolOneTwo from './protocol-one-two.js'
 import * as ProtocolScorecard from './protocol-scorecard.js'
 import * as ProtocolThreeSwitch from './protocol-three-times-for-zod.js'
 import * as ProtocolFaulty from './protocol-faulty.js'
-import { Runner, Unreachable, errorCatcher, sleep } from './helper.js'
+import { Runner, Unreachable, createPromisePair, errorCatcher, sleep } from './helper.js'
 import * as globals from '../../lib/esm/globals.js'
 
 // Mock Runner
@@ -207,36 +207,42 @@ describe('machine runner', () => {
     })
 
     describe('for-await', () => {
-      const test = async (machine: ReturnType<MachineRunner.Any['noAutoDestroy']>) => {
-        let afterLoopExecuted = false
-        const run = async () => {
+      const test = async (machines: ReturnType<MachineRunner.Any['noAutoDestroy']>[]) => {
+        const barrier = createPromisePair<void>()
+
+        const run = async (
+          machine: ReturnType<MachineRunner.Any['noAutoDestroy']>,
+          barrierPromise: Promise<unknown>,
+        ) => {
           for await (const s of machine) {
+            await barrierPromise
             await s.as(Initial, (whenInitial) => whenInitial.commands()?.throw())
           }
-          afterLoopExecuted = true
         }
 
-        const error = await run()
-          .then(() => null)
-          .catch((e) => e)
-
-        expect(afterLoopExecuted).toBe(false)
-        expect(error).toBeInstanceOf(MachineRunnerFailure)
-        if (!(error instanceof MachineRunnerFailure)) throw new Unreachable()
-        expect(error.cause).toBe(ThrownError)
+        const promises = Promise.all(
+          machines.map((machine) => run(machine, barrier.promise).catch((e) => e)),
+        )
+        barrier.control.resolve()
+        const results = await promises
+        results.forEach((error) => {
+          expect(error).toBeInstanceOf(MachineRunnerFailure)
+          if (!(error instanceof MachineRunnerFailure)) throw new Unreachable()
+          expect(error.cause).toBe(ThrownError)
+        })
       }
 
       describe('main machine', () => {
         it('should throw in-loop failure', async () => {
           const { runner, machine } = initialize()
           await runner.feed([], true)
-          await test(machine)
+          await test([machine])
         })
 
         it('should throw failure before loop', async () => {
           const { runner, machine } = initialize()
           await runner.feed([Events.Throw], true)
-          await test(machine)
+          await test([machine])
         })
       })
 
@@ -244,14 +250,76 @@ describe('machine runner', () => {
         it('should throw in-loop failure', async () => {
           const { runner, machine } = initialize()
           await runner.feed([], true)
-          await test(machine.noAutoDestroy())
+          await test([machine.noAutoDestroy()])
           machine.destroy()
         })
 
         it('should throw failure before the loop', async () => {
           const { runner, machine } = initialize()
           await runner.feed([Events.Throw], true)
-          await test(machine.noAutoDestroy())
+          await test([machine.noAutoDestroy()])
+          machine.destroy()
+        })
+      })
+
+      describe('serial noAutoDestroy', () => {
+        it('should throw in-loop failure, machine-first', async () => {
+          const { runner, machine } = initialize()
+          await runner.feed([], true)
+          await test([machine])
+          await test([machine.noAutoDestroy()])
+          machine.destroy()
+        })
+
+        it('should throw failure before the loop, machine-first', async () => {
+          const { runner, machine } = initialize()
+          await runner.feed([Events.Throw], true)
+          await test([machine])
+          await test([machine.noAutoDestroy()])
+          machine.destroy()
+        })
+        it('should throw in-loop failure, clone-first', async () => {
+          const { runner, machine } = initialize()
+          await runner.feed([], true)
+          await test([machine.noAutoDestroy()])
+          await test([machine])
+          machine.destroy()
+        })
+
+        it('should throw failure before the loop, clone-first', async () => {
+          const { runner, machine } = initialize()
+          await runner.feed([Events.Throw], true)
+          await test([machine.noAutoDestroy()])
+          await test([machine])
+          machine.destroy()
+        })
+      })
+
+      describe('concurrent noAutoDestroy', () => {
+        it('should throw in-loop failure, machine-first', async () => {
+          const { runner, machine } = initialize()
+          await runner.feed([], true)
+          await test([machine, machine.noAutoDestroy()])
+          machine.destroy()
+        })
+
+        it('should throw failure before the loop, machine-first', async () => {
+          const { runner, machine } = initialize()
+          await runner.feed([Events.Throw], true)
+          await test([machine, machine.noAutoDestroy()])
+          machine.destroy()
+        })
+        it('should throw in-loop failure, clone-first', async () => {
+          const { runner, machine } = initialize()
+          await runner.feed([], true)
+          await test([machine.noAutoDestroy(), machine])
+          machine.destroy()
+        })
+
+        it('should throw failure before the loop, clone-first', async () => {
+          const { runner, machine } = initialize()
+          await runner.feed([Events.Throw], true)
+          await test([machine.noAutoDestroy(), machine])
           machine.destroy()
         })
       })
@@ -570,6 +638,24 @@ describe('machine as async generator', () => {
   })
 
   describe('non-destroying cloned async generator', () => {
+    it('should not wait after main generator peek', async () => {
+      const r1 = new Runner(On, { toggleCount: 0 })
+      const machine = r1.machine
+
+      r1.feed([], true)
+
+      const peekResult = (await machine.peekNext()).value
+      const copy = machine.noAutoDestroy()
+      expect(await Promise.race([machine.next(), sleep(1)])).toEqual({
+        done: false,
+        value: peekResult,
+      })
+      for await (const state of copy) {
+        expect(state).toBe(peekResult)
+        break
+      }
+    })
+
     it('should generate the same snapshot as parent', async () => {
       const r = new Runner(On, { toggleCount: 0 })
       const machine = r.machine
