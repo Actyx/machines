@@ -7,6 +7,31 @@ import { CommonEmitterEventMap, TypedEventEmitter } from '../../lib/esm/runner/r
 
 export const sleep = (dur: number) => new Promise((res) => setTimeout(res, dur))
 
+// TODO: join this cloned code with the one on runner.tss
+type RequestedPromisePair<T extends any> = {
+  promise: Promise<T>
+  control: {
+    resolve: (_: T) => unknown
+    reject: (_: unknown) => unknown
+  }
+}
+export const createPromisePair = <T extends any>(): RequestedPromisePair<T> => {
+  const self: RequestedPromisePair<T> = {
+    promise: null as any,
+    control: null as any,
+  }
+
+  self.promise = new Promise<T>(
+    (resolve, reject) =>
+      (self.control = {
+        resolve,
+        reject,
+      }),
+  )
+
+  return self
+}
+
 export const errorCatcher = (emitter: TypedEventEmitter<Pick<CommonEmitterEventMap, 'error'>>) => {
   const self = {
     error: null as unknown,
