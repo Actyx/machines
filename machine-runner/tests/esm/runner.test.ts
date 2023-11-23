@@ -570,6 +570,19 @@ describe('machine as async generator', () => {
   })
 
   describe('non-destroying cloned async generator', () => {
+    it('should not wait after main generator peek', async () => {
+      const r1 = new Runner(On, { toggleCount: 0 })
+      const machine = r1.machine
+
+      r1.feed([], true)
+
+      const peekResult = (await machine.peekNext()).value
+      for await (const state of machine.noAutoDestroy()) {
+        expect(state).toBe(peekResult)
+        break
+      }
+    })
+
     it('should generate the same snapshot as parent', async () => {
       const r = new Runner(On, { toggleCount: 0 })
       const machine = r.machine
