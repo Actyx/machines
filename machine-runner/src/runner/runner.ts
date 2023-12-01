@@ -803,7 +803,7 @@ export interface StateOpaque<
   /**
    * Checks if the StateOpaque's type equals to the StateFactory's type.
    *
-   * @param factory - A StateFactory used to narrow the StateOpaque's type.
+   * @param ...factories - StateFactory used to narrow the StateOpaque's type.
    *
    * @return boolean that narrows the type of the StateOpaque based on the
    * supplied StateFactory.
@@ -813,32 +813,16 @@ export interface StateOpaque<
    * if (state.is(HangarControlIdle)) {
    *   // StateOpaque is narrowed inside this block
    * }
+   *
+   * @example
+   * const state = machine.get()
+   * if (state.is(HangarControlIdle, HangarControlIncomingShip)) {
+   *   // StateOpaque is narrowed into HangarControlIdle or HangarControlIncomingShip
+   * }
    */
-  is<
-    DeduceMachineName extends MachineName,
-    DeduceStateName extends string,
-    DeducePayload,
-    DeduceCommands extends CommandDefinerMap<
-      object,
-      any,
-      Contained.ContainedEvent<MachineEvent.Any>[]
-    > = object,
-  >(
-    factory: StateFactory<
-      SwarmProtocolName,
-      DeduceMachineName,
-      any,
-      DeduceStateName,
-      DeducePayload,
-      DeduceCommands
-    >,
-  ): this is StateOpaque<
-    SwarmProtocolName,
-    DeduceMachineName,
-    DeduceStateName,
-    DeducePayload,
-    DeduceCommands
-  >
+  is<F extends StateFactory<SwarmProtocolName, any, any, any, any, any>[]>(
+    ...factories: F
+  ): this is StateOpaque.Of<F[any]>
 
   /**
    * Attempt to cast the StateOpaque into a specific StateFactory and optionally
@@ -975,14 +959,17 @@ export namespace StateOpaque {
    * // The type below refers to any StateOpaque coming from HangarBay protocol
    * type ThisStateOpaque3 = StateOpaque.Of<typeof HangarBay>;
    */
-  export type Of<M extends MachineRunner.Any | Machine.Any | SwarmProtocol<any, any>> =
-    M extends MachineRunner<infer S, infer N, infer SU>
-      ? StateOpaque<S, N, string, SU>
-      : M extends Machine<infer S, infer N, any>
-      ? StateOpaque<S, N, string, unknown>
-      : M extends SwarmProtocol<infer S, any>
-      ? StateOpaque<S, any, string, unknown>
-      : never
+  export type Of<
+    M extends MachineRunner.Any | Machine.Any | SwarmProtocol<any, any> | StateFactory.Any,
+  > = M extends MachineRunner<infer S, infer N, infer SU>
+    ? StateOpaque<S, N, string, SU>
+    : M extends Machine<infer S, infer N, any>
+    ? StateOpaque<S, N, string, unknown>
+    : M extends SwarmProtocol<infer S, any>
+    ? StateOpaque<S, any, string, unknown>
+    : M extends StateFactory<infer S, infer N, any, infer StateName, infer Payload, infer Commands>
+    ? StateOpaque<S, N, StateName, Payload, Commands>
+    : never
 }
 
 export namespace ImplStateOpaque {
@@ -1026,7 +1013,8 @@ export namespace ImplStateOpaque {
         commandGeneratorCriteria,
       )
 
-    const is: ThisStateOpaque['is'] = (factory) => factoryAtSnapshot.mechanism === factory.mechanism
+    const is: ThisStateOpaque['is'] = (...factories) =>
+      factories.find((factory) => factoryAtSnapshot.mechanism === factory.mechanism) !== undefined
 
     const as: ThisStateOpaque['as'] = <
       StateName extends string,

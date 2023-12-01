@@ -1065,6 +1065,7 @@ describe('StateOpaque', () => {
           await r1.toggleCommandDelay({ delaying: true })
           const delayRelease = async () => {
             await r1.toggleCommandDelay({ delaying: false, reject: true })
+            // eslint-disable-next-line @typescript-eslint/no-empty-function
             await lockingCommandPromise.catch(() => {})
           }
 
@@ -1127,6 +1128,7 @@ describe('StateOpaque', () => {
 
       if (!s1) throw new Unreachable()
 
+      expect(s1.is(Initial, Initial)).toBe(true) // multi-factory `is` testing
       expect(s1.is(Initial)).toBe(true)
       expect(s1.is(Second)).toBe(false)
 
