@@ -520,7 +520,11 @@ export const createMachineRunnerInternal = <
 
     emitter.on('next', nva.push)
     emitter.on('failure', nva.fail)
-    internals.destruction.addDestroyHook(nva.kill)
+    internals.destruction.addDestroyHook(() => {
+      nva.kill()
+      emitter.off('next', nva.push)
+      emitter.off('failure', nva.fail)
+    })
 
     return nva
   }
