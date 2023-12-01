@@ -167,6 +167,16 @@ describe('typings', () => {
     r.machine.destroy()
   })
 
+  it('state.is should not support multiple factoriest', () => {
+    const r = new Runner(Initial, { transitioned: false })
+    const snapshot = r.machine.get()
+    if (snapshot?.is(Initial, Second)) {
+      const state = snapshot.cast()
+      true as Expect<Equal<typeof state, State.Of<typeof Initial> | State.Of<typeof Second>>>
+    }
+    r.machine.destroy()
+  })
+
   it("machine.refineStateType refines the type of the StateOpaque's payload", () => {
     const r = new Runner(ProtocolScorecard.Initial, undefined)
     const machine = r.machine
