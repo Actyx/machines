@@ -557,6 +557,8 @@ export const createMachineRunnerInternal = <
       })()
 
       return MachineRunnerIterableIterator.make({
+        emitter,
+        internals,
         nextValueAwaiter: nextValueAwaiter(childDestruction, defaultNextValueAwaiter.state()),
         destruction: childDestruction,
       })
@@ -565,6 +567,8 @@ export const createMachineRunnerInternal = <
 
   const defaultIterator: MachineRunnerIterableIterator<SwarmProtocolName, MachineName, StateUnion> =
     MachineRunnerIterableIterator.make({
+      emitter,
+      internals,
       nextValueAwaiter: defaultNextValueAwaiter,
       destruction: internals.destruction,
     })
@@ -639,6 +643,16 @@ export type MachineRunnerIterableIterator<
     peekNext: () => Promise<
       IteratorResult<StateOpaque<SwarmProtocolName, MachineName, string, StateUnion>, null>
     >
+    /**
+     * Returns a promise that, when caught up, resolves immediately. If the
+     * machine is destroyed, returns the `done` variant of the iterator result.
+     * Otherwise behaves similarly to `peekNext`.
+     *
+     * @returns Promise<{ done: false, value: StateOpaque } | { done: true, value: null }>
+     */
+    actual: () => Promise<
+      IteratorResult<StateOpaque<SwarmProtocolName, MachineName, string, StateUnion>, null>
+    >
   }
 
 namespace MachineRunnerIterableIterator {
@@ -647,17 +661,21 @@ namespace MachineRunnerIterableIterator {
     MachineName extends string,
     StateUnion extends unknown,
   >({
+    emitter,
     nextValueAwaiter,
     destruction,
+    internals,
   }: {
+    emitter: MachineEmitter<SwarmProtocolName, MachineName, StateUnion>
+    internals: RunnerInternals.Any
     nextValueAwaiter: NextValueAwaiter<
       StateOpaque<SwarmProtocolName, MachineName, string, StateUnion>
     >
     destruction: Destruction
   }): MachineRunnerIterableIterator<SwarmProtocolName, MachineName, StateUnion> => {
-    const onThrowOrReturn = async (): Promise<
-      IteratorResult<StateOpaque<SwarmProtocolName, MachineName, string, StateUnion>, null>
-    > => {
+    type SO = StateOpaque<SwarmProtocolName, MachineName, string, StateUnion>
+
+    const onThrowOrReturn = async (): Promise<IteratorResult<SO, null>> => {
       destruction.destroy()
       return Promise.resolve({ done: true, value: null })
     }
@@ -672,6 +690,7 @@ namespace MachineRunnerIterableIterator {
       next: (): Promise<
         IteratorResult<StateOpaque<SwarmProtocolName, MachineName, string, StateUnion>>
       > => nextValueAwaiter.consume(),
+      actual: generateActualFn({ emitter, internals, destruction }),
       return: onThrowOrReturn,
       throw: onThrowOrReturn,
       [Symbol.asyncIterator]: (): AsyncIterableIterator<
@@ -680,6 +699,69 @@ namespace MachineRunnerIterableIterator {
     }
 
     return iterator
+  }
+
+  const generateActualFn = <
+    SwarmProtocolName extends string,
+    MachineName extends string,
+    StateUnion extends unknown,
+  >({
+    emitter,
+    internals,
+    destruction,
+  }: {
+    emitter: MachineEmitter<SwarmProtocolName, MachineName, StateUnion>
+    internals: RunnerInternals.Any
+    destruction: Destruction
+  }): MachineRunnerIterableIterator<SwarmProtocolName, MachineName, StateUnion>['actual'] => {
+    type SO = StateOpaque<SwarmProtocolName, MachineName, string, StateUnion>
+
+    const internalsCurrentIsOkForActual = () =>
+      CommandGeneratorCriteria.allOk({
+        isCaughtUp: () => internals.caughtUp && internals.caughtUpFirstTime,
+        isQueueEmpty: () => internals.queue.length === 0,
+        isNotExpired: () => !ImplStateOpaque.isExpired(internals, internals.current),
+        isNotLocked: () => !ImplStateOpaque.isCommandLocked(internals),
+        isNotDestroyed: () => !ImplStateOpaque.isRunnerDestroyed(internals),
+      })
+
+    const actual = (): Promise<IteratorResult<SO, null>> => {
+      if (destruction.isDestroyed()) {
+        return Promise.resolve({ done: true, value: null })
+      }
+
+      if (internalsCurrentIsOkForActual()) {
+        return Promise.resolve({
+          done: false,
+          value: ImplStateOpaque.make(internals, internals.current),
+        })
+      }
+
+      let unlockRes = (
+        _: IteratorResult<SO, null>,
+        // eslint-disable-next-line @typescript-eslint/no-empty-function
+      ) => {}
+      const unlockPromise = new Promise<IteratorResult<SO, null>>((res) => {
+        unlockRes = res
+      })
+
+      const unlockOnChangeListener = (state: SO) => {
+        if (!internalsCurrentIsOkForActual()) return
+        unlockRes({ done: false, value: state })
+      }
+      const onDestroy = () => unlockRes({ done: true, value: null })
+      emitter.on('change', unlockOnChangeListener)
+      destruction.addDestroyHook(onDestroy)
+
+      unlockPromise.finally(() => {
+        emitter.off('change', unlockOnChangeListener)
+        destruction.removeDestroyHook(onDestroy)
+      })
+
+      return unlockPromise
+    }
+
+    return actual
   }
 }
 
@@ -932,6 +1014,11 @@ export interface StateOpaque<
    * }
    */
   cast(): State<StateName, Payload, Commands>
+
+  /**
+   * Return true when the commands of its state counterpart is available; otherwise return false.
+   */
+  commandsAvailable(): boolean
 }
 
 export namespace StateOpaque {
@@ -1052,6 +1139,8 @@ export namespace ImplStateOpaque {
       cast,
       payload: stateAtSnapshot.payload,
       type: stateAtSnapshot.type,
+      commandsAvailable: () =>
+        commandEnabledAtSnapshot && CommandGeneratorCriteria.allOk(commandGeneratorCriteria),
     }
   }
 }

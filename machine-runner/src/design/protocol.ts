@@ -2,6 +2,7 @@
 import { Tag, Tags } from '@actyx/sdk'
 import { StateMechanism, MachineProtocol, ReactionMap, StateFactory } from './state.js'
 import { MachineEvent } from './event.js'
+import { DeepReadonly } from '../utils/type-utils.js'
 
 /**
  * SwarmProtocol is the entry point of designing a swarm of MachineRunners. A
@@ -84,7 +85,10 @@ export type Machine<
   SwarmProtocolName extends string,
   MachineName extends string,
   MachineEventFactories extends MachineEvent.Factory.Any,
-> = {
+> = Readonly<{
+  swarmName: SwarmProtocolName
+  machineName: MachineName
+
   /**
    * Starts the design process for a state with a payload. Payload data will be
    * required when constructing this state.
@@ -121,7 +125,7 @@ export type Machine<
   createJSONForAnalysis: (
     initial: StateFactory<SwarmProtocolName, MachineName, MachineEventFactories, any, any, any>,
   ) => MachineAnalysisResource
-}
+}>
 
 type DesignStateIntermediate<
   SwarmProtocolName extends string,
@@ -233,6 +237,8 @@ namespace ImplMachine {
       MachineAnalysisResource.fromMachineInternals(protocol, initial)
 
     return {
+      swarmName,
+      machineName,
       designState,
       designEmpty,
       createJSONForAnalysis,
