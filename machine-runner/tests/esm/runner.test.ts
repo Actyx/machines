@@ -588,6 +588,66 @@ describe('machine as async generator', () => {
     expect(toggleCount).toBe(2)
   })
 
+  describe('actual', () => {
+    it('should immediately resolve when caught up', async () => {
+      const r1 = new Runner(On, { toggleCount: 0 })
+      const machine = r1.machine
+      r1.feed([], true)
+      const value = (await machine.actual()).value
+      expect(value).not.toBe(null)
+    })
+
+    it('should resolve when commandLock is unlocked', async () => {
+      const r1 = new Runner(On, { toggleCount: 0 })
+      const machine = r1.machine
+      r1.feed([], true)
+
+      await r1.toggleCommandDelay({ delaying: true })
+      const commandsWhenOn = (await machine.actual()).value?.as(On)?.commands()
+      if (!commandsWhenOn) throw new Unreachable()
+      // eslint-disable-next-line @typescript-eslint/no-empty-function
+      commandsWhenOn.toggle().catch(() => {})
+
+      let resolved = false
+      const actualPromise = machine.actual()
+      actualPromise.finally(() => (resolved = true))
+      expect(resolved).toBe(false)
+
+      await r1.toggleCommandDelay({ delaying: false, reject: true })
+
+      await sleep(5)
+      expect(resolved).toBe(true)
+      await actualPromise
+    })
+
+    it('should behave like peek when not caught up', async () => {
+      const r1 = new Runner(On, { toggleCount: 0 })
+      const machine = r1.machine
+      r1.feed([], false)
+
+      let resolved = false
+      machine.actual().finally(() => (resolved = true))
+      await sleep(10)
+      expect(resolved).toBe(false)
+
+      await r1.feed([], true) // trigger caughtUp
+      await sleep(10)
+      expect(resolved).toBe(true)
+    })
+
+    it("should return 'done' iterator result if destroyed", async () => {
+      const r1 = new Runner(On, { toggleCount: 0 })
+      const machine = r1.machine
+      r1.feed([], true)
+
+      machine.destroy()
+
+      const result = await machine.actual()
+
+      expect(result.done).toBe(true)
+    })
+  })
+
   describe('peek', () => {
     it('should not consume nextqueue', async () => {
       const r1 = new Runner(On, { toggleCount: 0 })
@@ -753,7 +813,12 @@ describe('StateOpaque', () => {
       const r1 = new Runner(Initial, { transitioned: false })
       await r1.feed([], true)
 
-      const whenInitial = r1.machine.get()?.as(Initial)
+      const opaque = r1.machine.get()
+      if (!opaque) throw new Unreachable()
+
+      expect(opaque.commandsAvailable()).toBe(true)
+
+      const whenInitial = opaque.as(Initial)
       const commands = whenInitial?.commands()
       if (!whenInitial || !commands) throw new Unreachable()
 
@@ -803,26 +868,30 @@ describe('StateOpaque', () => {
           const r1 = new Runner(Initial, { transitioned: false })
 
           await r1.feed([], true) // trigger caughtUpFirstTime
-          const stashedCommands = r1.machine.get()?.as(Initial)?.commands()
+
+          const opaque = r1.machine.get()
+          if (!opaque) throw new Unreachable()
+          const stashedCommands = opaque.as(Initial)?.commands()
           if (!stashedCommands) throw new Unreachable()
           expect(stashedCommands).toBeTruthy()
           await r1.feed([], false) // trigger !caughtUp
 
-          return { r1, stashedCommands }
+          return { r1, stashedCommands, opaque }
         }
 
         it('should be undefined', async () => {
-          const { r1 } = await setup()
+          const { opaque } = await setup()
 
-          const whenInitial = r1.machine.get()?.as(Initial)
+          const whenInitial = opaque.as(Initial)
           if (!whenInitial) throw new Unreachable()
           const commands = whenInitial.commands()
 
+          expect(opaque.commandsAvailable()).toBe(false)
           expect(commands).toBe(undefined)
         })
 
         it('should throw and emit nothing when force-called', async () => {
-          const { r1, stashedCommands } = await setup()
+          const { r1, stashedCommands, opaque } = await setup()
 
           const errorCatchers = r1.makeErrorCatchers()
           const returnedError = await stashedCommands
@@ -830,6 +899,7 @@ describe('StateOpaque', () => {
             .then(() => null)
             .catch((e) => e)
 
+          expect(opaque.commandsAvailable()).toBe(false)
           ;[...errorCatchers.map((catcher) => catcher.error), returnedError].map((error) => {
             expect(error).toBeInstanceOf(MachineRunnerErrorCommandFiredWhenNotCaughtUp)
           })
@@ -843,25 +913,29 @@ describe('StateOpaque', () => {
           const r1 = new Runner(Initial, { transitioned: false })
           await r1.feed([], true)
 
-          const stashedCommands = r1.machine.get()?.as(Initial)?.commands()
+          const opaque = r1.machine.get()
+          if (!opaque) throw new Unreachable()
+          const stashedCommands = opaque.as(Initial)?.commands()
           if (!stashedCommands) throw new Unreachable()
           expect(stashedCommands).toBeTruthy()
 
           await r1.feed([One.make({ x: 1 })], true) // load the queue
 
-          return { r1, stashedCommands }
+          return { r1, stashedCommands, opaque }
         }
 
         it('should be undefined', async () => {
-          const { r1 } = await setup()
-          const whenInitial = r1.machine.get()?.as(Initial)
+          const { opaque } = await setup()
+
+          const whenInitial = opaque.as(Initial)
           if (!whenInitial) throw new Unreachable()
 
+          expect(opaque.commandsAvailable()).toBe(false)
           expect(whenInitial.commands()).toBe(undefined)
         })
 
         it(`should throw and emit nothing when force-called`, async () => {
-          const { r1, stashedCommands } = await setup()
+          const { r1, stashedCommands, opaque } = await setup()
 
           const errorCatchers = r1.makeErrorCatchers()
           const returnedError = await stashedCommands
@@ -869,6 +943,7 @@ describe('StateOpaque', () => {
             .then(() => null)
             .catch((e) => e)
 
+          expect(opaque.commandsAvailable()).toBe(false)
           ;[...errorCatchers.map((catcher) => catcher.error), returnedError].map((error) => {
             expect(error).toBeInstanceOf(MachineRunnerErrorCommandFiredAfterExpired)
           })
@@ -882,23 +957,27 @@ describe('StateOpaque', () => {
           const r1 = new Runner(Initial, { transitioned: false })
           await r1.feed([], true)
 
-          const state = r1.machine.get()?.as(Initial)
+          const opaque = r1.machine.get()
+          if (!opaque) throw new Unreachable()
+
+          const state = opaque.as(Initial)
           if (!state) throw new Unreachable()
           const stashedCommands = state.commands()
           if (!stashedCommands) throw new Unreachable()
 
           // Expire by transforming
           await r1.feed([One.make({ x: 1 }), Two.make({ y: 1 })], true)
-          return { r1, expiredState: state, stashedCommands }
+          return { r1, expiredState: state, stashedCommands, opaque }
         }
 
         it('should be undefined', async () => {
-          const { expiredState: state } = await setup()
+          const { expiredState: state, opaque } = await setup()
+          expect(opaque.commandsAvailable()).toBe(false)
           expect(state.commands()).toBe(undefined)
         })
 
         it('should throw and emit nothing when force-called', async () => {
-          const { r1, stashedCommands } = await setup()
+          const { r1, stashedCommands, opaque } = await setup()
 
           const errorCatchers = r1.makeErrorCatchers()
           const returnedError = await stashedCommands
@@ -906,6 +985,7 @@ describe('StateOpaque', () => {
             .then(() => null)
             .catch((e) => e)
 
+          expect(opaque.commandsAvailable()).toBe(false)
           ;[...errorCatchers.map((catcher) => catcher.error), returnedError].map((error) => {
             expect(error).toBeInstanceOf(MachineRunnerErrorCommandFiredAfterExpired)
           })
@@ -917,16 +997,19 @@ describe('StateOpaque', () => {
         const setup = async () => {
           const r1 = new Runner(Initial, { transitioned: false })
           await r1.feed([], true)
-          const stashedCommands = r1.machine.get()?.as(Initial)?.commands()
+          const opaque = r1.machine.get()
+          if (!opaque) throw new Unreachable()
+          const stashedCommands = opaque.as(Initial)?.commands()
           if (!stashedCommands) throw new Unreachable()
           r1.machine.destroy()
-          return { r1, stashedCommands }
+          return { r1, stashedCommands, opaque }
         }
 
         it('should be undefined', async () => {
-          const { r1 } = await setup()
+          const { r1, opaque } = await setup()
           const whenInitial = r1.machine.get()?.as(Initial)
           if (!whenInitial) throw new Unreachable()
+          expect(opaque.commandsAvailable()).toBe(false)
           expect(whenInitial.commands()).toBe(undefined)
         })
 
@@ -951,7 +1034,9 @@ describe('StateOpaque', () => {
           const r1 = new Runner(Initial, { transitioned: false })
           await r1.feed([], true)
 
-          const state = r1.machine.get()?.as(Initial)
+          const opaque = r1.machine.get()
+          if (!opaque) throw new Unreachable()
+          const state = opaque.as(Initial)
           const commands = state?.commands()
           if (!state || !commands) throw new Unreachable()
 
@@ -968,11 +1053,11 @@ describe('StateOpaque', () => {
           const lockingCommandPromise = commands.X(...XCommandParam)
           r1.clearPersisted()
 
-          return { r1, delayRelease, stashedCommands: commands }
+          return { r1, delayRelease, stashedCommands: commands, opaque }
         }
 
         it('should be undefined', async () => {
-          const { r1, delayRelease } = await setup()
+          const { r1, delayRelease, opaque } = await setup()
           const state = r1.machine.get()?.as(Initial)
           if (!state) throw new Unreachable()
 
@@ -980,14 +1065,16 @@ describe('StateOpaque', () => {
           // lock stays after its publication succeeded
           // because soon either 1.) the state is expired, 2.) the emitter has a non-empty queue
 
+          expect(opaque.commandsAvailable()).toBe(false)
           expect(state.commands()).toBe(undefined)
           // release delay, wait until all commands are published
           await delayRelease()
+          expect(opaque.commandsAvailable()).toBe(false)
           expect(state.commands()).toBe(undefined)
         })
 
         it('should throw and emit nothing when force-called', async () => {
-          const { r1, delayRelease, stashedCommands } = await setup()
+          const { r1, delayRelease, stashedCommands, opaque } = await setup()
 
           // both commands from the pre-resolution state will be undefined
           // lock stays after its publication succeeded
@@ -1000,6 +1087,7 @@ describe('StateOpaque', () => {
               .then(() => null)
               .catch((e) => e)
 
+            expect(opaque.commandsAvailable()).toBe(false)
             ;[...errorCatchers.map((catcher) => catcher.error), returnedError].map((error) => {
               expect(error).toBeInstanceOf(MachineRunnerErrorCommandFiredAfterLocked)
             })
@@ -1017,6 +1105,7 @@ describe('StateOpaque', () => {
               .then(() => null)
               .catch((e) => e)
 
+            expect(opaque.commandsAvailable()).toBe(false)
             ;[...errorCatchers.map((catcher) => catcher.error), returnedError].map((error) => {
               expect(error).toBeTruthy()
             })
@@ -1026,7 +1115,7 @@ describe('StateOpaque', () => {
 
         describe('new state after resolution', () => {
           it('should be unlocked', async () => {
-            const { delayRelease, r1 } = await setup()
+            const { delayRelease, r1, opaque } = await setup()
             await delayRelease()
 
             // trigger reaction
@@ -1036,6 +1125,8 @@ describe('StateOpaque', () => {
             // assuming no queued events
             const state = r1.machine.get()?.as(Second)
             const commands = state?.commands()
+            expect(opaque.commandsAvailable()).toBe(false)
+            expect(r1.machine.get()?.commandsAvailable()).toBe(true)
             expect(state).toBeTruthy()
             expect(commands).toBeTruthy()
             if (!state || !commands) throw new Unreachable()
@@ -1056,7 +1147,9 @@ describe('StateOpaque', () => {
           const r1 = new Runner(Initial, { transitioned: false })
           await r1.feed([], true)
 
-          const state = r1.machine.get()?.as(Initial)
+          const opaque = r1.machine.get()
+          if (!opaque) throw new Unreachable()
+          const state = opaque.as(Initial)
           const commands = state?.commands()
           if (!state || !commands) throw new Unreachable()
 
@@ -1073,20 +1166,22 @@ describe('StateOpaque', () => {
           const lockingCommandPromise = commands.X(...XCommandParam)
           r1.clearPersisted()
 
-          return { r1, delayRelease, stashedCommands: commands }
+          return { r1, delayRelease, stashedCommands: commands, opaque }
         }
 
         it('should not be undefined after previous persist fails', async () => {
-          const { r1, delayRelease } = await setup()
+          const { r1, delayRelease, opaque } = await setup()
           const state = r1.machine.get()?.as(Initial)
           if (!state) throw new Unreachable()
           await delayRelease()
+          expect(opaque.commandsAvailable()).toBe(true)
           expect(state.commands()).not.toBe(undefined)
         })
 
         it('should be unlocked after previous persist fails', async () => {
-          const { r1, delayRelease, stashedCommands } = await setup()
+          const { r1, delayRelease, stashedCommands, opaque } = await setup()
           await delayRelease()
+          expect(opaque.commandsAvailable()).toBe(true)
           await (async () => {
             const errorCatchers = r1.makeErrorCatchers()
             const returnedError = await stashedCommands

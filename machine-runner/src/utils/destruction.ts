@@ -11,6 +11,7 @@ export namespace Destruction {
     const cleanup = Cleanup.make()
     return {
       addDestroyHook: cleanup.add,
+      removeDestroyHook: cleanup.remove,
       isDestroyed: (): boolean => destroyed,
       destroy: (): void => {
         if (!destroyed) {
@@ -34,6 +35,9 @@ export namespace Cleanup {
     return {
       add: (fn: () => void) => {
         fns.add(fn)
+      },
+      remove: (fn: () => void) => {
+        fns.delete(fn)
       },
       clean: (): void => {
         for (const fn of fns) {
