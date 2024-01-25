@@ -202,10 +202,12 @@ export namespace MachineEvent {
      */
     make: (payload: Payload) => MachineEvent<Key, Payload>
     /**
-     * This method does nothing unless `withZod` was used to define the state!
+     * This method doesn't do much unless `withZod` was used to define the state!
      *
      * If a zod definition was used to define the state, this method will check
-     * whether the given event matches this definition.
+     * whether the given event matches this definition. If no zod definition was
+     * used, this method will only check whether the given event has the correct
+     * type field.
      */
     parse: (event: MachineEvent<Key, Payload>) => ParseResult<Payload>
     /**
