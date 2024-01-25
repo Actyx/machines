@@ -1,7 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { ActyxEvent } from '@actyx/sdk'
 import * as utils from '../utils/type-utils.js'
-import type * as z from 'zod'
+import { z } from 'zod'
+import { fromZodError } from 'zod-validation-error'
 
 // Note on "Loose" aliases
 //
@@ -36,6 +37,47 @@ export type MachineEvent<Key extends string, Payload extends object> = {
  * @see MachineEvent.design for more information about designing MachineEvent
  */
 export namespace MachineEvent {
+  const mkParse = <Key extends string, Payload extends object>(
+    key: Key,
+    zodDefinition?: z.ZodType<Payload>,
+  ) => {
+    const zod = zodDefinition
+      ? z.intersection(zodDefinition, z.object({ type: z.string() }))
+      : undefined
+    return (event: MachineEvent<Key, Payload>): ParseResult<Payload> => {
+      if (typeof event !== 'object' || event === null) {
+        return {
+          type: 'error',
+          error: `Event ${event} is not an object`,
+        }
+      }
+      if (event.type !== key) {
+        return {
+          type: 'error',
+          error: `Event type ${event.type} does not match expected type ${key}`,
+        }
+      }
+      if (!zod) {
+        return {
+          type: 'success',
+          payload: event,
+        }
+      }
+      const result = zod.safeParse(event)
+      if (result.success) {
+        return {
+          type: 'success',
+          payload: result.data,
+        }
+      } else {
+        return {
+          type: 'error',
+          error: fromZodError(result.error).toString(),
+        }
+      }
+    }
+  }
+
   /**
    * Start a design of a MachineEventFactory used for MachineRunner.
    *
@@ -63,25 +105,23 @@ export namespace MachineEvent {
    */
   export const design = <Key extends string>(key: Key): EventFactoryIntermediate<Key> => ({
     withZod: (zodDefinition) => ({
-      [FactoryInternalsAccessor]: {
-        zodDefinition: zodDefinition,
-      },
+      [FactoryInternalsAccessor]: { zodDefinition },
       type: key,
       make: (payload) => ({
         ...zodDefinition.parse(payload),
         type: key,
       }),
+      parse: mkParse(key, zodDefinition),
     }),
 
     withPayload: () => ({
-      [FactoryInternalsAccessor]: {
-        zodDefinition: undefined,
-      },
+      [FactoryInternalsAccessor]: { zodDefinition: undefined },
       type: key,
       make: (payload) => ({
         ...payload,
         type: key,
       }),
+      parse: mkParse(key),
     }),
 
     withoutPayload: () => ({
@@ -90,6 +130,7 @@ export namespace MachineEvent {
       },
       type: key,
       make: () => ({ type: key }),
+      parse: mkParse(key),
     }),
   })
 
@@ -130,6 +171,16 @@ export namespace MachineEvent {
     zodDefinition?: z.ZodType<Payload>
   }
 
+  export type ParseResult<Payload> =
+    | {
+        type: 'success'
+        payload: Payload
+      }
+    | {
+        type: 'error'
+        error: string
+      }
+
   /**
    * MachineEvent.Factory is a type definition for a constructor type that serves
    * as a blueprint for the resulting instances.
@@ -150,6 +201,13 @@ export namespace MachineEvent {
      * const machineEventInstance = HangarDoorTransitioning.make({ fractionOpen: 0.5 })
      */
     make: (payload: Payload) => MachineEvent<Key, Payload>
+    /**
+     * This method does nothing unless `withZod` was used to define the state!
+     *
+     * If a zod definition was used to define the state, this method will check
+     * whether the given event matches this definition.
+     */
+    parse: (event: MachineEvent<Key, Payload>) => ParseResult<Payload>
     /**
      * Contains Zod definition. Also serves to differentiate Event from
      * Event.Factory when evaluated with Payload.Of
