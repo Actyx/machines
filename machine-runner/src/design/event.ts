@@ -53,19 +53,20 @@ export namespace MachineEvent {
     key: Key,
     zodDefinition?: z.ZodType<Payload>,
   ) => {
-    const defaultParser: (event: MachineEvent<Key, Payload>) => ParseResult<Payload> = (event) => {
+    const defaultParser: (event: unknown) => ParseResult<MachineEvent<Key, Payload>> = (event) => {
       if (typeof event !== 'object' || event === null) {
         return { success: false, error: `Event ${event} is not an object` }
       }
 
-      if (event.type !== key) {
+      const type = (event as any).type
+      if (type !== key) {
         return {
           success: false,
-          error: `Event type ${event.type} does not match expected type ${key}`,
+          error: `Event type ${type} does not match expected type ${key}`,
         }
       }
 
-      return { success: true, event }
+      return { success: true, event: event as MachineEvent<Key, Payload> }
     }
 
     if (!zodDefinition) {
@@ -73,11 +74,11 @@ export namespace MachineEvent {
     } else {
       const [zod, fromZodError] = (() => {
         const { z, fromZodError } = getZod()
-        const zod = z.intersection(zodDefinition, z.object({ type: z.string() }))
+        const zod = z.intersection(zodDefinition, z.object({ type: z.literal<Key>(key) }))
         return [zod, fromZodError] as const
       })()
 
-      return (event: MachineEvent<Key, Payload>): ParseResult<Payload> => {
+      return (event: unknown): ParseResult<MachineEvent<Key, Payload>> => {
         const defaultParserResult = defaultParser(event)
         if (!defaultParserResult.success) return defaultParserResult
 
@@ -86,7 +87,8 @@ export namespace MachineEvent {
           return { success: false, error: fromZodError(result.error).toString() }
         }
 
-        return { success: true, event: result.data }
+        // something is wrong with z.literal(), the resulting type doesn’t unify with Key
+        return { success: true, event: Object.assign(result.data, { type: key }) }
       }
     }
   }
@@ -222,7 +224,7 @@ export namespace MachineEvent {
      * used, this method will only check whether the given event has the correct
      * type field.
      */
-    parse: (event: MachineEvent<Key, Payload>) => ParseResult<Payload>
+    parse: (event: unknown) => ParseResult<MachineEvent<Key, Payload>>
     /**
      * Contains Zod definition. Also serves to differentiate Event from
      * Event.Factory when evaluated with Payload.Of
