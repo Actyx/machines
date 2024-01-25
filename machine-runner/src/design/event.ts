@@ -53,14 +53,15 @@ export namespace MachineEvent {
     key: Key,
     zodDefinition?: z.ZodType<Payload>,
   ) => {
-    if (!getZod)
-      throw new Error(
-        'zod and zod-validation-error are not available as a dependency, please install',
-      )
-    const { z, fromZodError } = getZod()
-    const zod = zodDefinition
-      ? z.intersection(zodDefinition, z.object({ type: z.string() }))
-      : undefined
+    const [zod, fromZodError] = (() => {
+      if (zodDefinition) {
+        const { z, fromZodError } = getZod()
+        const zod = z.intersection(zodDefinition, z.object({ type: z.string() }))
+        return [zod, fromZodError] as const
+      } else {
+        return [undefined, undefined] as const
+      }
+    })()
     return (event: MachineEvent<Key, Payload>): ParseResult<Payload> => {
       if (typeof event !== 'object' || event === null) {
         return {
