@@ -74,6 +74,7 @@ export type MachineEmitterEventMap<
     factory: StateFactory.Any
     nextState: unknown
   }) => unknown
+  commandPersisted: (_: void) => unknown
   change: (_: StateOpaque<SwarmProtocolName, MachineName, string, StateUnion>) => unknown
   next: (_: StateOpaque<SwarmProtocolName, MachineName, string, StateUnion>) => unknown
   destroyed: (_: void) => unknown
@@ -100,7 +101,15 @@ export const makeEmitter = <
   SwarmProtocolName extends string,
   MachineName extends string,
   StateUnion extends unknown = unknown,
->() => new ThrowIgnoringEmitter() as MachineEmitter<SwarmProtocolName, MachineName, StateUnion>
+>() => {
+  const emitter = new ThrowIgnoringEmitter() as MachineEmitter<
+    SwarmProtocolName,
+    MachineName,
+    StateUnion
+  >
+  emitter.setMaxListeners(20)
+  return emitter
+}
 
 export const ActiveRunnerRegistryRegisterSymbol: unique symbol = Symbol(
   'ActiveRunnerRegistryRegisterSymbol',
