@@ -8,18 +8,18 @@ describe('MachineEvent', () => {
     const event = MachineEvent.design('a').withoutPayload()
     expect(event.parse(null as any)).toEqual({
       error: 'Event null is not an object',
-      type: 'error',
+      success: false,
     })
     expect(event.parse({} as any)).toEqual({
       error: 'Event type undefined does not match expected type a',
-      type: 'error',
+      success: false,
     })
     expect(event.parse({ type: 'b' } as any)).toEqual({
       error: 'Event type b does not match expected type a',
-      type: 'error',
+      success: false,
     })
     expect(event.parse({ type: 'a' })).toEqual({
-      type: 'success',
+      success: true,
       payload: { type: 'a' },
     })
   })
@@ -28,22 +28,22 @@ describe('MachineEvent', () => {
     const event = MachineEvent.design('a').withPayload<{ a: number }>()
     expect(event.parse(null as any)).toEqual({
       error: 'Event null is not an object',
-      type: 'error',
+      success: false,
     })
     expect(event.parse({} as any)).toEqual({
       error: 'Event type undefined does not match expected type a',
-      type: 'error',
+      success: false,
     })
     expect(event.parse({ type: 'b' } as any)).toEqual({
       error: 'Event type b does not match expected type a',
-      type: 'error',
+      success: false,
     })
     expect(event.parse({ type: 'a' } as any)).toEqual({
-      type: 'success',
+      success: true,
       payload: { type: 'a' },
     })
     expect(event.parse({ type: 'a', a: 42 })).toEqual({
-      type: 'success',
+      success: true,
       payload: { type: 'a', a: 42 },
     })
   })
@@ -52,26 +52,26 @@ describe('MachineEvent', () => {
     const event = MachineEvent.design('a').withZod(z.object({ a: z.number() }))
     expect(event.parse(null as any)).toEqual({
       error: 'Event null is not an object',
-      type: 'error',
+      success: false,
     })
     expect(event.parse({} as any)).toEqual({
       error: 'Event type undefined does not match expected type a',
-      type: 'error',
+      success: false,
     })
     expect(event.parse({ type: 'b' } as any)).toEqual({
       error: 'Event type b does not match expected type a',
-      type: 'error',
+      success: false,
     })
     expect(event.parse({ type: 'a' } as any)).toEqual({
-      type: 'error',
+      success: false,
       error: 'Validation error: Required at "a"',
     })
     expect(event.parse({ type: 'a', a: null } as any)).toEqual({
-      type: 'error',
+      success: false,
       error: 'Validation error: Expected number, received null at "a"',
     })
     expect(event.parse({ type: 'a', a: 42 })).toEqual({
-      type: 'success',
+      success: true,
       payload: { type: 'a', a: 42 },
     })
   })

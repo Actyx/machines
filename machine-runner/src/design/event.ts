@@ -65,31 +65,31 @@ export namespace MachineEvent {
     return (event: MachineEvent<Key, Payload>): ParseResult<Payload> => {
       if (typeof event !== 'object' || event === null) {
         return {
-          type: 'error',
+          success: false,
           error: `Event ${event} is not an object`,
         }
       }
       if (event.type !== key) {
         return {
-          type: 'error',
+          success: false,
           error: `Event type ${event.type} does not match expected type ${key}`,
         }
       }
       if (!zod) {
         return {
-          type: 'success',
+          success: true,
           payload: event,
         }
       }
       const result = zod.safeParse(event)
       if (result.success) {
         return {
-          type: 'success',
+          success: true,
           payload: result.data,
         }
       } else {
         return {
-          type: 'error',
+          success: false,
           error: fromZodError(result.error).toString(),
         }
       }
@@ -191,11 +191,11 @@ export namespace MachineEvent {
 
   export type ParseResult<Payload> =
     | {
-        type: 'success'
+        success: true
         payload: Payload
       }
     | {
-        type: 'error'
+        success: false
         error: string
       }
 
