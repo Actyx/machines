@@ -611,6 +611,18 @@ describe('machine as async generator', () => {
       let resolved = false
       const actualPromise = machine.actual()
       actualPromise.finally(() => (resolved = true))
+
+      // ensures that the above actualPrimomise.finally callback is executed
+      // immediately IF actualPromise is a resolved promise this guarantee is
+      // enforced by this specification
+      // https://tc39.es/ecma262/multipage/executable-code-and-execution-contexts.html#sec-hostenqueuepromisejob
+      // saying that reactions (then, catch, finally callbacks) are executed in
+      // the order they are registered and since the await below is registered
+      // after the actualPromise.finally callback, the control flow will
+      // continue also after the finally callback is executed, which is
+      // important because the line below inspect the value of `resolved`
+      await Promise.resolve()
+
       expect(resolved).toBe(false)
 
       await r1.toggleCommandDelay({ delaying: false, reject: true })
