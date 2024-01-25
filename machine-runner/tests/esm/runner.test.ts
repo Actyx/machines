@@ -117,7 +117,7 @@ describe('machine runner', () => {
     const { On, Off, Events } = ProtocolThreeSwitch
 
     it('should not allow payload with a wrong schema or invalid values due to refinement', () => {
-      expect(() => Events.ToggleOn.make({ value: 1 } as any)).toThrow() // wrong payload schema
+      expect(() => Events.ToggleOn.make({ value: 1 } as never)).toThrow() // wrong payload schema
       expect(() => Events.ToggleOn.make({ literal: 'toggleon', value: -1 })).toThrow() // invalid value due to refinement. See the definition of ToggleOn
     })
 
@@ -127,7 +127,7 @@ describe('machine runner', () => {
       await r.feed([Events.ToggleOn.make({ literal: 'toggleon' as const, value: 1 })], false) // valid
       await r.feed([Events.ToggleOn.make({ literal: 'toggleon' as const, value: 2 })], false) // valid
       await r.feed(
-        [{ type: 'ToggleOn', value: 3 } as any as MachineEvent.Of<typeof Events.ToggleOn>],
+        [{ type: 'ToggleOn', value: 3 } as never as MachineEvent.Of<typeof Events.ToggleOn>],
         false,
       ) // invalid, ToggleOn requires a field `literal: 'toggleon'` to be regarded as having a valid schema by the zod definition
       await r.feed([Events.ToggleOn.make({ literal: 'toggleon' as const, value: 4 })], false) // valid

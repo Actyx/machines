@@ -1,5 +1,6 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, expect, it } from '@jest/globals'
-import { MachineEvent } from '../../src/design/event.js'
+import { MachineEvent } from '../../lib/esm/design/event.js'
 import { z } from 'zod'
 
 describe('MachineEvent', () => {

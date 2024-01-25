@@ -1,8 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { ActyxEvent } from '@actyx/sdk'
 import * as utils from '../utils/type-utils.js'
-import { z } from 'zod'
-import { fromZodError } from 'zod-validation-error'
+import type * as z from 'zod'
+import { importZod } from '../zod.js'
 
 // Note on "Loose" aliases
 //
@@ -32,6 +32,18 @@ export type MachineEvent<Key extends string, Payload extends object> = {
   type: Key
 } & Payload
 
+type Zod = {
+  z: typeof import('zod').z
+  fromZodError: typeof import('zod-validation-error').fromZodError
+}
+const getZod = (): Zod => {
+  const z = importZod()
+  return {
+    z: z.zod.z,
+    fromZodError: z.zodError.fromZodError,
+  }
+}
+
 /**
  * Collection of utilities surrounding MachineEvent creations.
  * @see MachineEvent.design for more information about designing MachineEvent
@@ -41,6 +53,11 @@ export namespace MachineEvent {
     key: Key,
     zodDefinition?: z.ZodType<Payload>,
   ) => {
+    if (!getZod)
+      throw new Error(
+        'zod and zod-validation-error are not available as a dependency, please install',
+      )
+    const { z, fromZodError } = getZod()
     const zod = zodDefinition
       ? z.intersection(zodDefinition, z.object({ type: z.string() }))
       : undefined
@@ -221,10 +238,7 @@ export namespace MachineEvent {
    * A collection of type utilities around the Payload of a MachineEvent.Factory.
    */
   export namespace Payload {
-    export type Of<T extends MachineEvent.Any | Factory.Any> = T extends Factory<
-      string,
-      infer Payload
-    >
+    export type Of<T extends MachineEvent.Any | Factory.Any> = T extends Factory<any, infer Payload>
       ? Payload
       : T extends MachineEvent<any, infer Payload>
       ? Payload
