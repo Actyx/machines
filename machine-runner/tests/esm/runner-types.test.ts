@@ -92,6 +92,7 @@ describe('typings', () => {
   it("tags parameter from protocol should match createMachineRunner's", () => {
     // Accepted parameter type
     type TagsParamType = Parameters<
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       typeof createMachineRunner<any, any, typeof E1 | typeof E2, any>
     >[1]
 
@@ -100,8 +101,11 @@ describe('typings', () => {
 
     type ExpectedTagsType = Tags<MachineEvent.Of<typeof E1> | MachineEvent.Of<typeof E2>>
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     NOP<[TagsParamType]>(undefined as any as TagsArgType)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     NOP<[NotAnyOrUnknown<TagsParamType>]>(undefined as any)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     NOP<[NotAnyOrUnknown<TagsArgType>]>(undefined as any)
     true as Expect<Equal<ExpectedTagsType, TagsParamType>>
   })

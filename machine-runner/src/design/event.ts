@@ -2,6 +2,7 @@
 import { ActyxEvent } from '@actyx/sdk'
 import * as utils from '../utils/type-utils.js'
 import type * as z from 'zod'
+import { importZod } from '../zod.js'
 
 // Note on "Loose" aliases
 //
@@ -31,11 +32,65 @@ export type MachineEvent<Key extends string, Payload extends object> = {
   type: Key
 } & Payload
 
+type Zod = {
+  z: typeof import('zod').z
+  fromZodError: typeof import('zod-validation-error').fromZodError
+}
+const getZod = (): Zod => {
+  const z = importZod()
+  return {
+    z: z.zod.z,
+    fromZodError: z.zodError.fromZodError,
+  }
+}
+
 /**
  * Collection of utilities surrounding MachineEvent creations.
  * @see MachineEvent.design for more information about designing MachineEvent
  */
 export namespace MachineEvent {
+  const mkParse = <Key extends string, Payload extends object>(
+    key: Key,
+    zodDefinition?: z.ZodType<Payload>,
+  ) => {
+    const defaultParser: (event: MachineEvent<Key, Payload>) => ParseResult<Payload> = (event) => {
+      if (typeof event !== 'object' || event === null) {
+        return { success: false, error: `Event ${event} is not an object` }
+      }
+
+      if (event.type !== key) {
+        return {
+          success: false,
+          error: `Event type ${event.type} does not match expected type ${key}`,
+        }
+      }
+
+      return { success: true, event }
+    }
+
+    if (!zodDefinition) {
+      return defaultParser
+    } else {
+      const [zod, fromZodError] = (() => {
+        const { z, fromZodError } = getZod()
+        const zod = z.intersection(zodDefinition, z.object({ type: z.string() }))
+        return [zod, fromZodError] as const
+      })()
+
+      return (event: MachineEvent<Key, Payload>): ParseResult<Payload> => {
+        const defaultParserResult = defaultParser(event)
+        if (!defaultParserResult.success) return defaultParserResult
+
+        const result = zod.safeParse(event)
+        if (!result.success) {
+          return { success: false, error: fromZodError(result.error).toString() }
+        }
+
+        return { success: true, event: result.data }
+      }
+    }
+  }
+
   /**
    * Start a design of a MachineEventFactory used for MachineRunner.
    *
@@ -63,25 +118,23 @@ export namespace MachineEvent {
    */
   export const design = <Key extends string>(key: Key): EventFactoryIntermediate<Key> => ({
     withZod: (zodDefinition) => ({
-      [FactoryInternalsAccessor]: {
-        zodDefinition: zodDefinition,
-      },
+      [FactoryInternalsAccessor]: { zodDefinition },
       type: key,
       make: (payload) => ({
         ...zodDefinition.parse(payload),
         type: key,
       }),
+      parse: mkParse(key, zodDefinition),
     }),
 
     withPayload: () => ({
-      [FactoryInternalsAccessor]: {
-        zodDefinition: undefined,
-      },
+      [FactoryInternalsAccessor]: { zodDefinition: undefined },
       type: key,
       make: (payload) => ({
         ...payload,
         type: key,
       }),
+      parse: mkParse(key),
     }),
 
     withoutPayload: () => ({
@@ -90,6 +143,7 @@ export namespace MachineEvent {
       },
       type: key,
       make: () => ({ type: key }),
+      parse: mkParse(key),
     }),
   })
 
@@ -130,6 +184,16 @@ export namespace MachineEvent {
     zodDefinition?: z.ZodType<Payload>
   }
 
+  export type ParseResult<Payload> =
+    | {
+        success: true
+        event: Payload
+      }
+    | {
+        success: false
+        error: string
+      }
+
   /**
    * MachineEvent.Factory is a type definition for a constructor type that serves
    * as a blueprint for the resulting instances.
@@ -151,6 +215,15 @@ export namespace MachineEvent {
      */
     make: (payload: Payload) => MachineEvent<Key, Payload>
     /**
+     * This method doesn't do much unless `withZod` was used to define the state!
+     *
+     * If a zod definition was used to define the state, this method will check
+     * whether the given event matches this definition. If no zod definition was
+     * used, this method will only check whether the given event has the correct
+     * type field.
+     */
+    parse: (event: MachineEvent<Key, Payload>) => ParseResult<Payload>
+    /**
      * Contains Zod definition. Also serves to differentiate Event from
      * Event.Factory when evaluated with Payload.Of
      */
@@ -161,10 +234,7 @@ export namespace MachineEvent {
    * A collection of type utilities around the Payload of a MachineEvent.Factory.
    */
   export namespace Payload {
-    export type Of<T extends MachineEvent.Any | Factory.Any> = T extends Factory<
-      string,
-      infer Payload
-    >
+    export type Of<T extends MachineEvent.Any | Factory.Any> = T extends Factory<any, infer Payload>
       ? Payload
       : T extends MachineEvent<any, infer Payload>
       ? Payload
