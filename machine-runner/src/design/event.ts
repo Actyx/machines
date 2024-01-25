@@ -53,45 +53,40 @@ export namespace MachineEvent {
     key: Key,
     zodDefinition?: z.ZodType<Payload>,
   ) => {
-    const [zod, fromZodError] = (() => {
-      if (zodDefinition) {
-        const { z, fromZodError } = getZod()
-        const zod = z.intersection(zodDefinition, z.object({ type: z.string() }))
-        return [zod, fromZodError] as const
-      } else {
-        return [undefined, undefined] as const
-      }
-    })()
-    return (event: MachineEvent<Key, Payload>): ParseResult<Payload> => {
+    const defaultParser: (event: MachineEvent<Key, Payload>) => ParseResult<Payload> = (event) => {
       if (typeof event !== 'object' || event === null) {
-        return {
-          success: false,
-          error: `Event ${event} is not an object`,
-        }
+        return { success: false, error: `Event ${event} is not an object` }
       }
+
       if (event.type !== key) {
         return {
           success: false,
           error: `Event type ${event.type} does not match expected type ${key}`,
         }
       }
-      if (!zod) {
-        return {
-          success: true,
-          payload: event,
+
+      return { success: true, event }
+    }
+
+    if (!zodDefinition) {
+      return defaultParser
+    } else {
+      const [zod, fromZodError] = (() => {
+        const { z, fromZodError } = getZod()
+        const zod = z.intersection(zodDefinition, z.object({ type: z.string() }))
+        return [zod, fromZodError] as const
+      })()
+
+      return (event: MachineEvent<Key, Payload>): ParseResult<Payload> => {
+        const defaultParserResult = defaultParser(event)
+        if (!defaultParserResult.success) return defaultParserResult
+
+        const result = zod.safeParse(event)
+        if (!result.success) {
+          return { success: false, error: fromZodError(result.error).toString() }
         }
-      }
-      const result = zod.safeParse(event)
-      if (result.success) {
-        return {
-          success: true,
-          payload: result.data,
-        }
-      } else {
-        return {
-          success: false,
-          error: fromZodError(result.error).toString(),
-        }
+
+        return { success: true, event: result.data }
       }
     }
   }
@@ -192,7 +187,7 @@ export namespace MachineEvent {
   export type ParseResult<Payload> =
     | {
         success: true
-        payload: Payload
+        event: Payload
       }
     | {
         success: false

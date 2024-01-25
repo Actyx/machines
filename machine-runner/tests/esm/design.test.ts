@@ -20,7 +20,7 @@ describe('MachineEvent', () => {
     })
     expect(event.parse({ type: 'a' })).toEqual({
       success: true,
-      payload: { type: 'a' },
+      event: { type: 'a' },
     })
   })
 
@@ -40,11 +40,11 @@ describe('MachineEvent', () => {
     })
     expect(event.parse({ type: 'a' } as any)).toEqual({
       success: true,
-      payload: { type: 'a' },
+      event: { type: 'a' },
     })
     expect(event.parse({ type: 'a', a: 42 })).toEqual({
       success: true,
-      payload: { type: 'a', a: 42 },
+      event: { type: 'a', a: 42 },
     })
   })
 
@@ -72,7 +72,7 @@ describe('MachineEvent', () => {
     })
     expect(event.parse({ type: 'a', a: 42 })).toEqual({
       success: true,
-      payload: { type: 'a', a: 42 },
+      event: { type: 'a', a: 42 },
     })
   })
 })
