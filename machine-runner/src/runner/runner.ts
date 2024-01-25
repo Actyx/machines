@@ -351,17 +351,24 @@ export const createMachineRunnerInternal = <
       emitter.emit('change', ImplStateOpaque.make(internals, internals.current))
     }
 
-    const persistResult = persist(events).catch((err) => {
-      unlockAndLogOnPersistFailure(err)
-      return Promise.reject(err)
-    })
+    // Aftermath
+    const persistResult = persist(events)
+      .then((res) => {
+        emitter.emit('commandPersisted', undefined)
+        return res
+      })
+      .catch((err) => {
+        unlockAndLogOnPersistFailure(err)
+        return Promise.reject(err)
+      })
 
+    // Change is triggered because commandLock status changed
     emitter.emit('change', ImplStateOpaque.make(internals, internals.current))
     return persistResult
   })
 
   // Actyx Subscription management
-  internals.destruction.addDestroyHook(() => emitter.emit('destroyed'))
+  internals.destruction.addDestroyHook(() => emitter.emit('destroyed', undefined))
 
   const fail = (cause: MachineRunnerFailure) => {
     // order of execution is very important here
@@ -520,10 +527,12 @@ export const createMachineRunnerInternal = <
 
     emitter.on('next', nva.push)
     emitter.on('failure', nva.fail)
+    emitter.on('commandPersisted', nva.purge)
     internals.destruction.addDestroyHook(() => {
       nva.kill()
       emitter.off('next', nva.push)
       emitter.off('failure', nva.fail)
+      emitter.off('commandPersisted', nva.purge)
     })
 
     return nva
@@ -809,6 +818,13 @@ namespace NextValueAwaiter {
       return retval
     }
 
+    const purge = () => {
+      const shouldNullify = !!store && 'state' in store
+      if (shouldNullify) {
+        store = null
+      }
+    }
+
     return {
       kill: () => {
         if (store && 'control' in store) {
@@ -836,6 +852,7 @@ namespace NextValueAwaiter {
         store && 'state' in store ? { state: store.state } : undefined,
       consume,
       peek,
+      purge,
     }
   }
 

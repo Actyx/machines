@@ -4,6 +4,7 @@ import { StateOpaque, MachineEvent, StateFactory, State, globals } from '../../l
 import { createMachineRunnerInternal } from '../../lib/esm/runner/runner.js'
 import { PromiseDelay, Subscription, mockMeta } from '../../lib/esm/test-utils/mock-runner.js'
 import { CommonEmitterEventMap, TypedEventEmitter } from '../../lib/esm/runner/runner-utils.js'
+import { EventEmitter } from 'events'
 
 export const sleep = (dur: number) => new Promise((res) => setTimeout(res, dur))
 
@@ -55,6 +56,8 @@ export class Runner<
   Payload,
   MachineEvent extends MachineEvent.Any = MachineEvent.Of<MachineEventFactories>,
 > {
+  static EVENT_ROUNDTRIP_DELAY = 1
+
   private persisted: ActyxEvent<MachineEvent.Any>[] = []
   private unhandled: MachineEvent.Any[] = []
   private caughtUpHistory: StateOpaque<SwarmProtocolName, MachineName, string, unknown>[] = []
@@ -62,9 +65,15 @@ export class Runner<
     state: StateOpaque<SwarmProtocolName, MachineName, string, unknown>
     unhandled: MachineEvent.Any[]
   }[] = []
-  private delayer = PromiseDelay.make()
   private sub = Subscription.make<MachineEvent>()
   public machine
+
+  private commandDelay = PromiseDelay.make()
+  public caughtUpDelay = CaughtUpDelay.make(async () => {
+    await this.eventRoundtrip.waitAllDone()
+    await this.feed([], true)
+  })
+  public eventRoundtrip = ActivePromiseSet.make()
 
   public tag
   /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -84,16 +93,27 @@ export class Runner<
             payload: payload as MachineEvent.Of<MachineEventFactories>,
           }),
         )
-        const pair = this.delayer.make()
-        const retval = pair[0].then(() => {
-          this.persisted.push(...actyxEvents)
-          this.feed(
-            actyxEvents.map((e) => e.payload),
-            true,
+
+        const pair = this.commandDelay.make()
+        const caughtUpDelay = this.caughtUpDelay.shouldDelay()
+        const commandPromise = pair[0].then(() => actyxEvents.map((e) => e.meta))
+
+        // event roundtrip
+        commandPromise
+          .then(() =>
+            this.eventRoundtrip.queue(async () => {
+              await sleep(Runner.EVENT_ROUNDTRIP_DELAY)
+              this.persisted.push(...actyxEvents)
+              this.feed(
+                actyxEvents.map((e) => e.payload),
+                !caughtUpDelay,
+              )
+            }),
           )
-          return actyxEvents.map((e) => e.meta)
-        })
-        return retval
+          // eslint-disable-next-line @typescript-eslint/no-empty-function
+          .catch(() => {})
+
+        return commandPromise
       },
       tag,
       factory,
@@ -126,10 +146,13 @@ export class Runner<
   async toggleCommandDelay(
     delayControl: { delaying: true } | { delaying: false; reject?: boolean },
   ): Promise<void> {
-    await this.delayer.toggle(delayControl)
+    await this.commandDelay.toggle(delayControl)
+    if (!delayControl.delaying) {
+      await this.eventRoundtrip.waitAllDone()
+    }
   }
 
-  feed(ev: MachineEvent[], caughtUp: boolean) {
+  feed = (ev: MachineEvent[], caughtUp: boolean) => {
     const cb = this.sub.cb
     if (!cb) {
       console.warn('not subscribed')
@@ -228,12 +251,14 @@ export class Runner<
     }
   }
 
-  assertPersistedAsMachineEvent(...e: MachineEvent[]) {
+  assertPersistedAsMachineEvent = async (...e: MachineEvent[]) => {
+    await this.eventRoundtrip.waitAllDone()
     expect(this.persisted.map((e) => e.payload)).toEqual(e)
     this.persisted.length = 0
   }
 
-  assertPersistedWithFn(fn: (events: ActyxEvent<MachineEvent.Any>[]) => void) {
+  assertPersistedWithFn = async (fn: (events: ActyxEvent<MachineEvent.Any>[]) => void) => {
+    await this.eventRoundtrip.waitAllDone()
     fn([...this.persisted])
     this.persisted.length = 0
   }
@@ -259,5 +284,69 @@ export const createBufferLog = () => {
   return {
     log,
     get: () => buffer,
+  }
+}
+
+export type ActivePromiseSet = ReturnType<typeof ActivePromiseSet['make']>
+export namespace ActivePromiseSet {
+  const EMPTY = 'empty'
+
+  export const make = () => {
+    const internals = {
+      working: new Set<Promise<unknown>>(),
+      emitter: new EventEmitter(),
+    }
+    internals.emitter.setMaxListeners(Infinity)
+
+    const whenEmptyNotify = () => {
+      if (internals.working.size === 0) {
+        internals.emitter.emit(EMPTY, undefined)
+      }
+    }
+
+    const queue = (fn: () => Promise<unknown>) => {
+      const task = fn().finally(() => {
+        internals.working.delete(task)
+        whenEmptyNotify()
+      })
+      internals.working.add(task)
+    }
+
+    const waitAllDone = () =>
+      new Promise<void>((res) => {
+        if (internals.working.size === 0) {
+          return res()
+        }
+        internals.emitter.once(EMPTY, res)
+      })
+
+    return { waitAllDone, queue }
+  }
+}
+
+export type CaughtUpDelay = ReturnType<typeof CaughtUpDelay['make']>
+export namespace CaughtUpDelay {
+  export const make = (onRelease: () => Promise<unknown>) => {
+    const internals = { delaying: false, buffered: false }
+
+    const releaseBuffer = async () => {
+      if (!internals.buffered) return
+      internals.buffered = false
+      await onRelease()
+    }
+
+    const toggle = async (delaying: boolean) => {
+      internals.delaying = delaying
+      if (!delaying) {
+        await releaseBuffer()
+      }
+    }
+
+    const shouldDelay = () => {
+      internals.buffered = internals.delaying
+      return internals.delaying
+    }
+
+    return { toggle, shouldDelay }
   }
 }

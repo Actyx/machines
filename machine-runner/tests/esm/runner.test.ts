@@ -353,7 +353,13 @@ describe('machine runner events', () => {
       await r1.feed([ToggleOff], true)
 
       expect(bootData).not.toBe(null)
-      expect(bootData?.durationMs).toBeGreaterThanOrEqual(WAIT_TIME)
+      // nodejs timeout is annoying that it might sometimes resolves a millisecond erlier.
+      // therefore, this code is replaced by one that has a tolerance range
+      // expect(bootData?.durationMs).toBeGreaterThanOrEqual(WAIT_TIME)
+      const TOLERANCE = 1
+      expect(bootData?.durationMs).toBeGreaterThanOrEqual(WAIT_TIME - TOLERANCE)
+      expect(bootData?.durationMs).toBeLessThanOrEqual(WAIT_TIME + TOLERANCE * 2)
+      // code replacement ends
       expect(bootData?.eventCount).toBe(2)
       expect(bootData?.identity.swarmProtocolName).toBe(ProtocolSwitch.SWARM_NAME)
       expect(bootData?.identity.machineName).toBe(ProtocolSwitch.MACHINE_NAME)
@@ -586,6 +592,42 @@ describe('machine as async generator', () => {
     // The circuit above should go this way: On->Off->On
     // that's 2 toggles
     expect(toggleCount).toBe(2)
+  })
+
+  describe('peek/next state store nullification from command persistence', () => {
+    it('should be true that peek/next state store is nullified on command persistence', async () => {
+      const r1 = new Runner(On, { toggleCount: 0 })
+      const { machine } = r1
+      r1.feed([], true) // caughtUp event
+
+      const state = (await machine.peekNext()).value
+      expect(state).toBeTruthy() // should resolve immediately
+      if (!state) throw new Unreachable()
+
+      await r1.caughtUpDelay.toggle(true) // start delay
+      // this command call locks, nullifying state store previously populated by caughtUp event
+      const whenOffCommands = state.as(On)?.commands()
+      if (!whenOffCommands) throw new Unreachable()
+      await whenOffCommands.toggle()
+      await r1.eventRoundtrip.waitAllDone() // make sure all event roundtrips are done
+
+      let nextOrPeekTriggered = false
+      const peek = machine.peekNext()
+      const next = machine.next()
+      Promise.race([peek, next]).finally(() => (nextOrPeekTriggered = true))
+
+      await r1.eventRoundtrip.waitAllDone() // reassure that previous finally is executed
+
+      expect(nextOrPeekTriggered).toBe(false) // must be false because state store isn't populated
+
+      await r1.caughtUpDelay.toggle(false) // end delay
+
+      expect(nextOrPeekTriggered).toBe(true) // must be false because state store isn't populated
+      expect(await peek).toBeTruthy() // now should resolve after delay is released
+      expect(await next).toBeTruthy() // now should resolve after delay is released
+
+      machine.destroy()
+    })
   })
 
   describe('actual', () => {
@@ -835,7 +877,7 @@ describe('StateOpaque', () => {
       if (!whenInitial || !commands) throw new Unreachable()
 
       await commands.X(...XCommandParam)
-      r1.assertPersistedAsMachineEvent(...XEmittedEvents)
+      await r1.assertPersistedAsMachineEvent(...XEmittedEvents)
     })
 
     describe('additional tags', () => {
@@ -868,7 +910,7 @@ describe('StateOpaque', () => {
         r1.feed([], true)
 
         await r1.machine.get()?.as(On)?.commands()?.off()
-        r1.assertPersistedWithFn(([ev]) => {
+        await r1.assertPersistedWithFn(([ev]) => {
           expect(ev.meta.tags).toContain('extra-tag-off')
         })
       })
@@ -916,7 +958,7 @@ describe('StateOpaque', () => {
             expect(error).toBeInstanceOf(MachineRunnerErrorCommandFiredWhenNotCaughtUp)
           })
 
-          r1.assertPersistedAsMachineEvent()
+          await r1.assertPersistedAsMachineEvent()
         })
       })
 
@@ -960,7 +1002,7 @@ describe('StateOpaque', () => {
             expect(error).toBeInstanceOf(MachineRunnerErrorCommandFiredAfterExpired)
           })
 
-          r1.assertPersistedAsMachineEvent()
+          await r1.assertPersistedAsMachineEvent()
         })
       })
 
@@ -1001,7 +1043,7 @@ describe('StateOpaque', () => {
           ;[...errorCatchers.map((catcher) => catcher.error), returnedError].map((error) => {
             expect(error).toBeInstanceOf(MachineRunnerErrorCommandFiredAfterExpired)
           })
-          r1.assertPersistedAsMachineEvent()
+          await r1.assertPersistedAsMachineEvent()
         })
       })
 
@@ -1037,7 +1079,7 @@ describe('StateOpaque', () => {
           ;[...errorCatchers.map((catcher) => catcher.error), returnedError].map((error) => {
             expect(error).toBeInstanceOf(MachineRunnerErrorCommandFiredAfterDestroyed)
           })
-          r1.assertPersistedAsMachineEvent()
+          await r1.assertPersistedAsMachineEvent()
         })
       })
 
@@ -1103,7 +1145,7 @@ describe('StateOpaque', () => {
             ;[...errorCatchers.map((catcher) => catcher.error), returnedError].map((error) => {
               expect(error).toBeInstanceOf(MachineRunnerErrorCommandFiredAfterLocked)
             })
-            r1.assertPersistedAsMachineEvent()
+            await r1.assertPersistedAsMachineEvent()
           })()
 
           // release delay, wait until all commands are published
@@ -1121,7 +1163,7 @@ describe('StateOpaque', () => {
             ;[...errorCatchers.map((catcher) => catcher.error), returnedError].map((error) => {
               expect(error).toBeTruthy()
             })
-            r1.assertPersistedAsMachineEvent()
+            await r1.assertPersistedAsMachineEvent()
           })()
         })
 
@@ -1149,7 +1191,7 @@ describe('StateOpaque', () => {
               .catch((e) => e)
 
             expect(error).toBe(null)
-            r1.assertPersistedAsMachineEvent(...YEmittedEvents)
+            await r1.assertPersistedAsMachineEvent(...YEmittedEvents)
           })
         })
       })
@@ -1204,7 +1246,7 @@ describe('StateOpaque', () => {
             ;[...errorCatchers.map((catcher) => catcher.error), returnedError].map((error) => {
               expect(error).toBe(null)
             })
-            r1.assertPersistedAsMachineEvent(...XEmittedEvents)
+            await r1.assertPersistedAsMachineEvent(...XEmittedEvents)
           })()
         })
       })
