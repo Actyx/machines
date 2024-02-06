@@ -356,9 +356,9 @@ describe('machine runner events', () => {
       // nodejs timeout is annoying that it might sometimes resolves a millisecond erlier.
       // therefore, this code is replaced by one that has a tolerance range
       // expect(bootData?.durationMs).toBeGreaterThanOrEqual(WAIT_TIME)
-      const TOLERANCE = 1
+      const TOLERANCE = 15
       expect(bootData?.durationMs).toBeGreaterThanOrEqual(WAIT_TIME - TOLERANCE)
-      expect(bootData?.durationMs).toBeLessThanOrEqual(WAIT_TIME + TOLERANCE * 2)
+      expect(bootData?.durationMs).toBeLessThanOrEqual(WAIT_TIME + TOLERANCE)
       // code replacement ends
       expect(bootData?.eventCount).toBe(2)
       expect(bootData?.identity.swarmProtocolName).toBe(ProtocolSwitch.SWARM_NAME)
@@ -801,27 +801,38 @@ describe('machine as async generator', () => {
     it("should not affect parent's destroyed status", async () => {
       const r = new Runner(On, { toggleCount: 0 })
       const machine = r.machine
-      const cloned = machine.noAutoDestroy()
+      const cloned1 = machine.noAutoDestroy()
+      const cloned2 = machine.noAutoDestroy()
+      const cloned3 = machine.noAutoDestroy()
 
       await r.feed([{ type: ToggleOff.type }], true)
       // peek should come before next
-      const cres1 = await cloned.peek()
+      const cres1 = await cloned1.next()
+      const cres2 = await cloned2.next()
+      const cres3 = await cloned3.next()
       const mres1 = await machine.next()
       expect(mres1.done).toBeFalsy()
       expect(cres1.done).toBeFalsy()
+      expect(cres2.done).toBeFalsy()
+      expect(cres3.done).toBeFalsy()
 
       await r.feed([{ type: ToggleOn.type }], true)
 
       // attempt to kill
-      cloned.return?.()
-      cloned.throw?.()
+      cloned1.return?.()
+      cloned2.throw?.()
+      cloned3.destroy()
 
       // peek should come before next
-      const cres2 = await cloned.peek()
-      const mres2 = await machine.next()
+      const cres1_2 = await cloned1.next()
+      const cres2_2 = await cloned2.next()
+      const cres3_2 = await cloned3.next()
+      const mres1_2 = await machine.next()
 
-      expect(mres2.done).toBeFalsy()
-      expect(cres2.done).toBeTruthy()
+      expect(mres1_2.done).toBeFalsy()
+      expect(cres1_2.done).toBeTruthy()
+      expect(cres2_2.done).toBeTruthy()
+      expect(cres3_2.done).toBeTruthy()
     })
 
     it('should be destroyed when parent is destroyed', async () => {

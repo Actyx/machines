@@ -662,6 +662,11 @@ export type MachineRunnerIterableIterator<
     actual: () => Promise<
       IteratorResult<StateOpaque<SwarmProtocolName, MachineName, string, StateUnion>, null>
     >
+    /**
+     * Destroys current Iterator. If it belongs to a `noAutoDestroy` variant, it
+     * only destroys the copy and not the original one.
+     */
+    destroy: () => void
   }
 
 namespace MachineRunnerIterableIterator {
@@ -702,6 +707,7 @@ namespace MachineRunnerIterableIterator {
       actual: generateActualFn({ emitter, internals, destruction }),
       return: onThrowOrReturn,
       throw: onThrowOrReturn,
+      destroy: destruction.destroy,
       [Symbol.asyncIterator]: (): AsyncIterableIterator<
         StateOpaque<SwarmProtocolName, MachineName, string, StateUnion>
       > => iterator,
