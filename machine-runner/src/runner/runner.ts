@@ -834,13 +834,6 @@ namespace NextValueAwaiter {
       return retval
     }
 
-    const purge = () => {
-      const shouldNullify = !!store && 'state' in store
-      if (shouldNullify) {
-        store = null
-      }
-    }
-
     const purgeWhenMatching = (comparedState: S) => {
       if (!!store && 'state' in store && ImplStateOpaque.eq(store.state, comparedState)) {
         store = null
@@ -874,7 +867,6 @@ namespace NextValueAwaiter {
         store && 'state' in store ? { state: store.state } : undefined,
       consume,
       peek,
-      purge,
       purgeWhenMatching,
     }
   }
