@@ -605,7 +605,9 @@ describe('machine as async generator', () => {
       if (!state) throw new Unreachable()
 
       await r1.caughtUpDelay.toggle(true) // start delay
-      // this command call locks, nullifying state store previously populated by caughtUp event
+      // this command call locks
+      // after it is successfully persisted
+      // NVA state store will be nullified
       const whenOffCommands = state.as(On)?.commands()
       if (!whenOffCommands) throw new Unreachable()
       await whenOffCommands.toggle()
@@ -625,6 +627,40 @@ describe('machine as async generator', () => {
       expect(nextOrPeekTriggered).toBe(true) // must be false because state store isn't populated
       expect(await peek).toBeTruthy() // now should resolve after delay is released
       expect(await next).toBeTruthy() // now should resolve after delay is released
+
+      machine.destroy()
+    })
+
+    it('nullification must not happen if state has changed between command issuance and persistance', async () => {
+      const r1 = new Runner(On, { toggleCount: 0 })
+      const { machine } = r1
+      r1.feed([], true) // caughtUp event
+
+      const state = (await machine.peekNext()).value
+      expect(state).toBeTruthy() // should resolve immediately
+      if (!state) throw new Unreachable()
+
+      await r1.caughtUpDelay.toggle(true) // start delay
+      // this command call locks
+      // and it is supposed to nullify the NVA state store
+      const whenOffCommands = state.as(On)?.commands()
+      if (!whenOffCommands) throw new Unreachable()
+      await whenOffCommands.toggle()
+
+      // however, a state change happens before the command is persisted
+      r1.feed([ToggleOff.make({}), ToggleOn.make({}), ToggleOff.make({})], true)
+
+      const newState = machine.get()
+
+      // persistence MUST not nullify stored state because the stored state is not the
+      // "source of the command" state anymore
+      await r1.eventRoundtrip.waitAllDone() // make sure all event roundtrips are done
+      await r1.caughtUpDelay.toggle(false) // end delay
+
+      const newState2 = machine.get()
+
+      expect(newState?.payload).toEqual(newState2?.payload)
+      expect(newState?.type).toEqual(newState2?.type)
 
       machine.destroy()
     })
