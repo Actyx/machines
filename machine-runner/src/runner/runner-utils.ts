@@ -74,7 +74,9 @@ export type MachineEmitterEventMap<
     factory: StateFactory.Any
     nextState: unknown
   }) => unknown
-  commandPersisted: (_: void) => unknown
+  commandPersisted: (_: {
+    sourceState: StateOpaque<SwarmProtocolName, MachineName, string, StateUnion>
+  }) => unknown
   change: (_: StateOpaque<SwarmProtocolName, MachineName, string, StateUnion>) => unknown
   next: (_: StateOpaque<SwarmProtocolName, MachineName, string, StateUnion>) => unknown
   destroyed: (_: void) => unknown

@@ -237,6 +237,7 @@ export const createMachineRunner = <
   MachineEventFactories extends MachineEvent.Factory.Any,
   Payload,
   MachineEvents extends MachineEvent.Any = MachineEvent.Of<MachineEventFactories>,
+  StateUnion extends unknown = unknown,
 >(
   sdk: Actyx,
   tags: Tags<MachineEvents>,
@@ -249,7 +250,7 @@ export const createMachineRunner = <
     any
   >,
   initialPayload: Payload,
-) => {
+): MachineRunner<SwarmProtocolName, MachineName, StateUnion> => {
   const subscribeMonotonicQuery = {
     query: tags,
     sessionId: 'dummy',
@@ -332,6 +333,10 @@ export const createMachineRunnerInternal = <
     }
 
     const currentCommandLock = Symbol(Math.random())
+    const sourceState = ImplStateOpaque.make<SwarmProtocolName, MachineName, StateUnion>(
+      internals,
+      internals.current,
+    )
 
     internals.commandLock = currentCommandLock
 
@@ -354,7 +359,7 @@ export const createMachineRunnerInternal = <
     // Aftermath
     const persistResult = persist(events)
       .then((res) => {
-        emitter.emit('commandPersisted', undefined)
+        emitter.emit('commandPersisted', { sourceState })
         return res
       })
       .catch((err) => {
@@ -480,8 +485,8 @@ export const createMachineRunnerInternal = <
               emitter.emit('change', stateOpaqueToBeEmitted)
 
               if (
-                internals.current.factory !== internals.previouslyEmittedToNext?.factory ||
-                !deepEqual(internals.previouslyEmittedToNext.data, internals.current.data)
+                !internals.previouslyEmittedToNext ||
+                !ImplStateOpaque.eqInternal(internals.current, internals.previouslyEmittedToNext)
               ) {
                 internals.previouslyEmittedToNext = {
                   factory: internals.current.factory,
@@ -525,14 +530,17 @@ export const createMachineRunnerInternal = <
       cloneFrom: state,
     })
 
+    const purgeWhenMatching = ({ sourceState }: { sourceState: S }) =>
+      nva.purgeWhenMatching(sourceState)
+
     emitter.on('next', nva.push)
     emitter.on('failure', nva.fail)
-    emitter.on('commandPersisted', nva.purge)
+    emitter.on('commandPersisted', purgeWhenMatching)
     internals.destruction.addDestroyHook(() => {
       nva.kill()
       emitter.off('next', nva.push)
       emitter.off('failure', nva.fail)
-      emitter.off('commandPersisted', nva.purge)
+      emitter.off('commandPersisted', purgeWhenMatching)
     })
 
     return nva
@@ -783,10 +791,12 @@ namespace MachineRunnerIterableIterator {
 /**
  * Object to help "awaiting" next value.
  */
-export type NextValueAwaiter<S extends any> = ReturnType<typeof NextValueAwaiter.make<S>>
+export type NextValueAwaiter<S extends StateOpaque<any, any, any>> = ReturnType<
+  typeof NextValueAwaiter.make<S>
+>
 
 namespace NextValueAwaiter {
-  export const make = <S extends any>({
+  export const make = <S extends StateOpaque<any, any, any>>({
     topLevelDestruction,
     currentLevelDestruction,
     failure,
@@ -824,9 +834,8 @@ namespace NextValueAwaiter {
       return retval
     }
 
-    const purge = () => {
-      const shouldNullify = !!store && 'state' in store
-      if (shouldNullify) {
+    const purgeWhenMatching = (comparedState: S) => {
+      if (!!store && 'state' in store && ImplStateOpaque.eq(store.state, comparedState)) {
         store = null
       }
     }
@@ -858,7 +867,7 @@ namespace NextValueAwaiter {
         store && 'state' in store ? { state: store.state } : undefined,
       consume,
       peek,
-      purge,
+      purgeWhenMatching,
     }
   }
 
@@ -888,6 +897,13 @@ namespace NextValueAwaiter {
   }
 }
 
+type StateOpaqueInternalAccess = {
+  /**
+   * Do not use internal
+   */
+  [ImplStateOpaque.InternalAccess]: () => StateAndFactory<any, any, any, any, any, any>
+}
+
 /**
  * StateOpaque is an opaque snapshot of a MachineRunner state. A StateOpaque
  * does not have direct access to the state's payload or command. In order to
@@ -904,7 +920,8 @@ export interface StateOpaque<
     any,
     Contained.ContainedEvent<MachineEvent.Any>[]
   > = object,
-> extends StateRaw<StateName, Payload> {
+> extends StateOpaqueInternalAccess,
+    StateRaw<StateName, Payload> {
   /**
    * Checks if the StateOpaque's type equals to the StateFactory's type.
    *
@@ -1096,6 +1113,16 @@ export namespace ImplStateOpaque {
   export const isRunnerDestroyed = (internals: RunnerInternals.Any): boolean =>
     internals.destruction.isDestroyed()
 
+  export const InternalAccess: unique symbol = Symbol()
+
+  export const eq = (a: StateOpaque<any, any, any, any>, b: StateOpaque<any, any, any, any>) =>
+    eqInternal(a[InternalAccess](), b[InternalAccess]())
+
+  export const eqInternal = (
+    a: StateAndFactory<any, any, any, any, any, any>,
+    b: StateAndFactory<any, any, any, any, any, any>,
+  ): boolean => a.factory === b.factory && deepEqual(a.data, b.data)
+
   export const make = <
     SwarmProtocolName extends string,
     MachineName extends string,
@@ -1164,6 +1191,7 @@ export namespace ImplStateOpaque {
       type: stateAtSnapshot.type,
       commandsAvailable: () =>
         commandEnabledAtSnapshot && CommandGeneratorCriteria.allOk(commandGeneratorCriteria),
+      [InternalAccess]: () => ({ data: stateAtSnapshot, factory: factoryAtSnapshot }),
     }
   }
 }
