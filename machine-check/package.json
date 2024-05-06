@@ -1,6 +1,6 @@
 {
   "name": "@actyx/machine-check",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Behavioural typechecking for @actyx/machine-runner machines",
   "repository": "https://github.com/Actyx/machines",
   "author": "Actyx AG",
