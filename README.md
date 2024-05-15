@@ -41,3 +41,7 @@ It also provides a view that shows you the full event and state history of a set
 
 If you want to further develop these libraries, there’s some sample usage in the `dev-example` folder.
 Please be sure to `nvm use` the right node.js version!
+
+## Acknowledgements
+
+The implementation of these libraries and the underlying theory has been supported by the Horizon Europe EU project «TaRDIS» (grant number 101093006).
