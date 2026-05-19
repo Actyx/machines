@@ -1,11 +1,10 @@
 {
   "compilerOptions": {
-    "allowJs": true,
     "alwaysStrict": true,
     "declaration": true,
-    "emitDecoratorMetadata": false,
     "esModuleInterop": false,
     "experimentalDecorators": true,
+    "emitDecoratorMetadata": false,
     "lib": ["dom", "es2019"],
     "module": "Node16",
     "moduleResolution": "Node16",

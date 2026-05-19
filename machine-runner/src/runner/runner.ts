@@ -507,7 +507,7 @@ export const createMachineRunnerInternal = <
 
         emitter.emit('log', 'Restarting in 1sec due to error')
         unsubscribeFromActyx()
-        setTimeout(() => restartActyxSubscription, 10000)
+        setTimeout(() => restartActyxSubscription(), 10000)
       },
     )
   }
